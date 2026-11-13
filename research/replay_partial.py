@@ -5,7 +5,8 @@ import json
 import os
 from pathlib import Path
 
-from research.tau_copilot import WireAction
+from research.tau_copilot import parse_recorded_action
+from research.native_scoring import preflight_task
 from research.tau_pilot import VENDOR, check_source
 
 
@@ -33,8 +34,8 @@ def replay(journal: Path, task_id: str) -> dict[str, object]:
     prompt = json.loads(starts[last["call_id"]]["prompt"])
     messages = TypeAdapter(list[Message]).validate_python(prompt["messages"])
     environment = get_environment()
-    action = WireAction.model_validate_json(last["response"]).native(
-        {tool.name for tool in environment.get_tools()}
+    action = parse_recorded_action(
+        last["response"], {tool.name for tool in environment.get_tools()}
     )
     if action["kind"] != "message":
         raise ValueError(
@@ -44,19 +45,8 @@ def replay(journal: Path, task_id: str) -> dict[str, object]:
     task = next((item for item in get_tasks("train") if item.id == task_id), None)
     if task is None or task.evaluation_criteria is None:
         raise ValueError("Use an official development task with explicit criteria.")
-    initial = task.initial_state
-    gold = get_environment()
-    gold.set_state(
-        initialization_data=initial.initialization_data if initial else None,
-        initialization_actions=initial.initialization_actions if initial else None,
-        message_history=initial.message_history if initial and initial.message_history else [],
-    )
-    initial_hash = gold.get_db_hash()
-    actions = task.evaluation_criteria.actions or []
-    for reference in actions:
-        gold.make_tool_call(reference.name, requestor=reference.requestor, **reference.arguments)
-    changed = gold.get_db_hash() != initial_hash
-    if not changed:
+    preflight = preflight_task(task)
+    if not preflight["reference_changes_db"]:
         raise ValueError(
             "This reference has no nontrivial DB change; do not present no-action matching as task success."
         )
@@ -66,8 +56,8 @@ def replay(journal: Path, task_id: str) -> dict[str, object]:
         "task_id": task_id,
         "model_calls": 0,
         "observed_messages_replayed": len(messages),
-        "reference_actions_validated": len(actions),
-        "reference_changes_db": changed,
+        "reference_actions_validated": preflight["reference_actions_validated"],
+        "reference_changes_db": preflight["reference_changes_db"],
         "partial_db_match": reward.db_check.db_match if reward.db_check else None,
         "official_task_completion": None,
         "limitations": [

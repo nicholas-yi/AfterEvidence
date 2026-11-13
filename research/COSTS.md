@@ -126,3 +126,32 @@ feasibility gate and on a frozen, committed/tagged protocol.
   remain, but they are not counted as completed successful model calls.
 - The previous local Qwen pilot completed with ENV reward 0, not a memory win.
 - No registered main experiment or full four-condition result exists yet.
+
+## 2026-11-13 baseline follow-up
+
+A new allowance authorized at most 90 requests across development tasks 0, 1,
+and 2, capped at 30 per task. The source-hashed development plan and adapter
+amendments were saved before their respective calls.
+
+| Attempt | Requests | Input tokens | Output tokens | AI credits |
+|---|---:|---:|---:|---:|
+| Task 0, rejected mixed message/tool fields | 14 | 113,326 | 7,728 | 1.546155 |
+| Task 1, rejected empty message | 4 | 18,315 | 375 | 0.208421 |
+| Task 1, repaired action contract; completed | 17 | 147,385 | 6,530 | 1.8368675 |
+| Task 2, blocked by strict reference preflight | 0 | 0 | 0 | 0 |
+| **Follow-up total** | **35** | **279,026** | **14,633** | **3.5914435** |
+
+The follow-up consumed about **$0.035914435 in allowance value**, not a separate
+API invoice. Task 1 used 21 requests including its failed attempt. Its completed
+episode received native ENV/task-basis reward 1.0 and took 102.422 seconds;
+that single successful trajectory alone is not the total cost of development.
+
+All 35 started requests have completed billing snapshots. The 55 unused
+requests were not spent on replacement tasks or unapproved judges. No API plan
+was purchased. Cumulative Copilot usage including the earlier pilots is now
+**58 requests and 6.03168 AI credits**, about **$0.0603168 in credit value**.
+
+The first two attempts used different action schemas; the failed attempts are
+retained and counted. These figures are development accounting, not an
+efficacy estimate or a guaranteed price for another model or task cohort.
+See [the full result and remaining gates](RESULTS.md#bounded-baseline-follow-up-2026-11-13).

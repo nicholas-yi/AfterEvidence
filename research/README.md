@@ -23,9 +23,17 @@ lessons after evidence changes.
   capped at **20 requests total**. Two exposed an unstructured-action failure;
   eighteen ran the repaired structured-action adapter and performed a real
   native exchange, but reached the cap before conversation termination.
-  **No completed Copilot task score is claimed.**
-- All 23 completed Copilot requests together consumed **2.4402365 AI credits**,
+  That attempt did not produce a completed task score.
+- Those initial 23 completed Copilot requests consumed **2.4402365 AI credits**,
   about **$0.024402 in credit value**. Every failed/capped attempt remains logged.
+- A subsequent bounded development cohort produced one normally completed
+  task-1 episode with native ENV/task-basis reward **1.0**, reproduced by fresh
+  zero-inference replay. Two preceding schema failures remain counted; task 2
+  was blocked before inference by a strict reference-replay error.
+- This follow-up used **35 of 90 authorized requests**, **3.5914435 AI credits**,
+  about **$0.035914 in credit value**. Cumulative Copilot usage is **58 requests
+  and 6.03168 credits**. A single completed sibling task is not an accuracy or
+  memory-efficacy estimate; simulator interpretation still needs calibration.
 - The source-aware retrieval/accounting/isolation/action-parser tests pass.
 
 No main experiment or four-condition efficacy result exists yet. Do not treat
@@ -39,18 +47,20 @@ the application examples or software invariants as agent-learning evidence.
 - [Benchmark and SDK pins](benchmark-lock.json).
 - [Non-editable dependency constraints](dependencies.lock.txt), combined with the source pins.
 - [Source-aware memory controls](memory_methods.py).
+- [Native scorer preflight and assessment](native_scoring.py).
 - [Native local-model feasibility driver](tau_pilot.py).
 - [Three-request SDK micro-pilot](copilot_micro.py).
-- [Full native-environment Copilot pilot driver](tau_copilot.py), implemented
-  and partially exercised with structured actions, but not yet validated through
-  a complete scored conversation.
+- [Full native-environment Copilot pilot driver](tau_copilot.py),
+  exercised through a complete native-scored development conversation, but not
+  yet a reliable multi-task actor/simulator baseline.
 
 From the project root:
 
 ```powershell
 python -m unittest research.test_memory_methods research.test_costing -v
-.\research\.venv\Scripts\python.exe -m unittest research.test_copilot_backend research.test_tau_action -v
+.\research\.venv\Scripts\python.exe -m unittest research.test_copilot_backend research.test_tau_action research.test_native_scoring -v
 .\research\.venv\Scripts\python.exe -m pyright --project research\pyrightconfig.json
+.\research\.venv\Scripts\python.exe -m research.native_scoring --tasks 0 1 2
 .\research\.venv\Scripts\python.exe -m research.copilot_quota
 .\research\.venv\Scripts\python.exe -m research.costing research\runs\copilot-micro-04.jsonl
 .\research\.venv\Scripts\python.exe -m research.replay_partial research\runs\copilot-native-structured-feasibility-0.calls.jsonl
@@ -63,9 +73,13 @@ Commands that consume model allowance require the explicit pilot request cap:
 .\research\.venv\Scripts\python.exe -m research.tau_copilot --task 0 --requests 20 --output research\runs\NEW-native-pilot.json
 ```
 
-The second command is the next proposed development gate, not a registered
+These are opt-in examples, not standing authorization or a registered
 main experiment. A quota check is not a promise that billing settings prevent
 overages; verify the account's stop-on-budget settings.
+
+The zero-inference preflight command deliberately exits nonzero for the pinned
+task 2 reference lookup failure. It reports every selected task; do not silently
+drop that result or treat a reference-control trajectory as agent success.
 
 ## Methodological boundaries
 

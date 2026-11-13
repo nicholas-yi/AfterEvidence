@@ -67,11 +67,15 @@ Normal sleep behavior returns when the hold expires, stops, or its process ends.
 6. Preserve pilot/main-study separation. No main four-condition memory result
    or preregistration tag exists yet.
 
-Current handoff: a native local-model task failed its environment goal; a metered
-Copilot development attempt was capped after real tool actions and did not match
-the target database in partial replay. The next research gate is a reliable,
-scored baseline and user-simulator check, not more demo features or unregistered
-main evaluation.
+Current handoff: one repaired Copilot development episode completed with native
+ENV/task-basis rewards of 1.0, reproduced by fresh zero-inference replay. Earlier
+format failures remain counted; another selected task failed strict reference
+preflight before inference. Independent tasks, simulator calibration, and the
+main-study gates remain unfinished.
+
+For another machine, use [the devbox handoff and copy-paste prompt](DEVBOX-HANDOFF.md).
+It covers pinned setup, offline validation, private evidence that Git does not
+transfer, and the exact next research gate.
 
 For truly unattended work while a laptop sleeps, use an approved always-on remote
 machine and durable run logging. That is a separate deployment, security, and cost

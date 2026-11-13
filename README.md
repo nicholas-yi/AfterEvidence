@@ -8,7 +8,7 @@ its evidence changes.
 
 [Get started](#local-workspace) · [Research](research/README.md) ·
 [Results](research/RESULTS.md) · [Costs](research/COSTS.md) ·
-[Continuity](docs/CONTINUITY.md)
+[Continuity](docs/CONTINUITY.md) · [Devbox handoff](docs/DEVBOX-HANDOFF.md)
 
 > **Development preview.** Source lineage is not a guarantee of truth.
 > There is no completed four-condition memory-efficacy study, no claim that
@@ -94,8 +94,12 @@ The separate research track uses pinned, MIT-licensed `tau2-bench` retail
 tasks—not the UI's hand-written scenario rules.
 
 - A local-Qwen native task did not achieve its database goal.
-- A bounded Copilot development conversation executed real tools but hit its
-  request limit; partial replay did not match the target database.
+- An initial bounded Copilot conversation hit its request limit and did not
+  match the target database in partial replay.
+- A subsequent Copilot development episode completed with native ENV and
+  task-basis rewards of **1.0**, reproduced by zero-inference replay. It is
+  one task, with no nonempty policy assertions to judge, not an accuracy estimate.
+- Strict reference preflight blocked another selected task before inference.
 - Usage was metered and failures retained. **No memory improvement is claimed.**
 
 The next gate is a reliable scored baseline, a faithful simulator, an isolated

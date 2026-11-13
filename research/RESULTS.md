@@ -9,7 +9,7 @@ The original UI was not extended for this work. The research used the
 unmodified native retail environment and tools from MIT-licensed tau2-bench
 at `c06b07dd7c4d4ec61ba6ff9bcdf0b15dd7ef36d4`.
 
-## Executed trials
+## Initial feasibility trials
 
 | Trial | Actual model requests | Outcome | Duration |
 |---|---:|---|---:|
@@ -55,7 +55,7 @@ Timeouts explicitly abort the SDK generation. A stopped waiter is not treated
 as proof that generation stopped. Incomplete/capped runs now produce a
 nonzero CLI exit status and preserve partial observed messages.
 
-## Measured usage
+## Initial measured usage
 
 All 23 completed Copilot requests were through the existing authenticated
 Copilot allowance, using account-enabled Claude Haiku 5.5:
@@ -75,6 +75,101 @@ free usage, and legacy request counters are not automatically AI-credit
 balances or an exact monthly-call allowance.
 
 See [cost assumptions and planning estimates](COSTS.md).
+
+## Bounded baseline follow-up: 2026-11-13
+
+The next allowance covered at most **90 requests**, at most 30 per selected
+development task, including both the actor and simulated customer. The fixed
+cohort was official training tasks **0, 1, 2**. A local pre-run record captured
+the source hashes, caps, seed, and scorer controls before new inference.
+It is a development record, **not main-study preregistration**.
+
+### Zero-inference scorer controls
+
+The [native scoring adapter](native_scoring.py) now checks the reference
+trajectory before initializing Copilot. For tasks 0 and 1:
+
+- Every reference action executed without a suppressed reference exception.
+- Native reference ENV reward was 1.0.
+- The reference changed the database.
+- An empty trajectory did not match that target.
+
+Task 2 failed the strict preflight: reference action 2, `get_product_details`,
+raised **"Product not found"** for the referenced product. It received **zero
+model calls** and was not silently replaced by an easier task. This is a
+conservative reference-replay exclusion, not proof that its final database
+goal is undefined or that the whole benchmark is incorrect. The upstream ENV
+evaluator logs reference exceptions and continues; this pilot does not accept
+that as a fully validated reference.
+
+### All inference attempts, including repairs
+
+| Task / adapter | Requests | Duration | Outcome | AI credits |
+|---|---:|---:|---|---:|
+| 0 / original flat action | 14 | 93.125 s | Rejected a message carrying a placeholder tool name; no episode score | 1.546155 |
+| 1 / nested message-or-tool action | 4 | 16.000 s | Rejected an empty message; no episode score | 0.208421 |
+| 1 / shared nonempty-value action | 17 | 102.422 s | Normal `USER_STOP`; native ENV **1.0**, native task-basis **1.0** | 1.8368675 |
+| 2 | 0 | Not run | Strict reference preflight failed | 0 |
+
+Both schema failures remain in their original journals. Repairs were recorded
+before the next attempt; no invalid action was silently stripped or executed.
+Task 1's failed four requests count toward its 30-request cap: its total was
+**21**, not 17. Task 0 was not retried. Different adapter versions were used,
+so these attempts must not be pooled as an efficacy estimate.
+
+The live schema now uses one nonempty `value` for either customer-facing text
+or a tool name, plus JSON-encoded arguments. It has no irrelevant empty name
+field or nested union. Native tool-name/argument validation remains in place.
+Historical schemas remain readable for replay, not live inference.
+
+### What the completed episode establishes
+
+The actor verified the customer, consulted native account/order/product tools,
+obtained confirmation, and executed the thermostat-only exchange required by
+task 1's fallback instruction. The keyboard remained unchanged. The simulated
+customer ended with the native stop marker.
+
+A fresh, zero-inference replay of the saved episode reproduced both rewards
+and the assessment. Task 1's reward basis contains DB and NL_ASSERTION, but its
+NL assertion list is empty; **no LLM judge was called**. The task-basis score
+therefore does not certify general policy compliance. Its communication list
+is also empty, so a communication reward of 1 is not an independent quality test.
+This is a custom actor adapter, not an official leaderboard submission.
+
+The general scoring path leaves nonempty required NL assertions explicitly
+unassessed rather than invoking an unapproved provider or declaring a full
+reward. Premature termination is reported as incomplete, with a failing CLI
+exit, rather than a completed episode.
+
+### What remains unresolved
+
+- There is only **one completed new episode**, not a useful accuracy estimate.
+- Tasks 0 and 1 are sibling variants for the same customer and order, not
+  independent samples or a valid train/evaluation separation.
+- The task-1 simulator accepted a Google Assistant variant for a request
+  phrased as Google Home; task-0 dialogue challenged that mapping. This
+  interpretation must be calibrated independently before studying memory.
+  A matching database alone does not establish simulator fidelity.
+- Task 2 needs reference-artifact review before model spend or inclusion.
+- No experience bank, four-condition result, or main-study preregistration
+  was produced by this follow-up.
+
+### Follow-up usage and preserved evidence
+
+All **35 new requests** have complete billing evidence:
+
+- Input: **279,026 tokens**; output: **14,633 tokens**.
+- Consumption: **3.5914435 AI credits**, about **$0.035914435 in credit value**.
+- **55 of the 90 authorized requests were unused**; they were not reallocated
+  to unapproved tasks or used to chase a passing result.
+- Including the initial pilots: **58 requests**, **463,712 input** and
+  **24,580 output tokens**, **6.03168 AI credits** ($0.0603168 in credit value).
+
+These are allowance measurements, not separate API invoices. Private local
+evidence remains under `runs/`: `baseline-20261113-plan.json`, the two
+`baseline-20261113-amendment-*.json` records, all three task journals/reports,
+and `baseline-20261113-summary.json`. Do not publish raw journals, quota
+snapshots, or account data.
 
 ## Preserved evidence
 
@@ -107,14 +202,18 @@ The SDK tests cover no-host-tool isolation, explicit request caps, real usage
 schema accounting, incomplete/missing accounting rejection, structured action
 parsing, cancellation, and failure exit status.
 
-The existing 62 application/offline tests remained passing. The focused
-research tests and targeted Pyright check also passed. No native test-set
-outcome has been used for prompt tuning; these are development tasks.
+The prior public release passed 66 core/publication tests. The follow-up adds
+native positive/negative scorer controls, fail-before-Copilot reference checks,
+pending-judge and premature-termination checks, action-contract regressions,
+and historical-journal compatibility. No native test-set outcome has been used
+for prompt tuning; these are development tasks.
 
 ## Remaining gates
 
-1. Establish several valid, independently checked development episodes with
-   a capable actor and a faithful user simulator, under an explicit new cap.
+1. Extend the single completed episode to several valid, independently checked
+   development episodes with a capable actor and calibrated user simulator.
+   Any replacement/expanded cohort needs an explicit plan and authorization;
+   unused allowance is not permission to change the selected tasks silently.
 2. Audit customer/entity overlap and freeze an appropriate held-out partition.
 3. Generate an actual experience/lesson bank from allowed development feedback
    only, and wire all four conditions to the same actor/tools/policy/budgets.

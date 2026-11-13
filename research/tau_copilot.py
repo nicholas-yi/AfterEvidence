@@ -8,7 +8,7 @@ import os
 import time
 from pathlib import Path
 from typing import Literal, TypedDict
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from research.copilot_backend import (
     CopilotBackend,
@@ -17,6 +17,7 @@ from research.copilot_backend import (
     isolated_client,
     quota_snapshot,
 )
+from research.native_scoring import preflight_task, score_episode
 from research.tau_pilot import PIN, VENDOR, check_source
 
 
@@ -31,6 +32,7 @@ class ToolAction(TypedDict):
     arguments: dict[str, object]
 
 
+# Historical wire shapes are retained only for recorded-journal replay.
 class WireAction(BaseModel):
     model_config = ConfigDict(extra="forbid")
     kind: Literal["message", "tool"]
@@ -57,6 +59,61 @@ class WireAction(BaseModel):
             ),
             tool_names,
         )
+
+
+class MessageWire(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    kind: Literal["message"]
+    content: str
+
+
+class ToolWire(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    kind: Literal["tool"]
+    name: str
+    arguments_json: str
+
+
+class ActionEnvelope(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    action: MessageWire | ToolWire
+
+    def native(self, tool_names: set[str]) -> MessageAction | ToolAction:
+        if isinstance(self.action, MessageWire):
+            value = {"kind": "message", "content": self.action.content}
+        else:
+            value = {
+                "kind": "tool",
+                "name": self.action.name,
+                "arguments": json.loads(self.action.arguments_json),
+            }
+        return parse_action(json.dumps(value), tool_names)
+
+
+class WireCommand(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    kind: Literal["message", "tool"]
+    value: str = Field(min_length=1, pattern=r"\S")
+    arguments_json: str = Field(min_length=2)
+
+    def native(self, tool_names: set[str]) -> MessageAction | ToolAction:
+        arguments = json.loads(self.arguments_json)
+        if self.kind == "message":
+            if arguments != {}:
+                raise ValueError("A message action cannot also request tool arguments.")
+            value = {"kind": "message", "content": self.value}
+        else:
+            value = {"kind": "tool", "name": self.value, "arguments": arguments}
+        return parse_action(json.dumps(value), tool_names)
+
+
+def parse_recorded_action(text: str, tool_names: set[str]) -> MessageAction | ToolAction:
+    value = json.loads(text)
+    if isinstance(value, dict) and set(value) == {"action"}:
+        return ActionEnvelope.model_validate(value).native(tool_names)
+    if isinstance(value, dict) and set(value) == {"kind", "value", "arguments_json"}:
+        return WireCommand.model_validate(value).native(tool_names)
+    return WireAction.model_validate(value).native(tool_names)
 
 
 def parse_action(text: str, tool_names: set[str]) -> MessageAction | ToolAction:
@@ -95,10 +152,7 @@ async def run(output: Path, task_id: str, model: str, request_limit: int, max_st
     from loguru import logger
     from tau2.agent.llm_agent import LLMAgent, LLMAgentState
     from tau2.data_model.message import AssistantMessage, MultiToolMessage, ToolCall, UserMessage
-    from tau2.data_model.semantic_communication import CommunicateScorer, CommunicateScoring
     from tau2.domains.retail.environment import get_environment, get_tasks
-    from tau2.evaluator.evaluator import EvaluationType, evaluate_simulation
-    from tau2.orchestrator.modes import CommunicationMode
     from tau2.orchestrator.orchestrator import Orchestrator
     from tau2.user.user_simulator import UserSimulator
     from tau2.user.user_simulator_base import UserState
@@ -108,6 +162,7 @@ async def run(output: Path, task_id: str, model: str, request_limit: int, max_st
     task = next((item for item in get_tasks("train") if item.id == task_id), None)
     if task is None:
         raise ValueError("Development feasibility permits only the official train split.")
+    preflight = await asyncio.to_thread(preflight_task, task)
     output.parent.mkdir(parents=True, exist_ok=True)
     client = isolated_client()
     loop = asyncio.get_running_loop()
@@ -133,8 +188,9 @@ async def run(output: Path, task_id: str, model: str, request_limit: int, max_st
             system = (
                 "You are a customer service agent. Follow the supplied current policy. "
                 "Each turn return exactly one JSON action: "
-                '{"kind":"message","content":"...","name":"","arguments_json":"{}"} OR '
-                '{"kind":"tool","content":"","name":"one supplied tool","arguments_json":"JSON-encoded argument object"}. '
+                '{"kind":"message","value":"nonempty message for the customer","arguments_json":"{}"} OR '
+                '{"kind":"tool","value":"one supplied tool name","arguments_json":"JSON-encoded argument object"}. '
+                "The value field is required and nonempty for both action kinds. "
                 "Do not combine a message and tool call. Use only supplied tools and documented arguments. "
                 "Always verify current customer information; do not assume past customers' facts apply.\n"
                 "POLICY:\n" + env.get_policy()
@@ -142,7 +198,7 @@ async def run(output: Path, task_id: str, model: str, request_limit: int, max_st
 
             def invoke(instructions: str, prompt: str, structured: bool = False) -> str:
                 future = asyncio.run_coroutine_threadsafe(
-                    backend.complete(instructions, prompt, WireAction if structured else None),
+                    backend.complete(instructions, prompt, WireCommand if structured else None),
                     loop,
                 )
                 try:
@@ -165,7 +221,7 @@ async def run(output: Path, task_id: str, model: str, request_limit: int, max_st
                         default=str,
                     )
                     text = invoke(system, prompt, structured=True)
-                    value = WireAction.model_validate_json(text).native(names)
+                    value = WireCommand.model_validate_json(text).native(names)
                     if value["kind"] == "message":
                         return AssistantMessage(role="assistant", content=value["content"])
                     tool = next(item for item in env.get_tools() if item.name == value["name"])
@@ -223,30 +279,21 @@ async def run(output: Path, task_id: str, model: str, request_limit: int, max_st
                 quota=data_value(before),
                 condition="none",
                 request_limit=request_limit,
-                limitations="Custom JSON-action Copilot adapter; native tools/ENV scorer; not full official reward.",
+                preflight=preflight,
+                limitations="Custom JSON-action Copilot adapter; native scoring; pending NL assertions are not judged.",
             )
             started = time.monotonic()
             try:
                 simulation = await asyncio.to_thread(orchestrator.run)
-                reward = await asyncio.to_thread(
-                    evaluate_simulation,
-                    simulation,
-                    task,
-                    EvaluationType.ENV,
-                    False,
-                    "retail",
-                    mode=CommunicationMode.HALF_DUPLEX,
-                    communicate_scoring=CommunicateScoring(
-                        scorer=CommunicateScorer.SUBSTRING, judge=None
-                    ),
-                )
+                reward, assessment = await asyncio.to_thread(score_episode, simulation, task)
                 simulation.reward_info = reward
                 report: dict[str, object] = {
-                    "status": "scored",
+                    "status": "scored" if assessment["termination_complete"] else "incomplete",
                     "native_env_reward": reward.reward,
                     "termination": str(simulation.termination_reason),
                     "simulation": simulation.model_dump(mode="json"),
                     "full_official_reward": None,
+                    "assessment": assessment,
                 }
             except (ValueError, RuntimeError, TypeError, OSError) as error:
                 report = {
@@ -266,6 +313,7 @@ async def run(output: Path, task_id: str, model: str, request_limit: int, max_st
                     "model": model,
                     "requests_started": backend.calls,
                     "request_limit": request_limit,
+                    "preflight": preflight,
                     "seconds": time.monotonic() - started,
                     "quota_before": data_value(before),
                     "quota_after": data_value(await quota_snapshot(client)),

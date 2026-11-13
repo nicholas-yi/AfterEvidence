@@ -3,7 +3,14 @@ from __future__ import annotations
 import unittest
 from unittest.mock import AsyncMock, patch
 
-from research.tau_copilot import WireAction, main, parse_action
+from research.tau_copilot import (
+    ActionEnvelope,
+    WireAction,
+    WireCommand,
+    main,
+    parse_action,
+    parse_recorded_action,
+)
 
 
 class ActionTests(unittest.TestCase):
@@ -45,6 +52,63 @@ class ActionTests(unittest.TestCase):
         with patch("sys.argv", ["tau_copilot", "--output", "unused.json"]):
             with patch("research.tau_copilot.run", new=AsyncMock(return_value=1)):
                 self.assertEqual(main(), 1)
+
+    def test_action_envelope_schema_separates_message_and_tool_fields(self) -> None:
+        schema = ActionEnvelope.model_json_schema()
+        self.assertEqual(len(schema["properties"]["action"]["anyOf"]), 2)
+        message = ActionEnvelope.model_validate_json(
+            '{"action":{"kind":"message","content":"Hello"}}'
+        ).native({"lookup"})
+        self.assertEqual(message, {"kind": "message", "content": "Hello"})
+        with self.assertRaises(ValueError):
+            ActionEnvelope.model_validate_json(
+                '{"action":{"kind":"message","content":"Hello","name":"placeholder"}}'
+            )
+        tool = ActionEnvelope.model_validate_json(
+            '{"action":{"kind":"tool","name":"lookup","arguments_json":"{\\"id\\":\\"a\\"}"}}'
+        ).native({"lookup"})
+        self.assertEqual(tool, {"kind": "tool", "name": "lookup", "arguments": {"id": "a"}})
+
+    def test_recorded_action_decoder_preserves_journal_versions(self) -> None:
+        expected = {"kind": "message", "content": "Hello"}
+        self.assertEqual(
+            parse_recorded_action(
+                '{"kind":"message","content":"Hello","name":"","arguments_json":"{}"}', set()
+            ),
+            expected,
+        )
+        self.assertEqual(
+            parse_recorded_action('{"action":{"kind":"message","content":"Hello"}}', set()),
+            expected,
+        )
+        self.assertEqual(
+            parse_recorded_action(
+                '{"kind":"message","value":"Hello","arguments_json":"{}"}', set()
+            ),
+            expected,
+        )
+
+    def test_wire_command_has_no_unused_placeholder_or_empty_message_field(self) -> None:
+        schema = WireCommand.model_json_schema()
+        self.assertNotIn("$defs", schema)
+        self.assertEqual(schema["properties"]["value"]["minLength"], 1)
+        self.assertEqual(
+            WireCommand(kind="message", value="Hello", arguments_json="{}").native({"lookup"}),
+            {"kind": "message", "content": "Hello"},
+        )
+        self.assertEqual(
+            WireCommand(kind="tool", value="lookup", arguments_json='{"id":"a"}').native(
+                {"lookup"}
+            ),
+            {"kind": "tool", "name": "lookup", "arguments": {"id": "a"}},
+        )
+        for value in ("", " ", "\n"):
+            with self.assertRaises(ValueError):
+                WireCommand(kind="message", value=value, arguments_json="{}")
+        with self.assertRaises(ValueError):
+            WireCommand(kind="message", value="Hello", arguments_json='{"id":"a"}').native(
+                {"lookup"}
+            )
 
 
 if __name__ == "__main__":
