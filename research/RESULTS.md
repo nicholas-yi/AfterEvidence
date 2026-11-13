@@ -180,14 +180,27 @@ Zero model calls. [task_audit.py](task_audit.py) reads the pinned retail
 `tasks.json`, `split_tasks.json`, `db.json`, and tool source as plain JSON/text.
 It derives each task's customers and orders from its reference actions, joins
 train tasks that share a customer or order into families, and flags reference
-identifiers absent from the initial database. It is a static audit, **not** a
-native preflight, simulator check, or difficulty estimate. Its output is derived
+IDs or customer lookups that the initial database cannot satisfy. It is a static
+audit, **not** a simulator check or difficulty estimate. Its output is derived
 from hidden reference actions and must never reach an actor, simulator, or memory.
 
 ```powershell
 python -m research.task_audit
 python -m research.task_audit --rows
 ```
+
+### Native preflight on the whole train split
+
+The pinned environment then ran zero-inference
+`research.native_scoring` on all 74 train tasks: **64 validated, 10 failed**
+(2, 3, 4, 35, 37, 46, 47, 54, 67, 105). Tasks 0 and 1 validated and task 2
+failed exactly as on the laptop.
+
+The static audit predicted 9 of the 10 failures and none of the validated
+tasks. The miss, task 105, fails on a business rule ("Insufficient gift card
+balance to pay for the price difference"), which a static ID check cannot see.
+Five validated references (10, 24, 25, 50, 57) do not change the database,
+matching the static no-write flag.
 
 ### Task 2 reference mismatch
 
@@ -197,9 +210,9 @@ python -m research.task_audit --rows
   It is the example ID in the pinned `get_product_details` docstring
   ("The product id, such as '6086499569'"), so the reference appears to have
   copied a placeholder. The task's user instructions never mention it.
-- The same action appears as action 2 of train tasks **2, 3, and 4**. Among the
-  user, order, product, and item ID arguments the audit checks, these are the
-  only unscripted invalid references across all 114 retail tasks.
+- The same action appears as action 2 of train tasks **2, 3, and 4**. These are
+  the only flagged references across all 114 retail tasks whose bad value does
+  not appear in the user instructions.
 - It is a read-only lookup, so it does not change the target database. Upstream
   ENV scoring logs and continues. Strict preflight still rejects it by design;
   this audit does not weaken that rule.
@@ -208,11 +221,11 @@ python -m research.task_audit --rows
   could not receive a full task-basis score anyway. Sibling task 4 carries an
   open upstream issue (`issue_2b74ee61`) disputing that same "10" expectation.
 
-Train tasks 46 and 47 also reference missing order IDs (`#9502126`, `#9502127`),
-but their user instructions script those wrong numbers deliberately. The audit
-marks them `scripted_in_user_instructions`. Strict preflight would also reject
-them; whether intended failed lookups should be allowed is an open protocol
-decision, not something changed here.
+The other flagged references are deliberate: the user is told to give a wrong
+email, zip code, or order number first (train 35, 37, 46, 47, 54, 67; test 38,
+39, 55, 68). The audit marks these `scripted_in_user_instructions`, a
+literal-match heuristic. Strict preflight rejects them too; whether intended
+failed lookups should be allowed is an open protocol decision, not changed here.
 
 ### Customer/order overlap
 
@@ -241,13 +254,19 @@ sharing a customer with test, unresolved customers, invalid references, open
 upstream issues, references without a write, and tasks needing an unapproved
 NL judge. Then take the lowest-numbered eligible task per family.
 
-- Eligible: 16 tasks in 12 families.
-- Proposed: **20, 35, 66, 69, 73, 75, 78, 80, 81, 82, 88, 91**.
+- Eligible: 15 tasks in 11 families.
+- Proposed: **20, 66, 69, 73, 75, 78, 80, 81, 82, 88, 91**.
+- All 11 passed native zero-inference preflight: reference ENV reward 1.0,
+  the reference changes the database, and an empty trajectory does not match.
+
+Task 35 was in the first draft of this list. Native preflight rejected it
+(scripted wrong email), which exposed a gap in the static audit; customer
+lookups are now checked and task 35 is excluded by rule, not by hand.
 
 The judge-free filter restricts scoring coverage to DB checks. That is a
 disclosed selection bias, not neutral sampling; the excluded judge-needing
-tasks may differ systematically in difficulty. These tasks still need native
-zero-inference preflight in the pinned environment before any model spend.
+tasks may differ systematically in difficulty. Preflight validates the scorer,
+not simulator fidelity or actor adequacy.
 
 ## Preserved evidence
 

@@ -88,6 +88,21 @@ class TaskAuditTests(unittest.TestCase):
         scripted = task("7", act("get_order_details", order_id="#999"), scenario="say 999 first")
         self.assertTrue(invalid_references(scripted, DB)[0]["scripted_in_user_instructions"])
 
+    def test_failed_customer_lookups_are_invalid_references(self) -> None:
+        wrong = task("8", act("find_user_id_by_email", email="z@x"), scenario="first say z@x")
+        [problem] = invalid_references(wrong, DB)
+        self.assertEqual(problem["field"], "customer_lookup")
+        self.assertTrue(problem["scripted_in_user_instructions"])
+        self.assertEqual(invalid_references(TASKS[0], DB), [])
+        wrong_zip = task(
+            "9",
+            act("find_user_id_by_name_zip", first_name="Alice", last_name="X", zip="7"),
+            scenario="say zip 7 first",
+        )
+        [zip_problem] = invalid_references(wrong_zip, DB)
+        self.assertEqual(zip_problem["value"], "7")
+        self.assertTrue(zip_problem["scripted_in_user_instructions"])
+
     def test_write_tools_require_the_pinned_decorator_layout(self) -> None:
         source = "@is_tool(ToolType.WRITE)\n    def cancel_pending_order(self):"
         self.assertEqual(write_tools(source), frozenset({"cancel_pending_order"}))

@@ -72,7 +72,8 @@ ENV/task-basis rewards of 1.0, reproduced by fresh zero-inference replay. Earlie
 format failures remain counted; another selected task failed strict reference
 preflight before inference, traced offline to a copied placeholder ID. An
 offline audit found that the original cohort was one customer and proposed an
-independent 12-task development cohort that is not yet approved. Simulator
+independent 11-task development cohort that passes native zero-inference
+preflight but is not yet approved. Simulator
 calibration, a held-out partition, and the main-study gates remain unfinished.
 
 For another machine, use [the devbox handoff and copy-paste prompt](DEVBOX-HANDOFF.md).

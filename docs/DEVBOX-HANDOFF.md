@@ -29,9 +29,9 @@ The app and the research harness are separate tracks. No new UI demo is needed.
 | Baseline task 2 | Strict reference action 2 raises "Product not found"; zero model calls, no replacement task |
 | Task 2 diagnosis | Offline audit: the failing ID is the tool docstring's placeholder, shared by sibling tasks 2-4 |
 | Entity overlap | Tasks 0-4 are one customer; 38 of 74 train tasks share a customer with the test split |
-| Proposed next cohort | 12 one-per-family train tasks; **not approved, not preflighted, not run** |
+| Proposed next cohort | 11 one-per-family train tasks; all pass native zero-inference preflight; **not approved, not run** |
 | Latest laptop validation | 66 core/publication tests and 28 research tests passed; Ruff, research Pyright, and old-journal replay passed |
-| Devbox environment | Vendor pins checked out; research venv **incomplete** (see below) |
+| Devbox validation | Exact 81-entry lock reproduced; 66 core and 33 research tests, Ruff 0.17.5, research Pyright passed; preflight 0/1/2 matches laptop |
 | Main study | Not run, not preregistered; no demonstrated memory improvement |
 
 Task 1 has no nonempty NL assertions or communication targets. Its task-basis
@@ -75,29 +75,37 @@ approval for the next inference plan.
 - No laptop power hold, local server, browser, or chat process migrates with Git.
   The temporary laptop lid override ended and the original settings were restored.
 
-### Devbox setup status (2026-11-13)
+### Restricted-network setup (validated on the devbox, 2026-11-13)
 
-On the Windows devbox, both vendor checkouts are at the exact pinned commits
-and `research\.venv` exists, but the pinned packages are **not installed**:
+The Windows devbox fails the TLS handshake with `files.pythonhosted.org` for
+every client (uv, curl/Schannel, PowerShell); `pypi.org` metadata works. Its
+machine-configured feed (`C:\ProgramData\pip\pip.ini`) lagged 11 pins:
+`fastapi 0.162.5`, `openai 3.50.0`, `click 8.5.1`, `typer 0.29.1`,
+`regex 2026.11.9`, `loguru 0.8.0`, `filelock 4.2.10`,
+`importlib-metadata 10.2.0`, `markdown-it-py 4.3.0`, `annotated-doc 0.0.6`,
+and `ruff 0.17.5`.
 
-- The devbox network fails the TLS handshake with `files.pythonhosted.org`
-  for every client (uv, curl/Schannel, PowerShell). `pypi.org` metadata works.
-- The machine-configured feed in `C:\ProgramData\pip\pip.ini` is reachable but
-  lacks 11 pinned versions, apparently because it lags new releases:
-  `fastapi 0.162.5`, `openai 3.50.0`, `click 8.5.1`, `typer 0.29.1`,
-  `regex 2026.11.9`, `loguru 0.8.0`, `filelock 4.2.10`,
-  `importlib-metadata 10.2.0`, `markdown-it-py 4.3.0`, `annotated-doc 0.0.6`,
-  and `ruff 0.17.5`.
-- No pin was relaxed and no insecure override was used. Choices that need the
-  owner's decision: wait for the feed to carry the pins; use the HTTPS mirror
-  the laptop used (see [design notes](../research/DESIGN.md#existing-environment-and-adapters));
-  or certify a separately recorded devbox constraint set.
+No pin was relaxed and TLS verification stayed on:
 
-Until then, only dependency-free checks run here: the 66 core tests, the
-memory/costing/task-audit research tests, and `research.task_audit`. Pyright
-1.1.414 (exact pin, from the feed) reports 0 errors on the core project and
-new audit files. Ruff was pre-checked with 0.17.4, the newest feed version;
-public CI's 0.17.5 run is the formatting gate.
+1. For each missing pin, read the official SHA-256 from
+   `https://pypi.org/pypi/<name>/<version>/json`, download the matching
+   `py3-none-any` or `cp312-win_amd64` wheel from the same path on the HTTPS
+   Tsinghua mirror ([design notes](../research/DESIGN.md#existing-environment-and-adapters)),
+   and keep it only if its SHA-256 equals PyPI's. All 11 matched.
+2. Install from the configured feed plus that local wheel directory:
+
+   ```powershell
+   uv pip install --native-tls --index-url <configured feed> --find-links <verified wheels> `
+     --python .venv\Scripts\python.exe -r requirements.txt -c dependencies.lock.txt
+   ```
+
+3. Compare `uv pip freeze` with `dependencies.lock.txt`: all 81 entries matched
+   exactly, with no extras.
+
+The `pyright` wrapper could not download Node.js here. The same
+`pyright==1.1.414` with its `[nodejs]` extra, installed in a separate tool
+environment, ran `--project research\pyrightconfig.json` against the locked
+venv. That tool environment is not part of the research lock.
 
 ## Offline validation first
 
@@ -105,7 +113,7 @@ From the repository root, after research environment setup:
 
 ```powershell
 .\research\.venv\Scripts\python.exe -m unittest discover -s tests -v
-.\research\.venv\Scripts\python.exe -m unittest research.test_memory_methods research.test_costing research.test_copilot_backend research.test_tau_action research.test_native_scoring -v
+.\research\.venv\Scripts\python.exe -m unittest research.test_memory_methods research.test_costing research.test_copilot_backend research.test_tau_action research.test_native_scoring research.test_task_audit -v
 .\research\.venv\Scripts\python.exe -m ruff check afterevidence tests research scripts
 .\research\.venv\Scripts\python.exe -m ruff format --check afterevidence tests research scripts
 .\research\.venv\Scripts\python.exe -m pyright --project research\pyrightconfig.json
@@ -113,7 +121,7 @@ From the repository root, after research environment setup:
 .\research\.venv\Scripts\python.exe -m research.task_audit
 ```
 
-These commands send no model prompts. The final preflight command deliberately
+These commands send no model prompts. The `native_scoring` preflight deliberately
 returns exit code 1: tasks 0 and 1 validate; task 2 reports the known strict
 reference failure. The corresponding unit test expects that failure. Do not
 edit the benchmark or weaken validation merely to make all output green.
@@ -124,17 +132,18 @@ the task-audit tests, not the vendor-dependent native integration tests above.
 ## Next gate: proposed cohort awaiting approval
 
 [The offline audit](../research/RESULTS.md#offline-task-audit-2026-11-13-devbox)
-proposes train tasks **20, 35, 66, 69, 73, 75, 78, 80, 81, 82, 88, 91**: one per
+proposes train tasks **20, 66, 69, 73, 75, 78, 80, 81, 82, 88, 91**: one per
 customer family. Each is outside the exposed 0-4 family, shares no customer with
 the test split, has valid reference IDs and a write action, and needs no NL judge.
 The judge-free restriction is a disclosed scoring-coverage bias.
 
-Before approval, the pinned environment must run zero-inference
-`research.native_scoring --tasks ...` on them; drop any that fail and record why.
-Planning estimate only: at the 30-request-per-task cap, 360 requests total. At
-the follow-up's observed 0.103-0.110 credits/request, that is about **37-40 AI
-credits (~$0.37-$0.40 allowance value)** with no judges. This is not a
-guaranteed bound or an approval.
+All 11 passed native zero-inference preflight on the devbox (reproduce with
+`research.native_scoring --tasks 20 66 69 73 75 78 80 81 82 88 91`). Planning
+estimate only: at the 30-request-per-task cap, 330 requests total. At the
+follow-up's observed 0.103-0.110 credits/request, that is about **34-37 AI
+credits (~$0.34-$0.37 allowance value)** with no judges. This is not a
+guaranteed bound or an approval. Simulator calibration for these tasks is
+still unchecked.
 
 ## Private evidence is not in this clone
 
@@ -180,9 +189,9 @@ tool docstring's placeholder product ID. Tasks 0-4 are one customer; the
 Google Home versus Google Assistant dialogue interpretation needs review.
 This is not a reliable multi-task baseline or a memory-efficacy result.
 
-Proceed offline: finish the pinned environment, then run zero-inference
-native preflight on the proposed cohort in docs/DEVBOX-HANDOFF.md and record
-any exclusions. Draft simulator-calibration checks and a customer-disjoint
+Proceed offline: rebuild the pinned environment and confirm the proposed
+11-task cohort in docs/DEVBOX-HANDOFF.md still passes zero-inference native
+preflight. Draft simulator-calibration checks and a customer-disjoint
 held-out partition proposal. Keep hidden scoring criteria, reference actions,
 and task_audit output out of actor/memory inputs. Do not inspect held-out test
 outcomes for tuning or silently select only easy/passing tasks. Make useful

@@ -40,21 +40,20 @@ def _actions(task: dict[str, Any]) -> list[dict[str, Any]]:
     return list(_criteria(task).get("actions") or [])
 
 
-def _lookup_customer(action: dict[str, Any], users: dict[str, Any]) -> str | None:
+def _customer_matches(action: dict[str, Any], users: dict[str, Any]) -> list[str] | None:
+    """Users matched by a customer-lookup action, or None if the action is not a lookup."""
     args = action["arguments"]
     if action["name"] == "find_user_id_by_name_zip":
-        matches = [
+        return [
             user_id
             for user_id, user in users.items()
             if user["name"]["first_name"] == args["first_name"]
             and user["name"]["last_name"] == args["last_name"]
             and user["address"]["zip"] == args["zip"]
         ]
-    elif action["name"] == "find_user_id_by_email":
-        matches = [user_id for user_id, user in users.items() if user["email"] == args["email"]]
-    else:
-        return None
-    return matches[0] if len(matches) == 1 else None
+    if action["name"] == "find_user_id_by_email":
+        return [user_id for user_id, user in users.items() if user["email"] == args["email"]]
+    return None
 
 
 def task_entities(task: dict[str, Any], db: dict[str, Any]) -> tuple[set[str], set[str]]:
@@ -66,9 +65,9 @@ def task_entities(task: dict[str, Any], db: dict[str, Any]) -> tuple[set[str], s
             customers.add(args["user_id"])
         if "order_id" in args:
             orders.add(args["order_id"])
-        found = _lookup_customer(action, db["users"])
-        if found:
-            customers.add(found)
+        matches = _customer_matches(action, db["users"])
+        if matches and len(matches) == 1:
+            customers.add(matches[0])
     customers.update(db["orders"][order]["user_id"] for order in orders if order in db["orders"])
     return customers, orders
 
@@ -77,7 +76,33 @@ def invalid_references(task: dict[str, Any], db: dict[str, Any]) -> list[dict[st
     items = {item for product in db["products"].values() for item in product["variants"]}
     scenario = json.dumps(task.get("user_scenario"))
     problems: list[dict[str, object]] = []
+
+    def record(index: int, tool: str, field: str, values: list[str]) -> None:
+        problems.append(
+            {
+                # 1-based, matching native_scoring's preflight messages.
+                "action": index,
+                "tool": tool,
+                "field": field,
+                "value": values[0] if len(values) == 1 else values,
+                "is_item_id": any(v in items for v in values),
+                # Literal-match heuristic: the mismatching value appears in the user scenario,
+                # i.e. the user is told to misstate it. False is not proof of a defect.
+                "scripted_in_user_instructions": all(v.lstrip("#") in scenario for v in values),
+            }
+        )
+
     for index, action in enumerate(_actions(task), start=1):
+        if _customer_matches(action, db["users"]) == []:
+            args = action["arguments"]
+            if action["name"] == "find_user_id_by_name_zip" and any(
+                user["name"]["first_name"] == args["first_name"]
+                and user["name"]["last_name"] == args["last_name"]
+                for user in db["users"].values()
+            ):
+                record(index, action["name"], "customer_lookup", [args["zip"]])
+            else:
+                record(index, action["name"], "customer_lookup", list(args.values()))
         for field, value in action["arguments"].items():
             values = value if isinstance(value, list) else [value]
             if field in ID_TABLES:
@@ -87,19 +112,7 @@ def invalid_references(task: dict[str, Any], db: dict[str, Any]) -> list[dict[st
             else:
                 continue
             for value_missing in missing:
-                problems.append(
-                    {
-                        # 1-based, matching native_scoring's preflight messages.
-                        "action": index,
-                        "tool": action["name"],
-                        "field": field,
-                        "value": value_missing,
-                        "is_item_id": value_missing in items,
-                        # A scripted wrong ID (user told to misstate it) is an intended failed
-                        # lookup; an unscripted one points at a reference-artifact defect.
-                        "scripted_in_user_instructions": str(value_missing).lstrip("#") in scenario,
-                    }
-                )
+                record(index, action["name"], field, [value_missing])
     return problems
 
 
