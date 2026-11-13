@@ -46,6 +46,22 @@ class NativeScoringTests(unittest.TestCase):
         ):
             preflight_task(self.tasks["2"])
 
+    def test_only_scripted_non_mutating_lookup_failures_are_allowed(self) -> None:
+        result = preflight_task(self.tasks["35"])
+        self.assertEqual(result["reference_env_reward"], 1)
+        self.assertEqual(
+            [(f["action"], f["tool"]) for f in result["scripted_failed_lookups"]],  # type: ignore[union-attr]
+            [(1, "find_user_id_by_email")],
+        )
+        unscripted = self.tasks["35"].model_copy(deep=True)
+        if unscripted.evaluation_criteria is None or not unscripted.evaluation_criteria.actions:
+            self.fail("Task 35 has no reference actions.")
+        unscripted.evaluation_criteria.actions[0].arguments["email"] = "unscripted@example.com"
+        with self.assertRaisesRegex(ValueError, "reference action 1"):
+            preflight_task(unscripted)
+        with self.assertRaisesRegex(ValueError, "Task 105: .*Insufficient gift card balance"):
+            preflight_task(self.tasks["105"])
+
     def test_reference_failure_stops_before_copilot_initialization(self) -> None:
         task = self.tasks["0"].model_copy(deep=True)
         if task.evaluation_criteria is None or not task.evaluation_criteria.actions:
@@ -96,7 +112,7 @@ class NativeScoringTests(unittest.TestCase):
 
     def test_native_all_score_is_inference_free_when_assertions_are_empty(self) -> None:
         simulation = self.simulation("0", "user_stop")
-        simulation.messages, _ = reference_trajectory(self.tasks["0"])
+        simulation.messages, _, _ = reference_trajectory(self.tasks["0"])
         with patch("tau2.evaluator.evaluator_nl_assertions.generate") as generate:
             _, result = score_episode(simulation, self.tasks["0"])
             generate.assert_not_called()

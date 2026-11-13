@@ -116,6 +116,11 @@ def invalid_references(task: dict[str, Any], db: dict[str, Any]) -> list[dict[st
     return problems
 
 
+def allowed_lookup(problem: dict[str, object], writes: frozenset[str]) -> bool:
+    """Scripted failed lookups on read tools are allowed (reference policy v2)."""
+    return bool(problem["scripted_in_user_instructions"]) and problem["tool"] not in writes
+
+
 def judge_free(criteria: dict[str, Any]) -> bool:
     """True only when every reward-basis component is scorable without an LLM judge."""
     for basis in criteria.get("reward_basis") or []:
@@ -195,7 +200,7 @@ def audit(
             reasons.append("unresolved_customer")
         if row["shares_customer_with_test"]:
             reasons.append("shares_customer_with_test")
-        if row["invalid_references"]:
+        if any(not allowed_lookup(p, writes) for p in row["invalid_references"]):
             reasons.append("invalid_reference")
         if row["open_upstream_issues"]:
             reasons.append("open_upstream_issue")

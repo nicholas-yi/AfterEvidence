@@ -224,8 +224,25 @@ matching the static no-write flag.
 The other flagged references are deliberate: the user is told to give a wrong
 email, zip code, or order number first (train 35, 37, 46, 47, 54, 67; test 38,
 39, 55, 68). The audit marks these `scripted_in_user_instructions`, a
-literal-match heuristic. Strict preflight rejects them too; whether intended
-failed lookups should be allowed is an open protocol decision, not changed here.
+literal-match heuristic.
+
+### Reference policy v2: scripted failed lookups allowed
+
+Owner decision (2026-11-13): allow a reference action to fail only if **all**
+of the following hold; otherwise preflight still rejects the task.
+
+- The environment classifies the tool as non-mutating (`_is_mutating_tool`).
+- The error is a `ValueError` whose message contains "not found".
+- The task does not alter the initial state, and every mismatching value is
+  literally present in the user instructions (`task_audit.invalid_references`).
+
+Allowed failures are replayed as error tool messages, exactly as the live
+environment would return them, and listed in the preflight report's
+`scripted_failed_lookups` with `reference_policy`
+`strict-except-scripted-lookups-v2`. Re-running all 74 train tasks:
+**70 validated, 4 failed** (2, 3, 4: unscripted placeholder; 105: business
+rule). The six newly allowed tasks (35, 37, 46, 47, 54, 67) each kept reference
+ENV reward 1.0. Earlier strict-policy results above remain the historical record.
 
 ### Customer/order overlap
 
@@ -247,21 +264,24 @@ failed lookups should be allowed is an open protocol decision, not changed here.
   A main study needs a customer-disjoint partition or explicit exclusions,
   decided in the protocol before evaluation.
 
-### Proposed next development cohort (not approved, not run)
+### Development cohort (approved 2026-11-13)
 
 Deterministic rule, using no model outcomes: exclude the exposed family, tasks
-sharing a customer with test, unresolved customers, invalid references, open
-upstream issues, references without a write, and tasks needing an unapproved
-NL judge. Then take the lowest-numbered eligible task per family.
+sharing a customer with test, unresolved customers, invalid references (other
+than policy-v2 scripted lookups), open upstream issues, references without a
+write, and tasks needing an unapproved NL judge. Then take the lowest-numbered
+eligible task per family.
 
-- Eligible: 15 tasks in 11 families.
-- Proposed: **20, 66, 69, 73, 75, 78, 80, 81, 82, 88, 91**.
-- All 11 passed native zero-inference preflight: reference ENV reward 1.0,
-  the reference changes the database, and an empty trajectory does not match.
+- Eligible: 16 tasks in 12 families.
+- Selected: **20, 35, 66, 69, 73, 75, 78, 80, 81, 82, 88, 91**.
+- All 12 pass native zero-inference preflight: reference ENV reward 1.0, the
+  reference changes the database, and an empty trajectory does not match.
 
-Task 35 was in the first draft of this list. Native preflight rejected it
-(scripted wrong email), which exposed a gap in the static audit; customer
-lookups are now checked and task 35 is excluded by rule, not by hand.
+Selection history: the first draft included task 35; strict preflight rejected
+it (scripted wrong email), which exposed a gap in the static audit. Customer
+lookups were then checked and 35 dropped by rule, giving 11 tasks. After the
+owner approved policy v2, the same rule restored it. The owner approved the
+12-task cohort with a 360-request cap.
 
 The judge-free filter restricts scoring coverage to DB checks. That is a
 disclosed selection bias, not neutral sampling; the excluded judge-needing

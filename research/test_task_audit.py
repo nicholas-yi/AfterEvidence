@@ -102,6 +102,16 @@ class TaskAuditTests(unittest.TestCase):
         [zip_problem] = invalid_references(wrong_zip, DB)
         self.assertEqual(zip_problem["value"], "7")
         self.assertTrue(zip_problem["scripted_in_user_instructions"])
+        lookup_task = task(
+            "6",
+            act("find_user_id_by_email", email="z@x"),
+            act(RETURN, order_id="#W3", item_ids=["I1"]),
+            scenario="first say z@x",
+        )
+        report = audit(
+            TASKS[:6] + [lookup_task], {"train": ["2", "6"], "test": []}, DB, WRITES, exposed=()
+        )
+        self.assertEqual(report["rows"][1]["exclusion_reasons"], [])
 
     def test_write_tools_require_the_pinned_decorator_layout(self) -> None:
         source = "@is_tool(ToolType.WRITE)\n    def cancel_pending_order(self):"
