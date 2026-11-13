@@ -9,7 +9,9 @@ data/
 *.sqlite3-wal
 *.sqlite3-shm
 research/vendor/
+research/providers/
 research/.venv/
+research/.venv-providers/
 research/runs/
 research/cache/
 dist/

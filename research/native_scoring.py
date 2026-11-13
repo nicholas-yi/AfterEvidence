@@ -196,6 +196,7 @@ def main() -> None:
 
     parser = argparse.ArgumentParser(description="Zero-inference native retail scorer controls.")
     parser.add_argument("--tasks", nargs="+", required=True)
+    parser.add_argument("--split", choices=["train", "test"], default="train")
     args = parser.parse_args()
     check_source()
     os.environ["PYTHON_DOTENV_DISABLED"] = "1"
@@ -206,9 +207,9 @@ def main() -> None:
 
     logger.remove()
     logger.add(sys.stderr, level="WARNING")
-    tasks = {task.id: task for task in get_tasks("train")}
+    tasks = {task.id: task for task in get_tasks(args.split)}
     if len(set(args.tasks)) != len(args.tasks) or not set(args.tasks) <= tasks.keys():
-        parser.error("Use distinct task IDs from the official train split only.")
+        parser.error(f"Use distinct task IDs from the official {args.split} split only.")
     reports = []
     failed = False
     for task_id in args.tasks:

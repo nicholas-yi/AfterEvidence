@@ -142,10 +142,56 @@ def parse_action(text: str, tool_names: set[str]) -> MessageAction | ToolAction:
         raise ValueError("Agent action kind must be message or tool.")
 
 
-async def run(output: Path, task_id: str, model: str, request_limit: int, max_steps: int) -> int:
+MEMORY_HEADER = (
+    "MEMORY FROM EARLIER CONVERSATIONS (may be outdated, incomplete, or wrong; current tool "
+    "results and the policy always take precedence):\n"
+)
+
+
+def protocol_commit(tag: str) -> str:
+    import subprocess
+
+    result = subprocess.run(
+        ["git", "rev-parse", "--verify", f"refs/tags/{tag}^{{commit}}"],
+        capture_output=True,
+        text=True,
+        cwd=Path(__file__).resolve().parent.parent,
+    )
+    if result.returncode != 0:
+        raise ValueError(f"Protocol tag {tag!r} does not exist; the test split stays locked.")
+    return result.stdout.strip()
+
+
+async def run(
+    output: Path,
+    task_id: str,
+    model: str,
+    request_limit: int,
+    max_steps: int,
+    *,
+    split: str = "train",
+    protocol_tag: str | None = None,
+    condition: str = "none",
+    memory_spec: dict[str, object] | None = None,
+    memory_chars: int = 2400,
+    reasks: int = 0,
+    seed: int = 42,
+) -> int:
     check_source()
     if output.exists() or output.with_suffix(".calls.jsonl").exists():
         raise ValueError("Output exists; choose a fresh path before any model calls.")
+    if split not in {"train", "test"}:
+        raise ValueError("Split must be train or test.")
+    tagged = protocol_commit(protocol_tag) if split == "test" and protocol_tag else None
+    if split == "test" and tagged is None:
+        raise ValueError("The test split requires a committed, tagged protocol.")
+    if not 0 <= reasks <= 1:
+        raise ValueError("At most one counted re-ask per action is supported.")
+    retriever = None
+    if memory_spec is not None:
+        from research.memory_retrievers import build_retriever
+
+        retriever = build_retriever(memory_spec)
     os.environ["PYTHON_DOTENV_DISABLED"] = "1"
     os.environ["LITELLM_LOCAL_MODEL_COST_MAP"] = "True"
     os.environ["TAU2_DATA_DIR"] = str(VENDOR / "data")
@@ -159,9 +205,9 @@ async def run(output: Path, task_id: str, model: str, request_limit: int, max_st
 
     logger.remove()
     logger.add(lambda message: print(message, end="", flush=True), level="WARNING")
-    task = next((item for item in get_tasks("train") if item.id == task_id), None)
+    task = next((item for item in get_tasks(split) if item.id == task_id), None)
     if task is None:
-        raise ValueError("Development feasibility permits only the official train split.")
+        raise ValueError(f"Task {task_id} is not in the official {split} split.")
     preflight = await asyncio.to_thread(preflight_task, task)
     output.parent.mkdir(parents=True, exist_ok=True)
     client = isolated_client()
@@ -195,6 +241,31 @@ async def run(output: Path, task_id: str, model: str, request_limit: int, max_st
                 "Always verify current customer information; do not assume past customers' facts apply.\n"
                 "POLICY:\n" + env.get_policy()
             )
+            counters = {"reasks": 0}
+            memory: dict[str, object] = {"retrieved": False}
+
+            def active_system(message: object) -> str:
+                # Memory is retrieved once, from the customer's first message, then reused.
+                if retriever is None:
+                    return system
+                if not memory["retrieved"]:
+                    query = getattr(message, "content", None) or ""
+                    started_at = time.monotonic()
+                    try:
+                        found = retriever(str(query))
+                        memory.update(
+                            text=str(found.get("text") or "")[:memory_chars],
+                            ids=found.get("ids", []),
+                            meta=found.get("meta", {}),
+                        )
+                    except Exception as error:  # recorded; the episode runs without memory
+                        memory.update(text="", error=f"{type(error).__name__}: {error}"[:500])
+                    memory.update(
+                        retrieved=True, query=query, seconds=time.monotonic() - started_at
+                    )
+                    backend.write("memory-retrieved", **{k: v for k, v in memory.items()})
+                text = str(memory.get("text") or "")
+                return system + ("\n\n" + MEMORY_HEADER + text if text else "")
 
             def invoke(instructions: str, prompt: str, structured: bool = False) -> str:
                 future = asyncio.run_coroutine_threadsafe(
@@ -220,24 +291,40 @@ async def run(output: Path, task_id: str, model: str, request_limit: int, max_st
                         },
                         default=str,
                     )
-                    text = invoke(system, prompt, structured=True)
-                    value = WireCommand.model_validate_json(text).native(names)
-                    if value["kind"] == "message":
-                        return AssistantMessage(role="assistant", content=value["content"])
-                    tool = next(item for item in env.get_tools() if item.name == value["name"])
-                    arguments = tool.params.model_validate(value["arguments"]).model_dump()
-                    return AssistantMessage(
-                        role="assistant",
-                        content=None,
-                        tool_calls=[
-                            ToolCall(
-                                id=f"study_call_{backend.calls}",
-                                name=tool.name,
-                                arguments=arguments,
-                                requestor="assistant",
-                            ),
-                        ],
-                    )
+                    text = invoke(active_system(message), prompt, structured=True)
+                    for attempt in range(reasks + 1):
+                        try:
+                            value = WireCommand.model_validate_json(text).native(names)
+                            if value["kind"] == "message":
+                                return AssistantMessage(role="assistant", content=value["content"])
+                            tool = next(
+                                item for item in env.get_tools() if item.name == value["name"]
+                            )
+                            arguments = tool.params.model_validate(value["arguments"]).model_dump()
+                            return AssistantMessage(
+                                role="assistant",
+                                content=None,
+                                tool_calls=[
+                                    ToolCall(
+                                        id=f"study_call_{backend.calls}",
+                                        name=tool.name,
+                                        arguments=arguments,
+                                        requestor="assistant",
+                                    ),
+                                ],
+                            )
+                        except ValueError as error:
+                            if attempt == reasks:
+                                raise
+                            # One counted re-ask; the malformed action is never executed or repaired.
+                            backend.write("actor-reask", error=str(error)[:500], rejected=text)
+                            counters["reasks"] += 1
+                            note = (
+                                f"\n\nYour previous action was rejected: {str(error)[:300]} "
+                                "Return exactly one valid action."
+                            )
+                            text = invoke(active_system(message) + note, prompt, structured=True)
+                    raise RuntimeError("Action loop ended without a decision.")
 
             class User(UserSimulator):
                 def _generate_next_message(self, message, state: UserState) -> UserMessage:
@@ -268,16 +355,23 @@ async def run(output: Path, task_id: str, model: str, request_limit: int, max_st
                 task,
                 max_steps=max_steps,
                 max_errors=3,
-                seed=42,
+                seed=seed,
                 timeout=600,
             )
             backend.write(
                 "study-pilot-started",
                 benchmark_commit=PIN,
                 task_id=task_id,
+                split=split,
+                protocol_tag=protocol_tag,
+                protocol_commit=tagged,
                 model_metadata=data_value(selected),
                 quota=data_value(before),
-                condition="none",
+                condition=condition,
+                memory_spec=memory_spec,
+                memory_chars=memory_chars,
+                reasks_per_action=reasks,
+                seed=seed,
                 request_limit=request_limit,
                 preflight=preflight,
                 limitations="Custom JSON-action Copilot adapter; native scoring; pending NL assertions are not judged.",
@@ -309,7 +403,15 @@ async def run(output: Path, task_id: str, model: str, request_limit: int, max_st
                     "mode": "native-retail-copilot-development",
                     "benchmark_commit": PIN,
                     "task_id": task_id,
-                    "condition": "none",
+                    "split": split,
+                    "protocol_tag": protocol_tag,
+                    "protocol_commit": tagged,
+                    "condition": condition,
+                    "memory_spec": memory_spec,
+                    "memory": {k: v for k, v in memory.items()},
+                    "actor_reasks": counters["reasks"],
+                    "reasks_per_action": reasks,
+                    "seed": seed,
                     "model": model,
                     "requests_started": backend.calls,
                     "request_limit": request_limit,
@@ -345,10 +447,33 @@ def main() -> int:
     parser.add_argument("--requests", type=int, default=20)
     parser.add_argument("--max-steps", type=int, default=40)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--split", choices=["train", "test"], default="train")
+    parser.add_argument("--protocol-tag")
+    parser.add_argument("--condition", default="none")
+    parser.add_argument("--memory-spec", type=Path, help="JSON retriever spec; omit for no memory.")
+    parser.add_argument("--memory-chars", type=int, default=2400)
+    parser.add_argument("--reasks", type=int, choices=[0, 1], default=0)
+    parser.add_argument("--seed", type=int, default=42)
     args = parser.parse_args()
     if not 1 <= args.requests <= 30 or not 1 <= args.max_steps <= 60:
         parser.error("Use 1-30 model requests and 1-60 orchestrator steps for a development pilot.")
-    return asyncio.run(run(args.output, args.task, args.model, args.requests, args.max_steps))
+    spec = json.loads(args.memory_spec.read_text(encoding="utf-8")) if args.memory_spec else None
+    return asyncio.run(
+        run(
+            args.output,
+            args.task,
+            args.model,
+            args.requests,
+            args.max_steps,
+            split=args.split,
+            protocol_tag=args.protocol_tag,
+            condition=args.condition,
+            memory_spec=spec,
+            memory_chars=args.memory_chars,
+            reasks=args.reasks,
+            seed=args.seed,
+        )
+    )
 
 
 if __name__ == "__main__":

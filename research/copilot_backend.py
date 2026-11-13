@@ -5,7 +5,7 @@ import dataclasses
 import json
 import os
 from pathlib import Path
-from typing import TextIO
+from typing import Any, TextIO
 
 from copilot import CopilotClient
 from copilot.client import RuntimeConnection
@@ -66,6 +66,8 @@ async def quota_snapshot(client: CopilotClient):
 
 
 class CopilotBackend:
+    max_request_limit = 30
+
     def __init__(
         self,
         client: CopilotClient,
@@ -74,14 +76,17 @@ class CopilotBackend:
         journal: TextIO,
         request_limit: int = 3,
     ):
-        if not 1 <= request_limit <= 30:
-            raise ValueError("A small Copilot pilot allows 1-30 model requests.")
+        if not 1 <= request_limit <= self.max_request_limit:
+            raise ValueError(
+                f"This backend allows 1-{self.max_request_limit} model requests per instance."
+            )
         self.client = client
         self.model = model
         self.directory = working_directory.resolve()
         self.journal = journal
         self.limit = request_limit
         self.calls = 0
+        self.last_metrics: object = None
         self.directory.mkdir(parents=True, exist_ok=True)
 
     def write(self, event: str, **fields: object) -> None:
@@ -91,19 +96,27 @@ class CopilotBackend:
         self.journal.flush()
 
     async def complete(
-        self, system: str, prompt: str, response_schema: type[BaseModel] | None = None
+        self,
+        system: str,
+        prompt: str,
+        response_schema: type[BaseModel] | dict[str, Any] | None = None,
     ) -> str:
         if self.calls >= self.limit:
             raise PilotRequestLimit(f"Pilot stopped at its explicit {self.limit}-request cap.")
         self.calls += 1
         call_id = self.calls
+        schema = (
+            response_schema.model_json_schema()
+            if isinstance(response_schema, type)
+            else response_schema
+        )
         self.write(
             "copilot-request-started",
             call_id=call_id,
             model=self.model,
             system=system,
             prompt=prompt,
-            response_schema=response_schema.model_json_schema() if response_schema else None,
+            response_schema=schema,
         )
 
         def deny_permission(
@@ -152,7 +165,8 @@ class CopilotBackend:
             text = response.data.content
             self.write("copilot-response-received", call_id=call_id, response=text, usage=usage)
             metrics = await session.rpc.usage.get_metrics()
-            self.write("copilot-request-completed", call_id=call_id, metrics=data_value(metrics))
+            self.last_metrics = data_value(metrics)
+            self.write("copilot-request-completed", call_id=call_id, metrics=self.last_metrics)
             return text
         except (TimeoutError, asyncio.CancelledError):
             await session.abort()

@@ -76,6 +76,26 @@ class NativeScoringTests(unittest.TestCase):
                     asyncio.run(run(Path(directory) / "never-created.json", "0", "test", 1, 1))
                 client.assert_not_called()
 
+    def test_test_split_requires_an_existing_protocol_tag_before_copilot(self) -> None:
+        with (
+            tempfile.TemporaryDirectory() as directory,
+            patch("research.tau_copilot.isolated_client") as client,
+        ):
+            for tag in (None, "no-such-protocol-tag"):
+                with self.assertRaisesRegex(ValueError, "protocol"):
+                    asyncio.run(
+                        run(
+                            Path(directory) / "x.json",
+                            "5",
+                            "test",
+                            1,
+                            1,
+                            split="test",
+                            protocol_tag=tag,
+                        )
+                    )
+            client.assert_not_called()
+
     def simulation(self, task_id: str, reason: str) -> SimulationRun:
         from tau2.data_model.simulation import SimulationRun, TerminationReason
 
