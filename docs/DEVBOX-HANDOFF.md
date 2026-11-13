@@ -27,13 +27,17 @@ The app and the research harness are separate tracks. No new UI demo is needed.
 | Baseline task 1 | Nested-schema attempt failed after 4 requests; flat-schema repair completed after another 17 |
 | Completed episode | Normal `USER_STOP`; native ENV and task-basis rewards 1.0; fresh zero-inference replay agreed |
 | Baseline task 2 | Strict reference action 2 raises "Product not found"; zero model calls, no replacement task |
-| Latest validation | 66 core/publication tests and 28 research tests passed; Ruff, research Pyright, and old-journal replay passed |
+| Task 2 diagnosis | Offline audit: the failing ID is the tool docstring's placeholder, shared by sibling tasks 2-4 |
+| Entity overlap | Tasks 0-4 are one customer; 38 of 74 train tasks share a customer with the test split |
+| Proposed next cohort | 12 one-per-family train tasks; **not approved, not preflighted, not run** |
+| Latest laptop validation | 66 core/publication tests and 28 research tests passed; Ruff, research Pyright, and old-journal replay passed |
+| Devbox environment | Vendor pins checked out; research venv **incomplete** (see below) |
 | Main study | Not run, not preregistered; no demonstrated memory improvement |
 
 Task 1 has no nonempty NL assertions or communication targets. Its task-basis
 score is not an independent policy-compliance or conversation-quality
-certificate. Tasks 0 and 1 share a customer and order, so they are not
-independent examples for a later split. The simulated dialogues interpreted
+certificate. Tasks 0-4 share one customer (0 and 1 also share an order), so
+they are not independent examples for a later split. The simulated dialogues interpreted
 Google Home versus Google Assistant differently; simulator calibration remains
 a real gate, not something a matching database resolves.
 
@@ -71,6 +75,30 @@ approval for the next inference plan.
 - No laptop power hold, local server, browser, or chat process migrates with Git.
   The temporary laptop lid override ended and the original settings were restored.
 
+### Devbox setup status (2026-11-13)
+
+On the Windows devbox, both vendor checkouts are at the exact pinned commits
+and `research\.venv` exists, but the pinned packages are **not installed**:
+
+- The devbox network fails the TLS handshake with `files.pythonhosted.org`
+  for every client (uv, curl/Schannel, PowerShell). `pypi.org` metadata works.
+- The machine-configured feed in `C:\ProgramData\pip\pip.ini` is reachable but
+  lacks 11 pinned versions, apparently because it lags new releases:
+  `fastapi 0.162.5`, `openai 3.50.0`, `click 8.5.1`, `typer 0.29.1`,
+  `regex 2026.11.9`, `loguru 0.8.0`, `filelock 4.2.10`,
+  `importlib-metadata 10.2.0`, `markdown-it-py 4.3.0`, `annotated-doc 0.0.6`,
+  and `ruff 0.17.5`.
+- No pin was relaxed and no insecure override was used. Choices that need the
+  owner's decision: wait for the feed to carry the pins; use the HTTPS mirror
+  the laptop used (see [design notes](../research/DESIGN.md#existing-environment-and-adapters));
+  or certify a separately recorded devbox constraint set.
+
+Until then, only dependency-free checks run here: the 66 core tests, the
+memory/costing/task-audit research tests, and `research.task_audit`. Pyright
+1.1.414 (exact pin, from the feed) reports 0 errors on the core project and
+new audit files. Ruff was pre-checked with 0.17.4, the newest feed version;
+public CI's 0.17.5 run is the formatting gate.
+
 ## Offline validation first
 
 From the repository root, after research environment setup:
@@ -82,6 +110,7 @@ From the repository root, after research environment setup:
 .\research\.venv\Scripts\python.exe -m ruff format --check afterevidence tests research scripts
 .\research\.venv\Scripts\python.exe -m pyright --project research\pyrightconfig.json
 .\research\.venv\Scripts\python.exe -m research.native_scoring --tasks 0 1 2
+.\research\.venv\Scripts\python.exe -m research.task_audit
 ```
 
 These commands send no model prompts. The final preflight command deliberately
@@ -89,8 +118,23 @@ returns exit code 1: tasks 0 and 1 validate; task 2 reports the known strict
 reference failure. The corresponding unit test expects that failure. Do not
 edit the benchmark or weaken validation merely to make all output green.
 
-The public CI covers the core and dependency-free research controls, not the
-vendor-dependent native integration tests above.
+The public CI covers the core and dependency-free research controls, including
+the task-audit tests, not the vendor-dependent native integration tests above.
+
+## Next gate: proposed cohort awaiting approval
+
+[The offline audit](../research/RESULTS.md#offline-task-audit-2026-11-13-devbox)
+proposes train tasks **20, 35, 66, 69, 73, 75, 78, 80, 81, 82, 88, 91**: one per
+customer family. Each is outside the exposed 0-4 family, shares no customer with
+the test split, has valid reference IDs and a write action, and needs no NL judge.
+The judge-free restriction is a disclosed scoring-coverage bias.
+
+Before approval, the pinned environment must run zero-inference
+`research.native_scoring --tasks ...` on them; drop any that fail and record why.
+Planning estimate only: at the 30-request-per-task cap, 360 requests total. At
+the follow-up's observed 0.103-0.110 credits/request, that is about **37-40 AI
+credits (~$0.37-$0.40 allowance value)** with no judges. This is not a
+guaranteed bound or an approval.
 
 ## Private evidence is not in this clone
 
@@ -131,18 +175,20 @@ handoff. Do not copy a virtualenv or credentials from the laptop.
 
 Known evidence: task 1 completed with native ENV/task-basis reward 1.0 and
 zero-inference replay agreed. Two preceding format failures remain counted.
-Task 2 fails strict reference preflight. Tasks 0 and 1 share a customer/order;
-the Google Home versus Google Assistant dialogue interpretation needs review.
+Task 2 fails strict reference preflight because its reference copies the
+tool docstring's placeholder product ID. Tasks 0-4 are one customer; the
+Google Home versus Google Assistant dialogue interpretation needs review.
 This is not a reliable multi-task baseline or a memory-efficacy result.
 
-Proceed with offline development: inspect task 2's reference-artifact mismatch
-without changing the pinned vendor, and audit train-only task/customer/order
-overlap to propose independent development episodes and simulator-calibration
-checks. Keep hidden scoring criteria and reference actions out of actor/memory
-inputs. Do not inspect held-out test outcomes for tuning or silently select
-only easy/passing tasks. Make useful source/test/documentation improvements,
-but do not start model calls until I approve a concrete cohort, total request
-cap (including actor, simulator, retries and judges), and cost estimate.
+Proceed offline: finish the pinned environment, then run zero-inference
+native preflight on the proposed cohort in docs/DEVBOX-HANDOFF.md and record
+any exclusions. Draft simulator-calibration checks and a customer-disjoint
+held-out partition proposal. Keep hidden scoring criteria, reference actions,
+and task_audit output out of actor/memory inputs. Do not inspect held-out test
+outcomes for tuning or silently select only easy/passing tasks. Make useful
+source/test/documentation improvements, but do not start model calls until I
+approve a concrete cohort, total request cap (including actor, simulator,
+retries and judges), and cost estimate.
 
 The prior allowance was 90 requests over tasks 0,1,2; 35 were used. Its unused
 55 are not blanket authorization for a new cohort. Cumulative usage is 58

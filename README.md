@@ -99,7 +99,10 @@ tasks—not the UI's hand-written scenario rules.
 - A subsequent Copilot development episode completed with native ENV and
   task-basis rewards of **1.0**, reproduced by zero-inference replay. It is
   one task, with no nonempty policy assertions to judge, not an accuracy estimate.
-- Strict reference preflight blocked another selected task before inference.
+- Strict reference preflight blocked another selected task before inference;
+  an offline audit traced it to a placeholder product ID in the reference.
+- That audit also found 38 of 74 training tasks share a customer with the
+  test split, so the native split alone does not isolate evaluation entities.
 - Usage was metered and failures retained. **No memory improvement is claimed.**
 
 The next gate is a reliable scored baseline, a faithful simulator, an isolated

@@ -145,12 +145,15 @@ exit, rather than a completed episode.
 
 - There is only **one completed new episode**, not a useful accuracy estimate.
 - Tasks 0 and 1 are sibling variants for the same customer and order, not
-  independent samples or a valid train/evaluation separation.
+  independent samples or a valid train/evaluation separation. The later
+  [offline audit](#offline-task-audit-2026-11-13-devbox) found that tasks 0-4,
+  including task 2, all belong to that one customer.
 - The task-1 simulator accepted a Google Assistant variant for a request
   phrased as Google Home; task-0 dialogue challenged that mapping. This
   interpretation must be calibrated independently before studying memory.
   A matching database alone does not establish simulator fidelity.
-- Task 2 needs reference-artifact review before model spend or inclusion.
+- Task 2 needs reference-artifact review before model spend or inclusion;
+  the offline audit traced it to a copied docstring placeholder ID.
 - No experience bank, four-condition result, or main-study preregistration
   was produced by this follow-up.
 
@@ -170,6 +173,81 @@ evidence remains under `runs/`: `baseline-20261113-plan.json`, the two
 `baseline-20261113-amendment-*.json` records, all three task journals/reports,
 and `baseline-20261113-summary.json`. Do not publish raw journals, quota
 snapshots, or account data.
+
+## Offline task audit: 2026-11-13 (devbox)
+
+Zero model calls. [task_audit.py](task_audit.py) reads the pinned retail
+`tasks.json`, `split_tasks.json`, `db.json`, and tool source as plain JSON/text.
+It derives each task's customers and orders from its reference actions, joins
+train tasks that share a customer or order into families, and flags reference
+identifiers absent from the initial database. It is a static audit, **not** a
+native preflight, simulator check, or difficulty estimate. Its output is derived
+from hidden reference actions and must never reach an actor, simulator, or memory.
+
+```powershell
+python -m research.task_audit
+python -m research.task_audit --rows
+```
+
+### Task 2 reference mismatch
+
+- Failing action: `2_1`, the second reference action (native preflight numbers
+  from 1), `get_product_details(product_id="6086499569")`.
+- `6086499569` is neither a product ID nor an item ID in the pinned database.
+  It is the example ID in the pinned `get_product_details` docstring
+  ("The product id, such as '6086499569'"), so the reference appears to have
+  copied a placeholder. The task's user instructions never mention it.
+- The same action appears as action 2 of train tasks **2, 3, and 4**. Among the
+  user, order, product, and item ID arguments the audit checks, these are the
+  only unscripted invalid references across all 114 retail tasks.
+- It is a read-only lookup, so it does not change the target database. Upstream
+  ENV scoring logs and continues. Strict preflight still rejects it by design;
+  this audit does not weaken that rule.
+- Task 2 also gates on a nonempty NL assertion ("10 t-shirt options"; 10 of the
+  T-shirt product's 12 variants are available). Without an approved judge it
+  could not receive a full task-basis score anyway. Sibling task 4 carries an
+  open upstream issue (`issue_2b74ee61`) disputing that same "10" expectation.
+
+Train tasks 46 and 47 also reference missing order IDs (`#9502126`, `#9502127`),
+but their user instructions script those wrong numbers deliberately. The audit
+marks them `scripted_in_user_instructions`. Strict preflight would also reject
+them; whether intended failed lookups should be allowed is an open protocol
+decision, not something changed here.
+
+### Customer/order overlap
+
+| Finding | Count |
+|---|---:|
+| Train / test tasks | 74 / 40 |
+| Train families sharing a customer or order | 46 (29 singletons; largest 5) |
+| Train tasks whose customer also appears in a test task | **38 of 74** |
+| Train tasks needing an NL-assertion judge for full task-basis scoring | 29 |
+| Train tasks with no resolvable customer (no lookup in reference) | 3 (24, 50, 57) |
+| Train tasks whose reference has no write action | 6 |
+
+- Tasks **0-4 are one customer family**. The entire earlier 0,1,2 cohort was
+  one customer, not two independent customers plus a sibling. The completed
+  task-1 episode exposes that family; it should not supply later development
+  examples.
+- Over half of the train split shares customers with the official test split,
+  so the native split alone does **not** give held-out entity separation.
+  A main study needs a customer-disjoint partition or explicit exclusions,
+  decided in the protocol before evaluation.
+
+### Proposed next development cohort (not approved, not run)
+
+Deterministic rule, using no model outcomes: exclude the exposed family, tasks
+sharing a customer with test, unresolved customers, invalid references, open
+upstream issues, references without a write, and tasks needing an unapproved
+NL judge. Then take the lowest-numbered eligible task per family.
+
+- Eligible: 16 tasks in 12 families.
+- Proposed: **20, 35, 66, 69, 73, 75, 78, 80, 81, 82, 88, 91**.
+
+The judge-free filter restricts scoring coverage to DB checks. That is a
+disclosed selection bias, not neutral sampling; the excluded judge-needing
+tasks may differ systematically in difficulty. These tasks still need native
+zero-inference preflight in the pinned environment before any model spend.
 
 ## Preserved evidence
 
@@ -214,7 +292,8 @@ for prompt tuning; these are development tasks.
    development episodes with a capable actor and calibrated user simulator.
    Any replacement/expanded cohort needs an explicit plan and authorization;
    unused allowance is not permission to change the selected tasks silently.
-2. Audit customer/entity overlap and freeze an appropriate held-out partition.
+2. Freeze an appropriate held-out partition. The overlap audit is done (38 of
+   74 train tasks share a test customer); the partition decision is not.
 3. Generate an actual experience/lesson bank from allowed development feedback
    only, and wire all four conditions to the same actor/tools/policy/budgets.
 4. Validate the full scoring scope and report policy compliance separately
