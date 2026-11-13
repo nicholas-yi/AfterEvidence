@@ -29,24 +29,27 @@ The app and the research harness are separate tracks. No new UI demo is needed.
 | Baseline task 2 | Strict reference action 2 raises "Product not found"; zero model calls, no replacement task |
 | Task 2 diagnosis | Offline audit: the failing ID is the tool docstring's placeholder, shared by sibling tasks 2-4 |
 | Entity overlap | Tasks 0-4 are one customer; 38 of 74 train tasks share a customer with the test split |
-| Proposed next cohort | 11 one-per-family train tasks; all pass native zero-inference preflight; **not approved, not run** |
+| Reference policy | v2: only scripted, non-mutating "not found" lookups may fail; train preflight 70 validated, 4 rejected |
+| Devbox cohort | 12 approved tasks run once: **9 scored 1.0**, 3 failed the action contract; 162 of 360 requests; replay agreed |
+| Simulator review | Worksheets generated; AI-assistant preliminary pass done; **human confirmation pending** |
 | Latest laptop validation | 66 core/publication tests and 28 research tests passed; Ruff, research Pyright, and old-journal replay passed |
-| Devbox validation | Exact 81-entry lock reproduced; 66 core and 33 research tests, Ruff 0.17.5, research Pyright passed; preflight 0/1/2 matches laptop |
+| Devbox validation | Exact 81-entry lock reproduced; core, research, Ruff 0.17.5, and research Pyright checks pass; preflight 0/1/2 matches laptop |
 | Main study | Not run, not preregistered; no demonstrated memory improvement |
 
 Task 1 has no nonempty NL assertions or communication targets. Its task-basis
 score is not an independent policy-compliance or conversation-quality
 certificate. Tasks 0-4 share one customer (0 and 1 also share an order), so
-they are not independent examples for a later split. The simulated dialogues interpreted
-Google Home versus Google Assistant differently; simulator calibration remains
-a real gate, not something a matching database resolves.
+they are not independent examples for a later split. The pinned catalog has no
+"Google Home" thermostat; the reference uses the Google Assistant variant
+([analysis](../research/RESULTS.md#google-home-versus-google-assistant-tasks-0-and-1)).
+A matching database still does not establish simulator fidelity.
 
-The latest follow-up used **35 of 90 authorized requests**, counting failures.
-It consumed **3.5914435 AI credits**, about **$0.035914435 in allowance value**.
-Cumulative Copilot usage is **58 requests / 6.03168 credits**. These are not
-separate API invoices. The remaining 55 requests are not permission to change
-the cohort, add judges, switch models, or start a main study. Obtain explicit
-approval for the next inference plan.
+The devbox cohort used **162 of 360 approved requests** and **16.05978 AI
+credits** (about $0.16 in allowance value). Cumulative Copilot usage is
+**220 requests / 22.09146 credits**. These are not separate API invoices.
+The unused 198 requests are not permission to change the cohort, retry tasks,
+add judges, switch models, or start a main study. Obtain explicit approval for
+the next inference plan.
 
 ## Rebuild, do not copy the environment
 
@@ -113,7 +116,7 @@ From the repository root, after research environment setup:
 
 ```powershell
 .\research\.venv\Scripts\python.exe -m unittest discover -s tests -v
-.\research\.venv\Scripts\python.exe -m unittest research.test_memory_methods research.test_costing research.test_copilot_backend research.test_tau_action research.test_native_scoring research.test_task_audit -v
+.\research\.venv\Scripts\python.exe -m unittest research.test_memory_methods research.test_costing research.test_copilot_backend research.test_tau_action research.test_native_scoring research.test_task_audit research.test_simulator_review -v
 .\research\.venv\Scripts\python.exe -m ruff check afterevidence tests research scripts
 .\research\.venv\Scripts\python.exe -m ruff format --check afterevidence tests research scripts
 .\research\.venv\Scripts\python.exe -m pyright --project research\pyrightconfig.json
@@ -127,29 +130,31 @@ reference failure. The corresponding unit test expects that failure. Do not
 edit the benchmark or weaken validation merely to make all output green.
 
 The public CI covers the core and dependency-free research controls, including
-the task-audit tests, not the vendor-dependent native integration tests above.
+the task-audit and simulator-review tests, not the vendor-dependent native
+integration tests above.
 
-## Next gate: proposed cohort awaiting approval
+## Next gate: decisions after the devbox cohort
 
-[The offline audit](../research/RESULTS.md#offline-task-audit-2026-11-13-devbox)
-proposes train tasks **20, 66, 69, 73, 75, 78, 80, 81, 82, 88, 91**: one per
-customer family. Each is outside the exposed 0-4 family, shares no customer with
-the test split, has valid reference IDs and a write action, and needs no NL judge.
-The judge-free restriction is a disclosed scoring-coverage bias.
+[The cohort results](../research/RESULTS.md#development-cohort-run-2026-11-13-devbox)
+show nine valid scored episodes and three actor action-contract failures.
+Decisions needed before more inference:
 
-All 11 passed native zero-inference preflight on the devbox (reproduce with
-`research.native_scoring --tasks 20 66 69 73 75 78 80 81 82 88 91`). Planning
-estimate only: at the 30-request-per-task cap, 330 requests total. At the
-follow-up's observed 0.103-0.110 credits/request, that is about **34-37 AI
-credits (~$0.34-$0.37 allowance value)** with no judges. This is not a
-guaranteed bound or an approval. Simulator calibration for these tasks is
-still unchecked.
+1. Whether to change the adapter's malformed-action handling (for example one
+   bounded, counted re-ask), then rerun a fresh, separately approved cohort.
+2. A human confirmation of the simulator worksheet
+   (`research/runs/cohort-20261113b-simulator-review.md`, devbox only).
+3. Committing the [held-out partition](../research/RESULTS.md#held-out-partition-proposal)
+   and judge policy for the 11 judge-needing test tasks into a tagged protocol.
+
+Experience-bank construction from the nine scored episodes is offline work, but
+it must use only observations and actions, never references or scorer output.
 
 ## Private evidence is not in this clone
 
 Git intentionally excludes `research/runs/`, `data/`, `results/`, vendor
 checkouts, virtual environments, caches, runtimes, and account state.
-The source laptop retains:
+The devbox retains the `cohort-20261113b-*` plan, reports, journals, summary,
+and simulator worksheet. The source laptop retains:
 
 - `research/runs/baseline-20261113-plan.json`.
 - `research/runs/baseline-20261113-amendment-1.json` and `-2.json`.
@@ -182,28 +187,29 @@ Resume the baseline gate, not the main study. First recreate the exact pinned
 research environment for this devbox's OS and run the offline checks in the
 handoff. Do not copy a virtualenv or credentials from the laptop.
 
-Known evidence: task 1 completed with native ENV/task-basis reward 1.0 and
-zero-inference replay agreed. Two preceding format failures remain counted.
-Task 2 fails strict reference preflight because its reference copies the
-tool docstring's placeholder product ID. Tasks 0-4 are one customer; the
-Google Home versus Google Assistant dialogue interpretation needs review.
-This is not a reliable multi-task baseline or a memory-efficacy result.
+Known evidence: on the devbox, an approved 12-task cohort (one customer family
+each, customer-disjoint from the test split, judge-free) scored native
+ENV/task-basis reward 1.0 on 9 tasks; 3 failed the flat action contract early.
+Zero-inference replay agreed. Task 2 is still rejected by reference preflight
+(copied placeholder product ID). Reference policy v2 allows only scripted,
+non-mutating failed lookups. The simulator worksheet awaits human review.
+This is a single-seed development baseline, not a memory-efficacy result.
 
-Proceed offline: rebuild the pinned environment and confirm the proposed
-11-task cohort in docs/DEVBOX-HANDOFF.md still passes zero-inference native
-preflight. Draft simulator-calibration checks and a customer-disjoint
-held-out partition proposal. Keep hidden scoring criteria, reference actions,
-and task_audit output out of actor/memory inputs. Do not inspect held-out test
-outcomes for tuning or silently select only easy/passing tasks. Make useful
-source/test/documentation improvements, but do not start model calls until I
-approve a concrete cohort, total request cap (including actor, simulator,
-retries and judges), and cost estimate.
+Proceed offline: confirm the environment and offline checks, then work on the
+next-gate items in docs/DEVBOX-HANDOFF.md: options for malformed actor actions,
+the held-out partition and judge policy as protocol drafts, and experience-bank
+construction from observations and actions only. Keep hidden scoring criteria,
+reference actions, and task_audit output out of actor/memory inputs. Do not
+inspect held-out test outcomes for tuning or silently select only easy/passing
+tasks. Make useful source/test/documentation improvements, but do not start
+model calls until I approve a concrete cohort, total request cap (including
+actor, simulator, retries and judges), and cost estimate.
 
-The prior allowance was 90 requests over tasks 0,1,2; 35 were used. Its unused
-55 are not blanket authorization for a new cohort. Cumulative usage is 58
-requests / 6.03168 AI credits. Raw journals and quota records are private and
-not in Git. Ask for the needed private evidence before historical replay or
-lesson extraction; do not invent or automatically regenerate it.
+The devbox cohort allowance was 360 requests; 162 were used. Its unused 198
+are not blanket authorization. Cumulative usage is 220 requests / 22.09146 AI
+credits. Raw journals and quota records are private and not in Git. Ask for the
+needed private evidence before historical replay or lesson extraction; do not
+invent or automatically regenerate it.
 
 Keep the current flat WireCommand action contract and its regression tests.
 Preserve old-journal decoding, fail-before-inference reference checks, explicit

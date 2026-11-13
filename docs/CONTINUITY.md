@@ -70,11 +70,10 @@ Normal sleep behavior returns when the hold expires, stops, or its process ends.
 Current handoff: one repaired Copilot development episode completed with native
 ENV/task-basis rewards of 1.0, reproduced by fresh zero-inference replay. Earlier
 format failures remain counted; another selected task failed strict reference
-preflight before inference, traced offline to a copied placeholder ID. An
-offline audit found that the original cohort was one customer and proposed an
-independent 11-task development cohort that passes native zero-inference
-preflight but is not yet approved. Simulator
-calibration, a held-out partition, and the main-study gates remain unfinished.
+preflight before inference, traced offline to a copied placeholder ID. On the
+devbox, an approved 12-task cohort scored 1.0 on 9 tasks with 3 early
+actor-format failures, and replay agreed. Human simulator review, a committed
+held-out partition, and the main-study gates remain unfinished.
 
 For another machine, use [the devbox handoff and copy-paste prompt](DEVBOX-HANDOFF.md).
 It covers pinned setup, offline validation, private evidence that Git does not

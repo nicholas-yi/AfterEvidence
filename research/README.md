@@ -31,9 +31,17 @@ lessons after evidence changes.
   zero-inference replay. Two preceding schema failures remain counted; task 2
   was blocked before inference by a strict reference-replay error.
 - This follow-up used **35 of 90 authorized requests**, **3.5914435 AI credits**,
-  about **$0.035914 in credit value**. Cumulative Copilot usage is **58 requests
+  about **$0.035914 in credit value**. Cumulative Copilot usage was then **58 requests
   and 6.03168 credits**. A single completed sibling task is not an accuracy or
   memory-efficacy estimate; simulator interpretation still needs calibration.
+- A 12-task development cohort on the devbox (one customer family each,
+  customer-disjoint from the test split) scored native ENV/task-basis reward
+  **1.0 on 9 tasks**; 3 failed the actor action contract early. It used
+  **162 of 360 approved requests** and **16.05978 AI credits**. Cumulative
+  usage is **220 requests and 22.09146 credits**. This is a single-seed,
+  judge-free development baseline, not an accuracy or memory-efficacy result.
+- Reference preflight now allows only scripted, non-mutating failed lookups
+  (policy v2); unscripted and business-rule failures are still rejected.
 - The source-aware retrieval/accounting/isolation/action-parser tests pass.
 
 No main experiment or four-condition efficacy result exists yet. Do not treat
@@ -49,6 +57,7 @@ the application examples or software invariants as agent-learning evidence.
 - [Source-aware memory controls](memory_methods.py).
 - [Native scorer preflight and assessment](native_scoring.py).
 - [Zero-inference task/customer overlap and reference-ID audit](task_audit.py).
+- [Zero-inference simulator-calibration worksheets](simulator_review.py).
 - [Native local-model feasibility driver](tau_pilot.py).
 - [Three-request SDK micro-pilot](copilot_micro.py).
 - [Full native-environment Copilot pilot driver](tau_copilot.py),
@@ -58,7 +67,7 @@ the application examples or software invariants as agent-learning evidence.
 From the project root:
 
 ```powershell
-python -m unittest research.test_memory_methods research.test_costing research.test_task_audit -v
+python -m unittest research.test_memory_methods research.test_costing research.test_task_audit research.test_simulator_review -v
 .\research\.venv\Scripts\python.exe -m unittest research.test_copilot_backend research.test_tau_action research.test_native_scoring -v
 .\research\.venv\Scripts\python.exe -m pyright --project research\pyrightconfig.json
 .\research\.venv\Scripts\python.exe -m research.native_scoring --tasks 0 1 2

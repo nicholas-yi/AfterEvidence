@@ -149,9 +149,10 @@ exit, rather than a completed episode.
   [offline audit](#offline-task-audit-2026-11-13-devbox) found that tasks 0-4,
   including task 2, all belong to that one customer.
 - The task-1 simulator accepted a Google Assistant variant for a request
-  phrased as Google Home; task-0 dialogue challenged that mapping. This
-  interpretation must be calibrated independently before studying memory.
-  A matching database alone does not establish simulator fidelity.
+  phrased as Google Home; task-0 dialogue challenged that mapping. The
+  [later analysis](#google-home-versus-google-assistant-tasks-0-and-1) found
+  the catalog has no Google Home option and the reference uses the Google
+  Assistant variant. A matching database alone does not establish simulator fidelity.
 - Task 2 needs reference-artifact review before model spend or inclusion;
   the offline audit traced it to a copied docstring placeholder ID.
 - No experience bank, four-condition result, or main-study preregistration
@@ -288,6 +289,104 @@ disclosed selection bias, not neutral sampling; the excluded judge-needing
 tasks may differ systematically in difficulty. Preflight validates the scorer,
 not simulator fidelity or actor adequacy.
 
+## Development cohort run: 2026-11-13 (devbox)
+
+Run against commit `3f980e0` after a private pre-run plan recorded source
+hashes, the task order, a 30-request cap per task (360 total, including actor,
+simulator, and failures), `--max-steps 60`, seed 42, no NL judge, no retries
+or replacements, and a stop rule: halt if two consecutive tasks fail before
+scoring with the same adapter error. The stop rule did not trigger. Model:
+account-enabled Claude Haiku 5.5, condition `none` (no memory).
+
+| Task | Outcome | Requests | Seconds | Native ENV / task-basis reward |
+|---|---|---:|---:|---|
+| 20 | Actor sent a message with non-empty tool arguments | 2 | 8.8 | not scored |
+| 35 | `USER_STOP`; scripted wrong email handled | 23 | 125.0 | 1.0 / 1.0 |
+| 66 | Actor sent a message with non-empty tool arguments | 2 | 6.9 | not scored |
+| 69 | `USER_STOP` | 16 | 74.0 | 1.0 / 1.0 |
+| 73 | `USER_STOP` | 11 | 48.8 | 1.0 / 1.0 |
+| 75 | `USER_STOP` | 12 | 54.0 | 1.0 / 1.0 |
+| 78 | `USER_STOP` | 24 | 121.2 | 1.0 / 1.0 |
+| 80 | Actor sent an empty `value` | 4 | 14.2 | not scored |
+| 81 | `USER_STOP` | 15 | 76.8 | 1.0 / 1.0 |
+| 82 | `USER_STOP` | 18 | 95.4 | 1.0 / 1.0 |
+| 88 | `USER_STOP` | 15 | 69.7 | 1.0 / 1.0 |
+| 91 | `USER_STOP` | 20 | 103.0 | 1.0 / 1.0 |
+
+- **9 of 12 tasks scored 1.0; 3 failed** on the actor's action contract within
+  their first four requests. Counting those failures, the Wilson 95% interval
+  for 9/12 is **0.47-0.91**. One seed, one task per family, and a judge-free
+  subset: this is a development baseline, not an accuracy estimate.
+- No reward was 0: every episode that completed matched the target database.
+  The binding weakness is actor output formatting, not task reasoning.
+- A fresh zero-inference replay of all nine saved episodes reproduced both
+  rewards and the database match.
+- All selected tasks have empty NL-assertion and communication lists, so the
+  task-basis score is DB-based and does not certify policy compliance.
+- The strict flat `WireCommand` contract correctly rejected all three malformed
+  actions; nothing was stripped or repaired silently. Changing the adapter
+  (for example a bounded, counted re-ask after a malformed action) is a
+  separate decision that needs approval.
+
+Usage: **162 of 360 requests**, 1,345,173 input and 51,146 output tokens,
+**16.0597800 AI credits** (about $0.16 in allowance value), with complete
+billing for every request. See [costs](COSTS.md#2026-11-13-devbox-cohort).
+
+### Simulator calibration review
+
+[simulator_review.py](simulator_review.py) renders each recorded episode as a
+private worksheet under `research/runs` with heuristic flags and a fixed
+seven-item checklist (stated facts, unknown info, conditional fallbacks,
+substitutions, confirmations, termination, persona). It calls no model.
+
+```powershell
+python -m research.simulator_review research\runs\<report>.json --output research\runs\<worksheet>.md
+```
+
+A preliminary pass over all 12 episodes was performed by the AI assistant in
+this session. It is **not** an independent human calibration; a human reviewer
+should confirm it from the worksheet.
+
+- Automated flags: no unknown information disclosed; every scored episode
+  ended with the simulator's stop marker; no transfers.
+- Conditional instructions were applied at the right point in tasks 35 (list
+  all 13-inch options), 69 (cancel when return impossible), 81 (cancel whole
+  orders), 82 (angry fallback: return all to gift card), 88 (cancel with the
+  scripted reason), and 91 (hold confirmation; take the 32GB e-reader after the
+  agent refused an identical exchange).
+- Deviations that did not change the requested actions: in tasks 69 and 91 the
+  simulator addressed the agent by the customer's own name; in 78 it volunteered
+  an unprompted "no zip code handy"; in 35 it assumed a PayPal refund. Task 69's
+  scenario says the laptop was received while the database shows it pending.
+- Task 80's persona asks the simulator to be confusing; the episode ended
+  after two simulator turns, too early to assess.
+
+### Google Home versus Google Assistant (tasks 0 and 1)
+
+Both tasks ask for a thermostat "compatible with Google Home instead of Apple
+HomeKit". The pinned catalog's Smart Thermostat options are only Google
+Assistant, Amazon Alexa, and Apple HomeKit. Both reference solutions exchange
+to item `7747408585` (Google Assistant, black), the only available Google
+Assistant variant. The benchmark target therefore treats Google Assistant as
+satisfying "Google Home". The task-1 simulator matched that intent; the task-0
+challenge diverged from it. This is a task-wording gap, a calibration item like
+task 73's "coffee machine" for an Espresso Machine, not evidence that either
+simulator response was wrong.
+
+### Held-out partition proposal
+
+- **Evaluation:** the 40 official test tasks, unchanged (31 customers;
+  29 judge-free).
+- **Learning pool:** the 33 train tasks whose customers resolve and never appear
+  in a test task (21 families). Customer overlap with evaluation: 0; order
+  overlap: 0. This excludes the 38 train tasks sharing a test customer and the
+  3 with no resolvable customer.
+- The 12-task cohort is inside the pool, so its episodes can seed an experience
+  bank. Memory must stay frozen during evaluation; test episodes must not learn
+  from each other.
+- Whether the 11 judge-needing test tasks are scored, and by which approved
+  judge, must be fixed in the committed protocol before evaluation.
+
 ## Preserved evidence
 
 The following local outputs are git-ignored; do not commit account snapshots
@@ -298,6 +397,11 @@ or raw journals into the public benchmark implementation:
   failed pre-inference setup attempts.
 - `runs/copilot-native-feasibility-0.json` and its `.calls.jsonl`.
 - `runs/copilot-native-structured-feasibility-0.json` and its `.calls.jsonl`.
+
+On the devbox (not on the laptop): `runs/cohort-20261113b-plan.json`, the
+twelve `cohort-20261113b-task-<id>.json` reports with `.calls.jsonl` journals
+and `.stderr.txt` logs, `cohort-20261113b-summary.json`, and
+`cohort-20261113b-simulator-review.md`.
 
 Run the zero-inference accounting/replay:
 
@@ -327,12 +431,15 @@ for prompt tuning; these are development tasks.
 
 ## Remaining gates
 
-1. Extend the single completed episode to several valid, independently checked
-   development episodes with a capable actor and calibrated user simulator.
+1. Reduce actor action-contract failures (3 of 12 tasks) without silently
+   repairing actions; any adapter change needs approval and a fresh cohort.
+   Have a human confirm the simulator review; nine valid scored development
+   episodes now exist, all from one seed and a judge-free subset.
    Any replacement/expanded cohort needs an explicit plan and authorization;
    unused allowance is not permission to change the selected tasks silently.
-2. Freeze an appropriate held-out partition. The overlap audit is done (38 of
-   74 train tasks share a test customer); the partition decision is not.
+2. Freeze the held-out partition in the protocol. A customer-disjoint
+   [proposal](#held-out-partition-proposal) exists; it is not yet committed
+   as protocol.
 3. Generate an actual experience/lesson bank from allowed development feedback
    only, and wire all four conditions to the same actor/tools/policy/budgets.
 4. Validate the full scoring scope and report policy compliance separately

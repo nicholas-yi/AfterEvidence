@@ -155,3 +155,38 @@ The first two attempts used different action schemas; the failed attempts are
 retained and counted. These figures are development accounting, not an
 efficacy estimate or a guaranteed price for another model or task cohort.
 See [the full result and remaining gates](RESULTS.md#bounded-baseline-follow-up-2026-11-13).
+
+## 2026-11-13 devbox cohort
+
+The owner approved 12 train tasks at 30 requests each (**360 total**, covering
+actor, simulator, and failures; no judges). Each task ran once; unused requests
+were not reallocated.
+
+| Task | Requests | Input tokens | Output tokens | AI credits |
+|---|---:|---:|---:|---:|
+| 20 (contract failure) | 2 | 8,362 | 270 | 0.118005 |
+| 35 | 23 | 220,499 | 10,179 | 2.7859365 |
+| 66 (contract failure) | 2 | 8,257 | 190 | 0.084552 |
+| 69 | 16 | 117,343 | 4,468 | 1.36866 |
+| 73 | 11 | 72,777 | 2,353 | 0.80881 |
+| 75 | 12 | 88,101 | 2,946 | 0.9989615 |
+| 78 | 24 | 231,043 | 7,443 | 2.7493245 |
+| 80 (contract failure) | 4 | 17,796 | 472 | 0.181288 |
+| 81 | 15 | 130,108 | 4,821 | 1.5347965 |
+| 82 | 18 | 155,412 | 6,641 | 1.898079 |
+| 88 | 15 | 117,832 | 3,822 | 1.351349 |
+| 91 | 20 | 177,643 | 7,541 | 2.180018 |
+| **Cohort total** | **162** | **1,345,173** | **51,146** | **16.0597800** |
+
+- About **$0.1606 in allowance value**; 198 of the 360 approved requests unused.
+- Every started request has a completed billing snapshot (`research.costing`).
+- Observed 0.099 credits per request, below the 0.103-0.110 planning range,
+  because no task reached its 30-request cap. Scored episodes averaged 17.1
+  requests and about 1.74 credits.
+- The premium-interaction quota display read 99.9% before and after; a rounded
+  display is not evidence of zero usage.
+
+Cumulative Copilot usage across all pilots: **220 requests**,
+**1,808,885 input / 75,726 output tokens**, **22.09146 AI credits**
+(about $0.2209 in allowance value). These are allowance measurements, not
+separate API invoices.

@@ -103,6 +103,9 @@ tasks—not the UI's hand-written scenario rules.
   an offline audit traced it to a placeholder product ID in the reference.
 - That audit also found 38 of 74 training tasks share a customer with the
   test split, so the native split alone does not isolate evaluation entities.
+- A 12-task development cohort, one per customer family and customer-disjoint
+  from the test split, scored 1.0 on 9 tasks; 3 failed the actor's action
+  format early. It is one seed on a judge-free subset, not an accuracy estimate.
 - Usage was metered and failures retained. **No memory improvement is claimed.**
 
 The next gate is a reliable scored baseline, a faithful simulator, an isolated
