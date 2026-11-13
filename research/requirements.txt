@@ -1,0 +1,5 @@
+# The separately checked-out MIT source is pinned by research/benchmark-lock.json.
+-e ./vendor/tau2-bench
+# Official SDK source pin: ed814e4134fdba86e2e88b82dcac85b1c125ed8a.
+# The published 0.3.0 wheel could read quota but rejected current token-price model metadata.
+-e ./vendor/copilot-sdk/python

@@ -1,0 +1,34 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "afterevidence"
+version = "0.2.0"
+description = "Local Qwen memory application and offline lifecycle contract tests"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pyright==1.1.414", "ruff==0.17.5"]
+
+[project.scripts]
+afterevidence = "afterevidence.__main__:main"
+
+[tool.setuptools.packages.find]
+include = ["afterevidence*"]
+
+[tool.setuptools.package-data]
+afterevidence = ["static/*.html", "static/*.css", "static/*.js"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+extend-exclude = ["research/vendor", "research/.venv", "research/runs", "research/cache"]
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F"]
+
+[tool.pyright]
+include = ["afterevidence", "tests"]
+typeCheckingMode = "standard"

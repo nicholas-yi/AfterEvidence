@@ -1,0 +1,8 @@
+{
+  "include": ["*.py"],
+  "exclude": ["vendor", ".venv", "runs", "cache"],
+  "venvPath": ".",
+  "venv": ".venv",
+  "extraPaths": ["..", "vendor\\copilot-sdk\\python", "vendor\\tau2-bench\\src"],
+  "typeCheckingMode": "standard"
+}

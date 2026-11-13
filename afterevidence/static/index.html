@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AfterEvidence | Local memory lab</title>
+  <link rel="stylesheet" href="/style.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main-content">Skip to workspace</a>
+  <header class="masthead">
+    <div class="brand">
+      <svg class="brand-mark" viewBox="0 0 40 40" fill="none" aria-hidden="true">
+        <rect x="5" y="5" width="23" height="23" rx="7" stroke="currentColor" stroke-width="1.5" opacity=".35"/>
+        <rect x="12" y="12" width="23" height="23" rx="7" fill="currentColor"/>
+        <path d="m18 24 4 4 7-9" stroke="var(--on-accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <div><p class="eyebrow">EVIDENCE, NOT ASSUMPTION</p><h1>AfterEvidence<span>.</span></h1></div>
+    </div>
+    <div class="runtime"><span id="model-status" class="pill" aria-live="polite">Checking Ollama</span>
+      <button id="check-model" class="quiet" type="button">Check connection</button>
+      <small>Local inference. Actions stay yours.</small></div>
+  </header>
+  <main id="main-content" tabindex="-1">
+    <section class="intro" aria-label="About this workspace">
+      <div><p class="eyebrow">THE MEMORY WORKSPACE</p>
+        <h2>Remember clearly.<br>Reconsider confidently.</h2>
+        <p class="subtitle">A quiet place to inspect what your agent remembers,<br class="desktop-break"> where it came from, and what needs to change.</p>
+      </div>
+      <div class="preview-note"><span class="preview-dot" aria-hidden="true"></span>
+        <span>Development preview<br><small>Source-linked does not mean verified.</small></span></div>
+    </section>
+    <nav id="packs" class="packs" aria-label="Use-case packs"></nav>
+    <section class="workspace-bar" aria-label="Workspace controls">
+      <div><p class="eyebrow" id="pack-label">PROJECT DECISIONS</p><p id="pack-description"></p></div>
+      <label class="subject-label">Subject / project<input id="subject" list="subject-options" maxlength="100" value="Atlas"></label>
+      <datalist id="subject-options"></datalist>
+      <button id="load-example" type="button" class="secondary">Load example notes</button>
+      <button id="sleep" type="button" class="primary">Sleep / repair</button>
+    </section>
+    <div id="activity" class="activity" role="status" hidden><span class="spinner" aria-hidden="true"></span>Working locally. Your evidence is staying on this computer.</div>
+    <div id="notice" class="notice" role="status" aria-live="polite" hidden></div>
+    <div id="error" class="notice error" role="alert" hidden></div>
+    <section class="stats" aria-label="Memory statistics">
+      <div><strong id="source-count">0</strong><span>active sources</span></div>
+      <div><strong id="fact-count">0</strong><span>current assertions</span></div>
+      <div><strong id="memory-count">0</strong><span>usable derived memories</span></div>
+      <div><strong id="dirty-count">0</strong><span>need reconsideration</span></div>
+      <div><strong id="epoch">0</strong><span>evidence epoch</span></div>
+    </section>
+    <div class="grid">
+      <section class="panel source-panel" aria-labelledby="sources-heading">
+        <div class="section-heading"><span class="step">01 / WAKE</span><h2 id="sources-heading">Capture evidence</h2></div>
+        <p class="muted">Write a real observation. Qwen extracts quoted assertions, not verified truth.</p>
+        <form id="note-form">
+          <label>Note title<input id="note-title" maxlength="160" placeholder="Decision, observation, or result"></label>
+          <label>Source note<textarea id="note-text" rows="5" maxlength="4000" required placeholder="Add a note about this subject..."></textarea></label>
+          <details class="session-settings"><summary>Session and source handling</summary>
+            <label>Session<input id="note-session" maxlength="100" value="notes"></label>
+            <button type="button" id="delete-session" class="danger quiet">Delete this session's sources</button>
+            <p class="muted">Deletion clears application source content and unsupported artifacts. It does not certify physical erasure from disk, model memory, or backups.</p>
+          </details>
+          <button id="wake" class="primary full" type="submit">Add note + extract with Qwen</button>
+        </form>
+        <div class="list-heading"><h3>Source episodes</h3><span id="source-summary" class="muted"></span></div>
+        <div id="sources" class="source-list"></div>
+      </section>
+      <section class="panel memory-panel" aria-labelledby="memory-heading">
+        <div class="section-heading"><span class="step">02 / CONSOLIDATE</span><h2 id="memory-heading">Inspect understanding</h2></div>
+        <p class="muted">Exact rule plans and model-generated hypotheses stay distinct. Lineage shows inputs, not a proof of semantic correctness.</p>
+        <div class="memory-controls">
+          <label class="checkbox"><input type="checkbox" id="show-inactive"> Show inactive history</label>
+          <span id="call-summary" class="muted">No model calls recorded</span>
+        </div>
+        <div id="warnings" class="warning-list"></div>
+        <h3 class="subheading">Model-extracted assertions - review required</h3><div id="facts" class="claim-list"></div>
+        <h3 class="subheading">Plans, summaries, and hypotheses</h3><div id="memories" class="claim-list"></div>
+        <details class="audit"><summary>What changed? Event trail</summary><div id="events"></div></details>
+      </section>
+      <section class="panel ask-panel" aria-labelledby="ask-heading">
+        <div class="section-heading"><span class="step">03 / USE &amp; REVISE</span><h2 id="ask-heading">Ask from current evidence</h2></div>
+        <form id="ask-form">
+          <label>Evidence mode<select id="answer-mode">
+            <option value="repaired">Current facts + usable derived memories</option>
+            <option value="awake">Current facts only</option>
+            <option value="raw">Raw source notes (comparison baseline)</option>
+          </select></label>
+          <label>Question<textarea id="question" rows="2" maxlength="1000" required></textarea></label>
+          <button id="ask" type="submit" class="primary">Ask local Qwen</button>
+        </form>
+        <div id="answer" class="answer" aria-live="polite"><p class="muted">Answers use fresh context. Previous answers are not fed back as new evidence.</p></div>
+      </section>
+    </div>
+    <footer><strong>Google-inspired scheduling, not Google Sleep training.</strong> This app consolidates external memory with local Qwen.
+      It does not implement Knowledge Seeding, parameter expansion, or reinforcement-learning dreaming.</footer>
+  </main>
+</body>
+</html>

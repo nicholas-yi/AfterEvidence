@@ -1,0 +1,19 @@
+{
+  "benchmark": "tau2-bench",
+  "repository": "https://github.com/sierra-research/tau2-bench",
+  "commit": "c06b07dd7c4d4ec61ba6ff9bcdf0b15dd7ef36d4",
+  "copilot_sdk_repository": "https://github.com/github/copilot-sdk",
+  "copilot_sdk_commit": "ed814e4134fdba86e2e88b82dcac85b1c125ed8a",
+  "copilot_runtime_version": "1.0.111-0",
+  "code_license": "MIT",
+  "license_path": "vendor/tau2-bench/LICENSE",
+  "domain": "retail",
+  "candidate_native_split": "train",
+  "main_split_status": "not-selected; do not inspect test outcomes during development",
+  "study_status": "feasibility; not preregistered or a leaderboard submission",
+  "external_spend_limit_usd": 0,
+  "local_model": "qwen3.5:4b",
+  "copilot_micro_model": "claude-haiku-5.5",
+  "copilot_micro_request_limit": 3,
+  "local_model_digest": "d8b0f5e9760cd1682034f292d7ef72ec46f432149be0df7574bf2d6e92e38c04"
+}
