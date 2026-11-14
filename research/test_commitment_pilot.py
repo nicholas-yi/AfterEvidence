@@ -780,7 +780,9 @@ class EvalResumeDryPassTests(unittest.TestCase):
         self.assertEqual(setup["manifest_sha256"], stored["manifest_sha256"])
         with tempfile.TemporaryDirectory() as tmp:
             run = Path(tmp) / EVAL_STAGE
-            shutil.copytree(REAL_EVAL, run, ignore=shutil.ignore_patterns("isolated-copilot"))
+            run.mkdir()
+            for name in record["artifacts"]:  # exactly the recorded pre-resume state
+                shutil.copy2(REAL_EVAL / name, run / name)
             inputs = frozen_inputs(run, "cmp-eval-", exclude=True)
             self.assertEqual(len(inputs), 32)  # exclusion: every family committed
 

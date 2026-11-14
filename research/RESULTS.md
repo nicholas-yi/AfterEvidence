@@ -13,6 +13,44 @@ account data, and provider state. Earlier feasibility work is under
 [Development history](#development-history). Environment: unmodified
 MIT-licensed tau2-bench retail at `c06b07dd7c4d4ec61ba6ff9bcdf0b15dd7ef36d4`.
 
+## Necessary-memory evaluation
+
+Protocol: [design](DESIGN.md#necessary-memory-evaluation-v1-pre-specified-before-tag-commitment-eval-v1),
+tag `commitment-eval-v1`, amended once (`commitment-eval-v1-amend1`) for a file-discovery fix found
+after session 1 and before any memory comparison. 32 fresh synthetic customers each agreed an exact
+exchange item in session 1 (32/32), then in session 2 asked the agent to "go ahead with the exchange
+we agreed last time" without restating it. **Partial run:** the pre-specified rule (a second service
+timeout on one session, E19-Ho) stopped it after 125 of 160 planned session-2 sessions; paired tests
+use families where both arms ran.
+
+| Arm | Successes / n | Wilson 95% | Compared with | Wins / losses (pairs) | p (Holm) | Credits / session |
+|---|---|---|---|---|---|---|
+| N: no memory | 0 / 28 | 0.00-0.12 | — | — | — | 1.38 |
+| Hn: transcript, neutral header | 26 / 26 | 0.87-1.00 | N (primary) | 22 / 0 (22) | 4.8 × 10⁻⁷ | 0.84 |
+| Hc: transcript, v1 caution header | 23 / 24 | 0.80-0.99 | Hn | 0 / 1 (18) | 1.0 (1.0) | 0.83 |
+| M: Mem0 | 24 / 24 | 0.86-1.00 | Hn | 0 / 0 (20) | 1.0 (1.0) | 0.86 |
+| Ho: Honcho | 19 / 23 | 0.63-0.93 | Hn | 0 / 3 (18) | 0.25 (0.75) | 0.93 |
+
+Credits per session are actor episodes only; ingestion and retrieval added 2.53 (Mem0) and 8.99
+(Honcho) credits for 32 families.
+
+- When the only record of an agreement is the earlier conversation, giving it to the agent is
+  decisive: 0/28 without it, 26/26 with it (22-0 paired). This confirms the task needs memory; it
+  is not a surprising effect, since without memory the agent can only guess.
+- The v1 caution header did not stop agents acting on a remembered agreement (23/24; the one
+  failure was a malformed tool call).
+- Mem0 matched the transcript (24/24). Honcho was lower (19/23; 3 paired losses, Holm p 0.75, not
+  significant). Its answers carried the exact item ID in 11 of 23 sessions (Mem0 20 of 24); when the
+  ID was missing, agents recovered it from the catalogue in 9 of 12 (Mem0 4 of 4). Honcho's 4
+  failures: twice the agent declined to act on the retrieved notes, one malformed tool call, and
+  E19's two timeouts (a failure under the pre-specified rule).
+- No secondary difference is significant; as pre-specified, only large losses were detectable, so
+  these are not equivalence results. No wrong-variant or unauthorized exchange in any arm; zero
+  target leakage.
+- Data: [per-session CSV](data/commitment-eval-v1-episodes.csv) (no transcripts, names or memory
+  text); `python -m research.commitment_analysis --csv research/data/commitment-eval-v1-episodes.csv`;
+  CI test `research.test_commitment_csv`.
+
 ## Memory study v1
 
 Protocol: [PROTOCOL-MEMORY.md](PROTOCOL-MEMORY.md), committed and tagged
@@ -240,9 +278,8 @@ reporting. Open:
    approval; 155 requests, 17.50 credits) passed every gate on 4 dev families:
    Hn 4/4, Hc 4/4, R 4/4, N 0/4, zero leakage. v5 (Mem0 and Honcho given the
    same dialogue; 81 requests, 8.13 credits) passed its integration gate; both
-   completed 4/4. Feasibility pilots, not effect estimates. The tagged evaluation
-   (`commitment-eval-v1`) stopped after session 1 (32/32 commitments; 186
-   requests, 19.05 credits) on a harness-logic defect; no arm comparison exists ([design](DESIGN.md#follow-up-necessary-memory-pilots-and-evaluation)).
+   completed 4/4. The tagged 32-family evaluation then ran (partial, 125 of 160
+   session-2 sessions): see [Necessary-memory evaluation](#necessary-memory-evaluation) ([design](DESIGN.md#follow-up-necessary-memory-pilots-and-evaluation)).
 
 The software tests check memory mechanics, not that an agent learned useful
 lessons. No Google-style parameter expansion, Knowledge Seeding, or RL dreaming

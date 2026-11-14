@@ -255,6 +255,8 @@ credits.
   0.40, Honcho shim 18 / 1.25; max single call 0.20). Cumulative: **13,161
   requests**, about **1,497.95 credits** recorded.
 - Necessary-memory evaluation v1 (owner approval: 2,816 requests / 310-credit
-  stop; tag `commitment-eval-v1`; stopped after session 1 on a harness defect):
-  **186 requests**, all billed, **19.05 AI credits**; no provider calls.
-  Cumulative: **13,347 requests**, about **1,517.00 credits** recorded.
+  stop; tags `commitment-eval-v1` and `-amend1`; partial, stopped by a second
+  timeout): **1,365 requests** (session 1 186, session 2 1,036, Mem0 shim 32,
+  Honcho shim 111), **152.99 AI credits** recorded, 155.99 charged with 3 aborts
+  at 1.0 (max single call 0.20). Cumulative: **14,526 requests**, about
+  **1,650.94 credits** recorded.

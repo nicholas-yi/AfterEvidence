@@ -96,13 +96,14 @@ The sleep-style condition borrows the memory-level idea of replay, reweighting a
 [Language Models Need Sleep](https://arxiv.org/abs/2606.03979). That paper also trains model
 weights, which a hosted model cannot do, so only the memory-level idea is tested.
 
-### Three studies
+### Four studies
 
 | Study | Question | Design |
 |---|---|---|
 | **1. Other customers** | Does memory of earlier, different customers help on new tasks? | 9 conditions × 26 test tasks × 2 runs = 468 episodes |
 | **2. Same customer** | Does memory of a customer's earlier sessions help their later ones? | 16 customers, 22 later sessions × 4 conditions; the database resets between sessions, so remembered facts can be stale |
 | **3. Deletion** | After deleting one conversation, is everything derived from it gone, and is everything else intact? | 3 conversations per system; delete one through the system's own API, then probe |
+| **4. Remembering an agreement** | When a task is impossible without memory, does memory let the agent finish it? | 32 customers; an agreement in one conversation, "go ahead" in the next; 5 conditions |
 
 ### An analysis fixed before the data
 
@@ -189,6 +190,28 @@ exact identifiers only, not paraphrased or derived facts, so it shows deletion w
 surface, not that the information is fully erased. Lessons that track how many episodes support
 them degrade gracefully when one source is withdrawn; lessons that depend on every source collapse.
 
+### Study 4: remembering an agreement
+
+Some tasks cannot be done without memory. 32 synthetic customers each agreed an exact replacement
+item with the agent, then came back in a new conversation and said only "please go ahead with the
+exchange we agreed last time".
+
+| What the agent was given | Completed the agreed exchange |
+|---|---:|
+| Nothing | 0 of 28 |
+| The earlier conversation | 26 of 26 |
+| The earlier conversation, under a "verify current facts" caution | 23 of 24 |
+| Mem0's memory of it | 24 of 24 |
+| Honcho's memory of it | 19 of 23 |
+
+Without memory the agent can only guess, so the first two rows confirm that the task needs memory
+(all 22 customers with both conditions flipped from failure to success). Mem0's memory kept the exact
+item ID in 20 of 24 conversations and Honcho's in 11 of 23. Agents often recovered a missing ID from
+the product catalogue, but twice the agent declined to act on Honcho's notes. The differences between
+memory designs are not statistically significant at this size. 125 of 160 planned conversations ran;
+the run stopped early after a repeated service timeout. Data:
+[per-conversation CSV](research/data/commitment-eval-v1-episodes.csv).
+
 ### Takeaways
 
 - **Measure memory on actions, not answers.** The revealing failures (wrong order, stale address)
@@ -197,20 +220,25 @@ them degrade gracefully when one source is withdrawn; lessons that depend on eve
   ten times as many paired episodes as this study used.
 - **Stale memory is the sharper risk.** A memory system that does not know when a fact has expired
   can turn a correct agent into an incorrect one.
+- **When a task depends on memory, memory decides it, and summaries can drop what matters.** Given the
+  earlier conversation word for word, agents honoured the agreement 49 of 50 times (the miss was a
+  malformed tool call); a summarized memory sometimes lost the exact item number.
 - **Deletion needs provenance.** Systems can only forget cleanly if they record where each memory
   came from.
 
 ## Verify the numbers
 
-Every Study 1 and Study 2 table and both figures are recomputed from a public per-episode table,
-[memory-study-v1-episodes.csv](research/data/memory-study-v1-episodes.csv), which contains no
+Every Study 1, 2 and 4 table and both figures are recomputed from public per-episode tables,
+[memory-study-v1-episodes.csv](research/data/memory-study-v1-episodes.csv) and
+[commitment-eval-v1-episodes.csv](research/data/commitment-eval-v1-episodes.csv), which contain no
 transcripts, prompts, customer names or account data. CI fails if a published number or figure
 stops matching it:
 
 ```powershell
 python -m research.memory_analysis --csv research/data/memory-study-v1-episodes.csv
 python -m research.figures --check
-python -m unittest research.test_memory_csv -v
+python -m research.commitment_analysis --csv research/data/commitment-eval-v1-episodes.csv
+python -m unittest research.test_memory_csv research.test_commitment_csv -v
 ```
 
 Rerunning the episodes needs the pinned benchmark, Copilot access and a request budget; see the
@@ -248,7 +276,7 @@ python -m afterevidence serve
 | Question | Status |
 |---|---|
 | Does labelling memories with when they were written, and whether they were later corrected, stop an agent from acting on stale ones? | A first small synthetic run could not separate the conditions: the agent checked the live account every time, ignoring stale and valid memories alike. No comparison result. |
-| When a task cannot be done without remembering an earlier agreement, does memory of that conversation let the agent finish it, and does a cautionary memory header hold it back? | In a 4-customer pilot, agents given the earlier conversation completed the agreed exchange in 8 of 8 sessions, with either memory header; without it, as designed, none could (0 of 4). Agents given Mem0's or Honcho's memory of that conversation also completed 4 of 4 each. A pilot this small shows the setup works; it is not an effect estimate. |
+| When a customer changes their mind between conversations, does memory make the agent act on the latest agreement rather than the stale one? | Designed, not yet run. |
 | Do agents that query memory step by step, rather than once up front, benefit more? | Not yet tested. |
 
 Designs: [research design](research/DESIGN.md).

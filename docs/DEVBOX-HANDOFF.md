@@ -23,7 +23,7 @@ For an existing checkout, inspect local changes first and use
 | Memory study v1 | Tag `memory-study-v1`; Studies 1-3 complete; **null result** for task success, not equivalence ([results](../research/RESULTS.md#memory-study-v1)); test-split outcomes spent |
 | Public evidence | Per-episode [CSV](../research/data/memory-study-v1-episodes.csv) reproduces every Study 1/2 table; CI test `research.test_memory_csv` |
 | Staleness diagnostic | [Stage A](../research/DESIGN.md#follow-up-staleness-aware-memory-stage-a-run-stage-b-not-requested) run (36 dev episodes); floor check failed; Stage B not requested; no v2 tag |
-| Necessary-memory pilot | [Pilot v4](../research/DESIGN.md#follow-up-necessary-memory-pilots-and-evaluation) passed all gates (Hn 4/4, Hc 4/4, R 4/4, N 0/4) after v1-v3 stopped on harness defects or a timeout; v5 (Mem0, Honcho) passed its integration gate (4/4 each). Evaluation `commitment-eval-v1` stopped after session 1 (harness defect, fixed post-tag as a recorded deviation); resuming needs an owner decision |
+| Necessary-memory pilot | [Pilot v4](../research/DESIGN.md#follow-up-necessary-memory-pilots-and-evaluation) passed all gates (Hn 4/4, Hc 4/4, R 4/4, N 0/4) after v1-v3 stopped on harness defects or a timeout; v5 (Mem0, Honcho) passed its integration gate (4/4 each). [Evaluation](../research/RESULTS.md#necessary-memory-evaluation) `commitment-eval-v1` (+ `-amend1`) ran partially (125 of 160 session-2 sessions; stopped by a second timeout): Hn 26/26 vs N 0/28; M 24/24, Ho 19/23, Hc 23/24 |
 | Simulator review | No human review yet. Private worksheets and CSV indexes for all 602 memory-study episodes, with a proposed default sample, in `research/runs/memory-study/review/` |
 | Memory-study stack | Docker (Neo4j, Hindsight, Honcho), Ollama embeddings, provider venv, shims, and gateway on the devbox, stopped with data retained ([runbook](../research/MEMORY-STUDY.md)) |
 | Devbox environment | Exact 81-entry lock reproduced; offline checks pass |
@@ -32,8 +32,8 @@ For an existing checkout, inspect local changes first and use
 Usage: devbox cohort 162 of 360 approved requests / 16.05978 credits; memory
 study 12,428 of 16,000 started / 1,425.05 recorded credits (8 aborted requests
 unbilled); staleness Stage A 74 of 144 / 1.07 credits; necessary-memory pilots
-v1-v3 203 of 240 / 24.11 credits (one unbilled), v4 155 of 264 / 17.50 credits; v5 81 of 160 / 8.13 credits (incl. provider shims); evaluation 186 of 2,816 / 19.05.
-Cumulative about **13,347 requests / 1,517.00 credits** (about $15.17),
+v1-v3 203 of 240 / 24.11 credits (one unbilled), v4 155 of 264 / 17.50 credits; v5 81 of 160 / 8.13 credits (incl. provider shims); evaluation 1,365 of 2,816 / 152.99 (155.99 charged).
+Cumulative about **14,526 requests / 1,650.94 credits** (about $16.51),
 allowance measurements,
 not invoices. Unused allowance never authorizes new inference.
 
