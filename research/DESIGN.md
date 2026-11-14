@@ -248,3 +248,19 @@ text twice); Honcho's client retried and the retrieval succeeded. v1 Honcho
 workspaces and the v1 Mem0 store were unchanged (read-only counts and file hashes
 before and after). Spend: 81 of 160 requests (episodes 59, Mem0 4, Honcho 18),
 8.13 of 25 credits (max call 0.20). Descriptive only; no efficacy claim.
+
+### Necessary-memory evaluation v1 (pre-specified before tag `commitment-eval-v1`)
+
+| Element | Pre-specified |
+|---|---|
+| Approval | Owner, 2026-11-14 ~03:40 ET: one evaluation; hard cap 2,816 requests (episodes ≤ 2,304; Mem0 shim ≤ 112; Honcho shim ≤ 400); settled-credit stop 310 (journaled aborts charged 1.0); a single call > 1 credit or an un-journaled mismatch stops; infrastructure policy unchanged |
+| Families | 32 fresh, generated only after the tag: seed = int(first 8 hex of SHA-256(tag commit SHA)), namespace `AE-COMMIT-EVAL-v1-<seed>`. Templates: train-only products (≥ 5 in stock, an ID in a train task, no product ID, item ID or name in any test task; 10 products, which drops the pilots' Pet Bed). Target position 0-3 balanced 8/8/8/8; names and IDs disjoint from the DB and C1-C4; reference exchanges validated offline; manifest hash in `plan.json` |
+| Sessions | Session 1 per family → exclusion → ingestion (fresh scopes: Mem0 store under `eval-v1`, `user_id` `cmp-eval-<family>`; Honcho workspace `commitment-eval-v1`, queue drained) → one retrieval per provider arm → session-2 arms N, Hc, Hn, M, Ho in a seeded shuffled order recorded in `plan.json`. Harness as v4/v5; sources frozen at the tag (the runner refuses if any differ) |
+| Unit; exclusion | Family. No explicit session-1 commitment → excluded from every arm, reported, not replaced |
+| Outcome | Oracle success as in the pilots; any other status (contract failure, cap, incomplete) is a failure |
+| Primary | Hn vs N, family-paired exact McNemar, two-sided α = 0.05 |
+| Secondaries | M vs Hn, Ho vs Hn, Hc vs Hn; exact McNemar, Holm-adjusted across the three |
+| Failure handling | One fresh re-attempt after an infrastructure failure; a second is a fatal stop. Ingestion error: recorded, retrieval proceeds; retrieval error: that session runs without memory and counts. A cap, credit or shim stop, leakage, or a harness-logic defect stops the run with no fix-and-continue; partial results are reported as partial |
+| Power | Ceiling effects are expected: Hc, Hn, M and Ho were 4/4 in the pilots. A Holm-significant secondary needs ≥ 7 discordant families all in one direction, so secondaries detect only large losses and a non-significant secondary is not evidence of equivalence. The primary is expected to be large: N can succeed only by guessing an ID (≤ 1 in 4) |
+| Descriptive | Wilson 95% intervals; retrieved-ID and option booleans; proposals before consent; lookups; requests and credits per session; whether the agent recovered when provider memory lacked the ID |
+| Analysis | [commitment_analysis.py](commitment_analysis.py) only; public per-session CSV without transcripts, names or memory text |

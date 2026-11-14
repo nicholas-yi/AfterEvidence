@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections import Counter
 import hashlib
 import json
 import tempfile
@@ -9,6 +10,11 @@ from pathlib import Path
 from typing import Any
 
 from research.commitment_pilot import (
+    EVAL_STAGE,
+    PROVIDER_STAGES,
+    eval_seed,
+    tag_state,
+    template_pool,
     HONCHO_WORKSPACE,
     OPENING,
     PROVIDER_ARMS,
@@ -615,6 +621,128 @@ class ProviderPilotTests(unittest.TestCase):
                 json.dumps({"provider": "honcho", "error": "OSError: x"}), encoding="utf-8"
             )
             self.assertEqual(provider_gates(root, reports)["verdict"], "FAIL")
+
+
+class EvaluationTests(unittest.TestCase):
+    """Evaluation stage (tag commitment-eval-v1): generation, exclusion, caps, analysis."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.eval_setup = prepare(seed=eval_seed("0" * 40))
+
+    def test_seed_rule_pool_and_fresh_scopes(self) -> None:
+        self.assertEqual(eval_seed("abc"), int(hashlib.sha256(b"abc").hexdigest()[:8], 16))
+        self.assertIsNone(tag_state("no-such-tag-for-tests"))
+
+        def product(name: str, base: int, available: int = 5) -> dict[str, Any]:
+            return {
+                "name": name,
+                "variants": {str(base + i): {"available": i < available} for i in range(5)},
+            }
+
+        db = {
+            "products": {
+                "1000000001": product("Lamp", 1100000000),
+                "1000000002": product("Desk", 1200000000),
+                "1000000003": product("Rug", 1300000000, 3),
+                "1000000004": product("Pet Bed", 1400000000),
+            }
+        }
+        tasks = {
+            "a": "train 1100000000 1200000000 1300000000 1400000000",
+            "b": "test 1200000001",
+            "c": "test mentions a pet bed",
+        }
+        self.assertEqual(
+            template_pool(db, tasks, {"train": ["a"], "test": ["b", "c"]}), ["1000000001"]
+        )
+        cfg = PROVIDER_STAGES[EVAL_STAGE]
+        self.assertEqual((provider_scope("E01", cfg["prefix"]), cfg["workspace"]),
+                         ("customer:cmp-eval-E01", "commitment-eval-v1"))  # fmt: skip
+        self.assertEqual(sum(cfg["shim_caps"].values()) + cfg["episode_cap"], 2816)
+
+    def test_thirty_two_balanced_fresh_families(self) -> None:
+        families = list(self.eval_setup["families"].values())
+        self.assertEqual(len(families), 32)
+        self.assertEqual(Counter(f["target_position"] for f in families), {0: 8, 1: 8, 2: 8, 3: 8})
+        self.assertTrue({f["product_id"] for f in families} <= set(self.eval_setup["pool"]))
+        self.assertNotIn(
+            "2747247837", self.eval_setup["pool"]
+        )  # Pet Bed's name appears in test tasks
+        dev = {
+            x
+            for f in SETUP["families"].values()
+            for x in (f["user_id"], f["order_id"], f["payment_id"])
+        }
+        self.assertFalse(
+            dev & {x for f in families for x in (f["user_id"], f["order_id"], f["payment_id"])}
+        )
+        self.assertEqual(len(self.eval_setup["tasks"]), 32)  # every reference exchange validated
+        self.assertEqual(
+            prepare(seed=eval_seed("0" * 40))["manifest_sha256"], self.eval_setup["manifest_sha256"]
+        )
+
+    def test_exclusion_rule_and_episode_cap(self) -> None:
+        family = sorted(self.eval_setup["families"])[0]
+        with tempfile.TemporaryDirectory() as tmp:
+            jobs = [{"session": 1, "family": family, "arm": "S1"}]
+            silent = lambda journal: FakeBackend([act(text="Hello.")] * 12)  # noqa: E731
+            outcome = asyncio.run(run_jobs(self.eval_setup, Path(tmp), jobs, silent, [Path(tmp)],
+                                           2816, 310.0, 2304, exclude_uncommitted=True))  # fmt: skip
+            self.assertEqual(outcome["refused"], [])
+            self.assertEqual(frozen_inputs(Path(tmp), "cmp-eval-", exclude=True), {})
+            with self.assertRaises(FatalStop):
+                frozen_inputs(Path(tmp), "cmp-eval-", [family])
+            shim_journal(Path(tmp), "honcho", 400, *[e for i in range(1, 21) for e in
+                         ({"event": "copilot-request-started", "call_id": i}, billed(i))])  # fmt: skip
+            self.assertEqual(
+                start_refusals([Path(tmp)], 2816, 310.0, 24), []
+            )  # shims not in episode cap
+            self.assertTrue(
+                start_refusals([Path(tmp)], 2816, 310.0, 11)
+            )  # 0 episode requests + 12 > 11
+            self.assertTrue(
+                start_refusals([Path(tmp)], 31, 310.0, 2304)
+            )  # 20 shim requests + 12 > 31
+
+    def test_prespecified_analysis(self) -> None:
+        from research.commitment_analysis import analyse
+
+        def row(family: str, arm: str, ok: bool, **memory: Any) -> dict[str, Any]:
+            return {"family": family, "session": 2, "arm": arm, "success": ok, "commitment": "",
+                    "credits": 0.5, "requests": 6, "lookups": 3, "proposals_before_consent": 1,
+                    "wrong_variant_attempts": 0, "unauthorized_attempts": 0, "leakage": False,
+                    "memory_error": memory.get("error", ""), "memory_has_target_id": memory.get("has_id", ""),
+                    "memory_has_target_options": ""}  # fmt: skip
+
+        rows: list[dict[str, Any]] = []
+        for i in range(10):
+            f = f"E{i:02d}"
+            rows.append(
+                {
+                    "family": f,
+                    "session": 1,
+                    "arm": "S1",
+                    "commitment": i < 9,
+                    "credits": 0.6,
+                    "requests": 6,
+                }
+            )
+            rows += [row(f, "N", i == 0), row(f, "Hn", True), row(f, "Hc", i != 1),
+                     row(f, "M", i != 2, has_id=i != 3), row(f, "Ho", i < 6, error=i == 8, has_id=i < 4)]  # fmt: skip
+        result = analyse(rows, planned_families=10)
+        self.assertEqual(
+            (result["included"], result["excluded"], result["complete"]), (9, ["E09"], True)
+        )
+        self.assertEqual(result["arms"]["N"]["successes"], 1)
+        self.assertEqual({k: result["primary"][k] for k in ("wins", "losses", "p")},
+                         {"wins": 8, "losses": 0, "p": round(2 / 2**8, 4)})  # fmt: skip
+        sec = result["secondaries"]
+        self.assertEqual((sec["Ho vs Hn"]["losses"], sec["Ho vs Hn"]["p"]), (3, 0.25))
+        self.assertEqual(sec["Ho vs Hn"]["p_holm"], 0.75)
+        self.assertEqual(result["provider_memory"]["M"]["lacking_id_recovered"], [1, 1])
+        self.assertEqual(result["provider_memory"]["Ho"]["lacking_id_recovered"], [2, 4])
+        self.assertEqual(result["provider_memory"]["Ho"]["retrieval_errors"], 1)
 
 
 if __name__ == "__main__":
