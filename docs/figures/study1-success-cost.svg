@@ -1,0 +1,87 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="880" height="436" viewBox="0 0 880 436" font-family="sans-serif" font-size="13">
+<rect width="880" height="436" fill="white"/>
+<text x="440.0" y="24" text-anchor="middle" font-size="16">Study 1: memory from other customers (26 test tasks x 2 runs)</text>
+<text x="285.0" y="52" text-anchor="middle">Task success rate (95% interval)</text>
+<text x="675.0" y="52" text-anchor="middle">AI credits per episode</text>
+<line x1="120.0" y1="62" x2="120.0" y2="376" stroke="#eee"/>
+<text x="120.0" y="394" text-anchor="middle">0.0</text>
+<line x1="186.0" y1="62" x2="186.0" y2="376" stroke="#eee"/>
+<text x="186.0" y="394" text-anchor="middle">0.2</text>
+<line x1="252.0" y1="62" x2="252.0" y2="376" stroke="#eee"/>
+<text x="252.0" y="394" text-anchor="middle">0.4</text>
+<line x1="318.0" y1="62" x2="318.0" y2="376" stroke="#eee"/>
+<text x="318.0" y="394" text-anchor="middle">0.6</text>
+<line x1="384.0" y1="62" x2="384.0" y2="376" stroke="#eee"/>
+<text x="384.0" y="394" text-anchor="middle">0.8</text>
+<line x1="450.0" y1="62" x2="450.0" y2="376" stroke="#eee"/>
+<text x="450.0" y="394" text-anchor="middle">1.0</text>
+<line x1="510.0" y1="62" x2="510.0" y2="376" stroke="#eee"/>
+<text x="510.0" y="394" text-anchor="middle">0.0</text>
+<line x1="592.5" y1="62" x2="592.5" y2="376" stroke="#eee"/>
+<text x="592.5" y="394" text-anchor="middle">0.7</text>
+<line x1="675.0" y1="62" x2="675.0" y2="376" stroke="#eee"/>
+<text x="675.0" y="394" text-anchor="middle">1.3</text>
+<line x1="757.5" y1="62" x2="757.5" y2="376" stroke="#eee"/>
+<text x="757.5" y="394" text-anchor="middle">2.0</text>
+<line x1="840.0" y1="62" x2="840.0" y2="376" stroke="#eee"/>
+<text x="840.0" y="394" text-anchor="middle">2.7</text>
+<line x1="367.5" y1="62" x2="367.5" y2="376" stroke="#888" stroke-dasharray="4 3"/>
+<text x="110" y="91.0" text-anchor="end">none</text>
+<line x1="323.94" y1="87.0" x2="399.84" y2="87.0" stroke="#666" stroke-width="2"/>
+<circle cx="367.5" cy="87.0" r="5" fill="#666"/>
+<text x="405.84" y="91.0" font-size="11">39/52</text>
+<rect x="510" y="79.0" width="248.62456655239032" height="16" fill="#666" opacity="0.8"/>
+<text x="764.6245665523903" y="91.0" font-size="11">2.02</text>
+<text x="110" y="125.0" text-anchor="end">raw</text>
+<line x1="337.8" y1="121.0" x2="409.74" y2="121.0" stroke="#1f6feb" stroke-width="2"/>
+<circle cx="380.04" cy="121.0" r="5" fill="#1f6feb"/>
+<text x="415.74" y="125.0" font-size="11">41/52</text>
+<rect x="510" y="113.0" width="275.699693441368" height="16" fill="#1f6feb" opacity="0.8"/>
+<text x="791.699693441368" y="125.0" font-size="11">2.25</text>
+<text x="110" y="159.0" text-anchor="end">consolidated</text>
+<line x1="337.8" y1="155.0" x2="409.74" y2="155.0" stroke="#1f6feb" stroke-width="2"/>
+<circle cx="380.04" cy="155.0" r="5" fill="#1f6feb"/>
+<text x="415.74" y="159.0" font-size="11">41/52</text>
+<rect x="510" y="147.0" width="279.2114786070133" height="16" fill="#1f6feb" opacity="0.8"/>
+<text x="795.2114786070133" y="159.0" font-size="11">2.27</text>
+<text x="110" y="193.0" text-anchor="end">sleep</text>
+<line x1="344.73" y1="189.0" x2="414.36" y2="189.0" stroke="#1f6feb" stroke-width="2"/>
+<circle cx="386.64000000000004" cy="189.0" r="5" fill="#1f6feb"/>
+<text x="420.36" y="193.0" font-size="11">42/52</text>
+<rect x="510" y="181.0" width="258.7178791613426" height="16" fill="#1f6feb" opacity="0.8"/>
+<text x="774.7178791613426" y="193.0" font-size="11">2.11</text>
+<text x="110" y="227.0" text-anchor="end">workflows</text>
+<line x1="351.99" y1="223.0" x2="418.98" y2="223.0" stroke="#1f6feb" stroke-width="2"/>
+<circle cx="392.90999999999997" cy="223.0" r="5" fill="#1f6feb"/>
+<text x="424.98" y="227.0" font-size="11">43/52</text>
+<rect x="510" y="215.0" width="242.2763395221856" height="16" fill="#1f6feb" opacity="0.8"/>
+<text x="758.2763395221856" y="227.0" font-size="11">1.97</text>
+<text x="110" y="261.0" text-anchor="end">mem0</text>
+<line x1="351.99" y1="257.0" x2="418.98" y2="257.0" stroke="#1f6feb" stroke-width="2"/>
+<circle cx="392.90999999999997" cy="257.0" r="5" fill="#1f6feb"/>
+<text x="424.98" y="261.0" font-size="11">43/52</text>
+<rect x="510" y="249.0" width="251.75570367560545" height="16" fill="#1f6feb" opacity="0.8"/>
+<text x="767.7557036756054" y="261.0" font-size="11">2.05</text>
+<text x="110" y="295.0" text-anchor="end">graphiti</text>
+<line x1="344.73" y1="291.0" x2="414.36" y2="291.0" stroke="#1f6feb" stroke-width="2"/>
+<circle cx="386.64000000000004" cy="291.0" r="5" fill="#1f6feb"/>
+<text x="420.36" y="295.0" font-size="11">42/52</text>
+<rect x="510" y="283.0" width="266.45362970105055" height="16" fill="#1f6feb" opacity="0.8"/>
+<text x="782.4536297010505" y="295.0" font-size="11">2.17</text>
+<text x="110" y="329.0" text-anchor="end">hindsight</text>
+<line x1="317.01" y1="325.0" x2="394.56" y2="325.0" stroke="#1f6feb" stroke-width="2"/>
+<circle cx="361.23" cy="325.0" r="5" fill="#1f6feb"/>
+<text x="400.56" y="329.0" font-size="11">38/52</text>
+<rect x="510" y="317.0" width="261.46836824212755" height="16" fill="#1f6feb" opacity="0.8"/>
+<rect x="771.4683682421276" y="317.0" width="38.53163175787245" height="16" fill="#f0883e"/>
+<text x="816.0" y="329.0" font-size="11">2.44</text>
+<text x="110" y="363.0" text-anchor="end">honcho</text>
+<line x1="337.8" y1="359.0" x2="409.74" y2="359.0" stroke="#1f6feb" stroke-width="2"/>
+<circle cx="380.04" cy="359.0" r="5" fill="#1f6feb"/>
+<text x="415.74" y="363.0" font-size="11">41/52</text>
+<rect x="510" y="351.0" width="255.52534719257426" height="16" fill="#1f6feb" opacity="0.8"/>
+<rect x="765.5253471925743" y="351.0" width="20.780571941157632" height="16" fill="#f0883e"/>
+<text x="792.3059191337319" y="363.0" font-size="11">2.25</text>
+<text x="120" y="422" font-size="11">dashed line: no-memory rate</text>
+<text x="510" y="422" font-size="11">blue: actor + simulator; orange: provider retrieval</text>
+</svg>

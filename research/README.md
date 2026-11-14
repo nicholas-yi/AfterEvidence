@@ -42,10 +42,19 @@ lessons after evidence changes.
   judge-free development baseline, not an accuracy or memory-efficacy result.
 - Reference preflight now allows only scripted, non-mutating failed lookups
   (policy v2); unscripted and business-rule failures are still rejected.
+- **Memory study v1** ([protocol](PROTOCOL-MEMORY.md), [results](RESULTS.md#memory-study-v1)):
+  nine memory conditions (none; raw transcripts; one-pass lessons; a sleep-style
+  replay/reweight/prune analogue; induced workflows; Mem0; Graphiti; Hindsight;
+  Honcho) on 26 test tasks × 2 runs showed **no detectable effect on task
+  success** (75% without memory vs 73-83% with; all Holm p = 1.0). Same-customer
+  memory was slightly worse than none (not significant), with a clear loss from
+  stale remembered facts. All four providers removed data derived from a deleted
+  conversation. Total 12,428 requests, 1,425.05 AI credits.
 - The source-aware retrieval/accounting/isolation/action-parser tests pass.
 
-No main experiment or four-condition efficacy result exists yet. Do not treat
-the application examples or software invariants as agent-learning evidence.
+No four-condition result from the original design exists; the memory study
+replaced it. Do not treat the application examples or software invariants as
+agent-learning evidence.
 
 ## Files and commands
 
@@ -58,6 +67,12 @@ the application examples or software invariants as agent-learning evidence.
 - [Native scorer preflight and assessment](native_scoring.py).
 - [Zero-inference task/customer overlap and reference-ID audit](task_audit.py).
 - [Zero-inference simulator-calibration worksheets](simulator_review.py).
+- Memory study: [protocol](PROTOCOL-MEMORY.md), [runbook](MEMORY-STUDY.md),
+  [Copilot shim](copilot_shim.py), [provider gateway](memory_gateway.py),
+  [memory builders](memory_bank.py), [retrievers](memory_retrievers.py),
+  [runner](study_runner.py), [Study 1](study1.py), [Study 2](study2.py),
+  [Study 3](lifecycle.py), [analysis](memory_analysis.py) and
+  [Study 2 analysis](study2_analysis.py), [providers lock](providers.lock.txt).
 - [Native local-model feasibility driver](tau_pilot.py).
 - [Three-request SDK micro-pilot](copilot_micro.py).
 - [Full native-environment Copilot pilot driver](tau_copilot.py),
@@ -67,7 +82,7 @@ the application examples or software invariants as agent-learning evidence.
 From the project root:
 
 ```powershell
-python -m unittest research.test_memory_methods research.test_costing research.test_task_audit research.test_simulator_review -v
+python -m unittest research.test_memory_methods research.test_costing research.test_task_audit research.test_simulator_review research.test_memory_study -v
 .\research\.venv\Scripts\python.exe -m unittest research.test_copilot_backend research.test_tau_action research.test_native_scoring -v
 .\research\.venv\Scripts\python.exe -m pyright --project research\pyrightconfig.json
 .\research\.venv\Scripts\python.exe -m research.native_scoring --tasks 0 1 2

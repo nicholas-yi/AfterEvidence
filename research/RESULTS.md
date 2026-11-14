@@ -2,8 +2,10 @@
 
 ## What this report is
 
-A real-task feasibility and cost report, not a demo score, paper result,
-completed four-condition comparison, or retrospectively preregistered study.
+A real-task feasibility, cost, and memory-comparison report. The early sections
+are development feasibility work. The [memory study](#memory-study-v1) ran
+under a protocol committed and tagged before its test-split episodes. It is an
+exploratory single-model study, not a leaderboard submission or paper result.
 
 The original UI was not extended for this work. The research used the
 unmodified native retail environment and tools from MIT-licensed tau2-bench
@@ -387,6 +389,158 @@ simulator response was wrong.
 - Whether the 11 judge-needing test tasks are scored, and by which approved
   judge, must be fixed in the committed protocol before evaluation.
 
+## Memory study v1
+
+Protocol: [PROTOCOL-MEMORY.md](PROTOCOL-MEMORY.md), committed and tagged
+`memory-study-v1` (commit `de6edee`) before any test-split episode. Runbook:
+[MEMORY-STUDY.md](MEMORY-STUDY.md). One model (Copilot Claude Haiku 5.5) served
+as actor, user simulator, and every memory system's internal LLM.
+
+**Headline: no memory system, including the sleep-style condition, changed task
+success detectably.** In Study 1, point estimates ranged from 73% to 83% against
+75% without memory; every Holm-corrected p-value was 1.0. In Study 2, memory of
+the same customer's earlier sessions was, if anything, slightly worse than none
+(not significant), and the clearest losses came from stale remembered facts.
+All four providers removed what they derived from a deleted conversation.
+
+### Study 1: memory from other customers
+
+26 judge-free test tasks × 2 runs = 52 paired episodes per condition (468 total).
+Memory was built from 30 learning-pool episodes whose customers never appear in
+the test split.
+
+![Study 1 success and cost](../docs/figures/study1-success-cost.svg)
+
+| Condition | Successes / 52 | Rate (95% CI) | Wins / losses vs none | Holm p | Credits per episode |
+|---|---:|---|---:|---:|---:|
+| none | 39 | 0.750 (0.62-0.85) | - | - | 2.03 |
+| raw transcripts | 41 | 0.788 (0.66-0.88) | 6 / 4 | 1.0 | 2.25 |
+| consolidated (ExpeL-style) | 41 | 0.788 (0.66-0.88) | 7 / 5 | 1.0 | 2.27 |
+| sleep (replay + reweight + prune) | 42 | 0.808 (0.68-0.89) | 7 / 4 | 1.0 | 2.11 |
+| workflows (AWM-style) | 43 | 0.827 (0.70-0.91) | 8 / 4 | 1.0 | 1.97 |
+| Mem0 | 43 | 0.827 (0.70-0.91) | 9 / 5 | 1.0 | 2.05 |
+| Graphiti | 42 | 0.808 (0.68-0.89) | 7 / 4 | 1.0 | 2.17 |
+| Hindsight | 38 | 0.731 (0.60-0.83) | 6 / 7 | 1.0 | 2.13 + 0.31 retrieval |
+| Honcho | 41 | 0.788 (0.66-0.88) | 7 / 5 | 1.0 | 2.08 + 0.17 retrieval |
+
+- With 10-14 discordant pairs per comparison, only large differences were
+  detectable; for example, Mem0's 9 wins vs 5 losses gives p = 0.42 unadjusted.
+  The study cannot rule out small effects.
+- Excluding the five harness failures (see deviations) leaves every conclusion
+  unchanged; the largest shift is workflows at 0.860, p = 0.23 unadjusted.
+- Workflows was the cheapest condition per episode (17.9 requests on average
+  vs 18.6 without memory); the cost difference is also within noise.
+- Memory construction (one-off, 30 episodes): builder 2.26 credits for all four
+  internal conditions; ingestion Mem0 4.4, Honcho 12.9, Hindsight 30.4,
+  Graphiti 53.1 credits (each includes one scratch smoke-test ingestion).
+  Mem0 and Graphiti spend no model calls at retrieval; Hindsight and Honcho do.
+- Exploratory (not preregistered): memory from Mem0, Graphiti, Hindsight, and
+  raw transcripts carried other customers' order numbers (1.6-7.2 per episode),
+  yet no episode used another customer's identifier in a tool call. The only
+  matches (Honcho, task 17) were the customer's own order echoed back.
+
+#### Does Google's "sleep" help?
+
+[Language Models Need Sleep](https://arxiv.org/abs/2606.03979) consolidates
+knowledge into model weights (parameter expansion, Knowledge Seeding
+distillation, RL "dreaming"). None of that can run on a hosted model, so it was
+not reproduced. The `sleep` condition tests only its memory-level idea: replay
+episodes, merge similar lessons, weight them by how many distinct episodes
+support them, downscale to the strongest, and prune weak ones. Of 89 candidate
+lessons in 45 clusters, 4 survived.
+
+- Success: 42/52 vs 39/52 without memory (7 wins, 4 losses, Holm p = 1.0).
+  No detectable benefit, and no detectable difference from one-pass lessons.
+- It produced the shortest memory (1,555 characters vs 2,400 for raw) at a
+  build cost of about one request per episode.
+- Its per-lesson support counts make deletion graceful: withdrawing one source
+  episode left 4 of 4 sleep lessons with reduced support, whereas the
+  conservative one-pass lessons (all sources cited) lost 6 of 6 (Study 3).
+
+### Study 2: memory of the same customer
+
+16 customer families, 38 sessions; the 22 later sessions ran again with memory of
+that customer's earlier no-memory sessions. The database resets between sessions.
+
+![Study 2 success and cost](../docs/figures/study2-success-cost.svg)
+
+| Condition | Successes / 22 | Rate (95% CI) | Wins / losses vs none | Holm p |
+|---|---:|---|---:|---:|
+| none | 20 | 0.909 (0.72-0.98) | - | - |
+| session transcripts | 19 | 0.864 (0.67-0.95) | 1 / 2 | 1.0 |
+| Mem0 (per customer) | 18 | 0.818 (0.62-0.93) | 0 / 2 | 1.0 |
+| Honcho (customer peer) | 17 | 0.773 (0.57-0.90) | 1 / 4 | 1.0 |
+
+- The baseline was already near ceiling on later sessions, leaving little room
+  for memory to help. Losses outnumbered wins for every memory condition, but
+  none significantly.
+- **Stale memory caused a clear loss.** In task 110, Mem0 and Honcho both
+  recalled that the customer's address change was already done and her old
+  address was "no longer on file". In the reset database it was still on file,
+  and both agents changed the address on the wrong order. The no-memory agent
+  got it right.
+- Task 98 failed under all three memory conditions because a different payment
+  card was charged; none of the memory texts mentioned either card, so the
+  cause is unexplained.
+- Two Honcho episodes failed the action contract within three requests
+  (tasks 87 and 104); Study 2 counts them as failures, as preregistered.
+- The eight later sessions with NL assertions are scored on the database only.
+
+### Study 3: deleting a source conversation
+
+Three bank episodes from three customers were ingested into an isolated scope per
+provider; the first was deleted with each provider's own delete operation.
+
+| System | Deleted conversation's identifiers after delete | Other identifiers preserved |
+|---|---|---|
+| Mem0 (`delete_all` by run) | removed | 100% |
+| Graphiti (`remove_episode`) | removed | 100% |
+| Hindsight (delete document) | removed | 100% |
+| Honcho (delete session) | still visible immediately; removed on recheck minutes later | 100% |
+| Sleep lessons (support counts) | no identifiers by construction; 4/4 lessons kept with reduced support | - |
+| One-pass lessons (conservative provenance) | 0/6 lessons kept | - |
+
+Honcho's session delete is a documented cascading hard delete; the stale
+immediate read is likely cached (not verified). Mem0 needed one gateway fix
+before this check (deviation 3). Probes are literal identifier matches, a
+narrow check: paraphrased facts without identifiers are not detected.
+
+### Deviations from the protocol
+
+1. **Five Study 1 harness failures.** Four episodes lost their report when a
+   GitHub CLI token lookup timed out during the final quota check; one process
+   crashed natively. As preregistered, all five count as failures; a
+   sensitivity analysis excluding them is reported above. The driver now
+   records a failed post-episode check instead of dropping the report (applied
+   before Study 2). Eight requests in total have no completed billing record.
+2. **Honcho deletion was rechecked** a few minutes after the immediate probe.
+   Both reads are reported.
+3. **Mem0 gateway scope fix.** Mem0's embedded vector store shares one
+   migrations folder per process, so a second instance failed in Study 3. The
+   gateway now uses one Mem0 instance on the original store, scoped by Mem0's
+   own `agent_id`/`user_id` filters. Study 1 data was unchanged; Study 3 was
+   rerun for Mem0 only.
+
+### Usage
+
+Approved cap 16,000 requests. Used **12,428**: learning-pool episodes 559,
+smoke tests 46, memory builders 33, provider ingestion and retrieval through
+the shims 924 (Studies 1 and 2), Study 1 episodes 8,911, Study 2 episodes
+1,887, and Study 3 provider calls 68. That is **117.9M input / 5.13M output
+tokens** and **1,425.05 AI credits** (about $14.25 in allowance value). See
+[costs](COSTS.md#memory-study-v1).
+
+### Limitations
+
+- One actor/simulator model, one domain, judge-free tasks only, two runs per
+  test task: small effects are undetectable and results may not transfer.
+- Memory was retrieved once, from the first customer message, under a 2,400
+  character cap. Agentic multi-step retrieval was not tested.
+- Providers ran with default pipelines on a substituted LLM and local
+  embeddings; their published results use other models.
+- Simulator review covered the earlier 12-task cohort only.
+- Stashbird was not run: it depends on internal cloud resources.
+
 ## Preserved evidence
 
 The following local outputs are git-ignored; do not commit account snapshots
@@ -429,24 +583,24 @@ pending-judge and premature-termination checks, action-contract regressions,
 and historical-journal compatibility. No native test-set outcome has been used
 for prompt tuning; these are development tasks.
 
-## Remaining gates
+## Remaining gates and next steps
 
-1. Reduce actor action-contract failures (3 of 12 tasks) without silently
-   repairing actions; any adapter change needs approval and a fresh cohort.
-   Have a human confirm the simulator review; nine valid scored development
-   episodes now exist, all from one seed and a judge-free subset.
-   Any replacement/expanded cohort needs an explicit plan and authorization;
-   unused allowance is not permission to change the selected tasks silently.
-2. Freeze the held-out partition in the protocol. A customer-disjoint
-   [proposal](#held-out-partition-proposal) exists; it is not yet committed
-   as protocol.
-3. Generate an actual experience/lesson bank from allowed development feedback
-   only, and wire all four conditions to the same actor/tools/policy/budgets.
-4. Validate the full scoring scope and report policy compliance separately
-   from database-goal checks.
-5. Commit/tag the actual main-study protocol before running main evaluation.
-6. Only then measure memory effects, including null/negative results.
+Completed by the memory study: adapter re-ask, customer-disjoint partition,
+experience bank, nine memory conditions, tagged protocol, and null/negative
+reporting. Open:
 
-No larger model run is implied by the apparent cheapness of the micro-pilot.
-No Google-style parameter expansion, Knowledge Seeding, or RL dreaming was
-implemented in this research track.
+1. A human should confirm the simulator worksheets, including the new
+   memory-study episodes.
+2. More power: more test runs per task, or a harder task set where the
+   no-memory baseline is further from ceiling, before any small effect is claimed.
+3. Policy-compliance scoring: the judge-needing tasks need an approved,
+   validated NL-assertion judge.
+4. Memory that knows when it is stale: Study 2's clearest losses came from
+   remembered facts invalidated by a database reset. Test memory that records
+   time and source, and checks current tool results before acting.
+5. Other actors or retrieval styles (per-turn or agentic retrieval) under a
+   new tagged protocol.
+
+The software tests check memory mechanics, not that an agent learned useful
+lessons. No Google-style parameter expansion, Knowledge Seeding, or RL dreaming
+was implemented; the `sleep` condition is a memory-level analogue only.

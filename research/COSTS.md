@@ -190,3 +190,32 @@ Cumulative Copilot usage across all pilots: **220 requests**,
 **1,808,885 input / 75,726 output tokens**, **22.09146 AI credits**
 (about $0.2209 in allowance value). These are allowance measurements, not
 separate API invoices.
+
+## Memory study v1
+
+Approved hard cap: **16,000 requests**, enforced before each episode from every
+journal (episodes, builders, provider shims). Planning estimate: 1,200-1,600
+credits.
+
+| Component | Requests | AI credits |
+|---|---:|---:|
+| Learning-pool episodes (30 tasks + one probe) | 559 | 62.64 |
+| Smoke tests (shim, two development episodes) | 46 | 5.10 |
+| Internal memory builders (raw, consolidated, sleep, workflows) | 33 | 2.26 |
+| Mem0 ingestion + Study 2 calls | 53 | 7.23 |
+| Graphiti ingestion | 197 | 53.07 |
+| Hindsight ingestion + Study 1 retrieval | 205 | 46.76 |
+| Honcho ingestion + Study 1 and 2 calls | 469 | 34.93 |
+| Study 1 episodes (468 planned) | 8,911 | 990.85 |
+| Study 2 episodes (104) | 1,887 | 213.88 |
+| Study 3 provider calls | 68 | 8.32 |
+| **Total** | **12,428** | **1,425.05** |
+
+- About **$14.25 in allowance value**; 117.9M input and 5.13M output tokens.
+- 12,420 of 12,428 started requests have completed billing snapshots. Eight were
+  aborted (credential timeouts or a crash) and are counted as started, not free.
+- Mean credits per Study 1 episode: 1.97-2.27 across conditions, plus 0.31
+  (Hindsight) and 0.17 (Honcho) for retrieval. Mem0 and Graphiti retrieval made
+  no model calls; embeddings ran locally and were not billed.
+- Cumulative Copilot usage across all AfterEvidence pilots and studies:
+  **12,648 requests** and about **1,447.14 AI credits** (about $14.47).

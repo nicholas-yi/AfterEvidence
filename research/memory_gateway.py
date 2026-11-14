@@ -53,21 +53,24 @@ class Mem0Store:
         self.instances: dict[str, Any] = {}
 
     def memory(self, scope: str):
-        if scope not in self.instances:
+        # One embedded Qdrant per process (Mem0 shares a migrations store); scopes are
+        # separated by Mem0's own agent_id / user_id filters.
+        del scope
+        if "shared" not in self.instances:
             from mem0 import Memory
 
             base, token = shim("mem0"), CONFIG["token"]
-            self.instances[scope] = Memory.from_config({
+            self.instances["shared"] = Memory.from_config({
                 "llm": {"provider": "openai", "config": {
                     "model": CONFIG["model"], "openai_base_url": base, "api_key": token, "temperature": 0}},
                 "embedder": {"provider": "openai", "config": {
                     "model": "nomic-embed-text", "openai_base_url": base, "api_key": token, "embedding_dims": 768}},
                 "vector_store": {"provider": "qdrant", "config": {
-                    "path": str(STATE / "mem0-qdrant" / safe(scope)), "collection_name": "ae",
+                    "path": str(STATE / "mem0-qdrant" / "bank"), "collection_name": "ae",
                     "embedding_model_dims": 768, "on_disk": True}},
-                "history_db_path": str(STATE / f"mem0-history-{safe(scope)}.db"),
+                "history_db_path": str(STATE / "mem0-history-bank.db"),
             })  # fmt: skip
-        return self.instances[scope]
+        return self.instances["shared"]
 
     @staticmethod
     def owner(scope: str) -> dict[str, str]:
@@ -81,8 +84,13 @@ class Mem0Store:
             {"role": roles[s], "content": ("[tool] " if s == "tool" else "") + t}
             for s, t in turns(episode)
         ]
+        owner = self.owner(scope)
         result = self.memory(scope).add(
-            messages, run_id=episode["id"], metadata={"episode": episode["id"]}, **self.owner(scope)
+            messages,
+            run_id=episode["id"],
+            metadata={"episode": episode["id"]},
+            user_id=owner.get("user_id"),
+            agent_id=owner.get("agent_id"),
         )
         return {"events": len((result or {}).get("results", []))}
 
@@ -91,7 +99,10 @@ class Mem0Store:
         return [item["memory"] for item in found.get("results", [])]
 
     def delete(self, scope: str, episode_id: str) -> dict[str, Any]:
-        self.memory(scope).delete_all(run_id=episode_id, **self.owner(scope))
+        owner = self.owner(scope)
+        self.memory(scope).delete_all(
+            run_id=episode_id, user_id=owner.get("user_id"), agent_id=owner.get("agent_id")
+        )
         return {"deleted_run": episode_id}
 
     def dump(self, scope: str) -> list[str]:

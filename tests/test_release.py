@@ -3,7 +3,7 @@ from __future__ import annotations
 import unittest
 from pathlib import Path
 
-from scripts.audit_release import path_errors, text_errors
+from scripts.audit_release import path_errors, svg_errors, text_errors
 
 
 class PublicationTests(unittest.TestCase):
@@ -35,6 +35,13 @@ class PublicationTests(unittest.TestCase):
     def test_raw_account_snapshots_are_not_public_source(self) -> None:
         key = "quota_" + "snapshots"
         self.assertIn("raw-account-quota", text_errors('{"' + key + '": {}}'))
+
+    def test_only_static_figures_are_publishable_svg(self) -> None:
+        self.assertEqual(path_errors("docs/figures/chart.svg"), [])
+        self.assertTrue(path_errors("research/chart.svg"))
+        self.assertEqual(svg_errors("docs/figures/a.svg", "<svg><circle r='1'/></svg>"), [])
+        for active in ("<svg><script>x()</script></svg>", '<svg onload="x()"></svg>'):
+            self.assertEqual(svg_errors("docs/figures/a.svg", active), ["active-svg-content"])
 
 
 if __name__ == "__main__":

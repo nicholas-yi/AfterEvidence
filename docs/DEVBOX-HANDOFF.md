@@ -32,6 +32,8 @@ The app and the research harness are separate tracks. No new UI demo is needed.
 | Reference policy | v2: only scripted, non-mutating "not found" lookups may fail; train preflight 70 validated, 4 rejected |
 | Devbox cohort | 12 approved tasks run once: **9 scored 1.0**, 3 failed the action contract; 162 of 360 requests; replay agreed |
 | Simulator review | Worksheets generated; AI-assistant preliminary pass done; **human confirmation pending** |
+| Memory study v1 | Tagged protocol `memory-study-v1`; Studies 1-3 complete; **null result** for task success; stale-memory loss in Study 2; all providers delete cleanly ([results](../research/RESULTS.md#memory-study-v1)) |
+| Memory-study stack | Docker (Neo4j, Hindsight, Honcho), Ollama embeddings, provider venv, shims and gateway on the devbox; see [runbook](../research/MEMORY-STUDY.md) |
 | Latest laptop validation | 66 core/publication tests and 28 research tests passed; Ruff, research Pyright, and old-journal replay passed |
 | Devbox validation | Exact 81-entry lock reproduced; core, research, Ruff 0.17.5, and research Pyright checks pass; preflight 0/1/2 matches laptop |
 | Main study | Not run, not preregistered; no demonstrated memory improvement |
@@ -45,11 +47,12 @@ they are not independent examples for a later split. The pinned catalog has no
 A matching database still does not establish simulator fidelity.
 
 The devbox cohort used **162 of 360 approved requests** and **16.05978 AI
-credits** (about $0.16 in allowance value). Cumulative Copilot usage is
-**220 requests / 22.09146 credits**. These are not separate API invoices.
-The unused 198 requests are not permission to change the cohort, retry tasks,
-add judges, switch models, or start a main study. Obtain explicit approval for
-the next inference plan.
+credits**. The memory study then used **12,428 of 16,000 approved requests** and
+**1,425.05 credits**. Cumulative Copilot usage is about **12,648 requests /
+1,447.14 credits** (about $14.47). These are not separate API invoices.
+Unused allowance is not permission to change a cohort, retry tasks, add judges,
+switch models, or start another study. Obtain explicit approval for the next
+inference plan.
 
 ## Rebuild, do not copy the environment
 
@@ -133,28 +136,26 @@ The public CI covers the core and dependency-free research controls, including
 the task-audit and simulator-review tests, not the vendor-dependent native
 integration tests above.
 
-## Next gate: decisions after the devbox cohort
+## Next gate: after memory study v1
 
-[The cohort results](../research/RESULTS.md#development-cohort-run-2026-11-13-devbox)
-show nine valid scored episodes and three actor action-contract failures.
-Decisions needed before more inference:
+The memory study ([results](../research/RESULTS.md#memory-study-v1),
+[protocol](../research/PROTOCOL-MEMORY.md)) found no detectable effect of any
+memory condition on task success. Its test-split outcomes are now spent: do not
+tune anything on them. Decisions before more inference:
 
-1. Whether to change the adapter's malformed-action handling (for example one
-   bounded, counted re-ask), then rerun a fresh, separately approved cohort.
-2. A human confirmation of the simulator worksheet
-   (`research/runs/cohort-20261113b-simulator-review.md`, devbox only).
-3. Committing the [held-out partition](../research/RESULTS.md#held-out-partition-proposal)
-   and judge policy for the 11 judge-needing test tasks into a tagged protocol.
-
-Experience-bank construction from the nine scored episodes is offline work, but
-it must use only observations and actions, never references or scorer output.
-
+1. Human confirmation of simulator worksheets (devbox only, `research/runs`).
+2. A new tagged protocol for any follow-up, for example staleness-aware memory,
+   more runs per task, a harder task subset, or agentic retrieval.
+3. An approved, validated NL-assertion judge if judge-needing tasks are added.
 ## Private evidence is not in this clone
 
 Git intentionally excludes `research/runs/`, `data/`, `results/`, vendor
 checkouts, virtual environments, caches, runtimes, and account state.
 The devbox retains the `cohort-20261113b-*` plan, reports, journals, summary,
-and simulator worksheet. The source laptop retains:
+and simulator worksheet, plus everything under `research/runs/memory-study/`:
+bank, memory artifacts, all study reports and journals, shim journals, and
+provider data (Docker volumes, Neo4j, Qdrant, Honcho Postgres). Provider secrets
+live in git-ignored `research/providers/`. The source laptop retains:
 
 - `research/runs/baseline-20261113-plan.json`.
 - `research/runs/baseline-20261113-amendment-1.json` and `-2.json`.
@@ -183,43 +184,35 @@ agent experience improves later tool-use tasks while handling corrections and
 withdrawn evidence. Do not build another UI demo or claim Google Sleep training:
 no parameter expansion, Knowledge Seeding, or RL dreaming was implemented.
 
-Resume the baseline gate, not the main study. First recreate the exact pinned
-research environment for this devbox's OS and run the offline checks in the
-handoff. Do not copy a virtualenv or credentials from the laptop.
+Memory study v1 is complete (tag memory-study-v1). Read research/RESULTS.md
+"Memory study v1" and research/MEMORY-STUDY.md. Its test-split outcomes are
+spent; never tune on them. Confirm the pinned environment and offline checks.
+Do not copy a virtualenv or credentials from another machine.
 
-Known evidence: on the devbox, an approved 12-task cohort (one customer family
-each, customer-disjoint from the test split, judge-free) scored native
-ENV/task-basis reward 1.0 on 9 tasks; 3 failed the flat action contract early.
-Zero-inference replay agreed. Task 2 is still rejected by reference preflight
-(copied placeholder product ID). Reference policy v2 allows only scripted,
-non-mutating failed lookups. The simulator worksheet awaits human review.
-This is a single-seed development baseline, not a memory-efficacy result.
+Known evidence: nine memory conditions (none, raw, consolidated, sleep-style,
+workflows, Mem0, Graphiti, Hindsight, Honcho) showed no detectable effect on
+task success (75% vs 73-83%, all Holm p = 1.0). Same-customer memory was
+slightly worse than none, not significantly; stale remembered facts caused the
+clearest loss. All providers deleted a source conversation's data (Honcho after
+a short delay). Simulator worksheets await human review.
 
-Proceed offline: confirm the environment and offline checks, then work on the
-next-gate items in docs/DEVBOX-HANDOFF.md: options for malformed actor actions,
-the held-out partition and judge policy as protocol drafts, and experience-bank
-construction from observations and actions only. Keep hidden scoring criteria,
-reference actions, and task_audit output out of actor/memory inputs. Do not
-inspect held-out test outcomes for tuning or silently select only easy/passing
-tasks. Make useful source/test/documentation improvements, but do not start
-model calls until I approve a concrete cohort, total request cap (including
-actor, simulator, retries and judges), and cost estimate.
+Proceed offline: draft a follow-up protocol (for example staleness-aware memory,
+more runs per task, or agentic retrieval) and make useful source, test, or doc
+improvements. Keep hidden scoring criteria, reference actions, and task_audit
+output out of actor/memory inputs. Do not start model calls until I approve a
+concrete design, total request cap (actor, simulator, provider calls, retries,
+judges), and cost estimate.
 
-The devbox cohort allowance was 360 requests; 162 were used. Its unused 198
-are not blanket authorization. Cumulative usage is 220 requests / 22.09146 AI
-credits. Raw journals and quota records are private and not in Git. Ask for the
-needed private evidence before historical replay or lesson extraction; do not
-invent or automatically regenerate it.
-
+Cumulative usage is about 12,648 requests / 1,447.14 AI credits. Unused
+allowance is not blanket authorization. Raw journals and provider data are
+private and not in Git; ask before any historical replay.
 Keep the current flat WireCommand action contract and its regression tests.
 Preserve old-journal decoding, fail-before-inference reference checks, explicit
 incomplete statuses, SDK tool isolation, complete cost accounting, and native
 scoring. A pending nonempty NL assertion must stay visibly unassessed unless
 an evaluator is separately approved.
 
-Do not run a main experiment until actor/simulator adequacy, held-out entity
-separation, actual experience-bank construction, four-condition integration,
-scoring coverage, and a committed/tagged prospective protocol are ready.
+Run any new study only under a committed, tagged prospective protocol.
 Preserve failures and null results. Report what is verified and what is blocked.
 Never push raw run/account data or publish the local HTTP server.
 ```

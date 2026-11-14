@@ -11,8 +11,9 @@ its evidence changes.
 [Continuity](docs/CONTINUITY.md) · [Devbox handoff](docs/DEVBOX-HANDOFF.md)
 
 > **Development preview.** Source lineage is not a guarantee of truth.
-> There is no completed four-condition memory-efficacy study, no claim that
-> another memory product fails, and no reproduction of Google's Sleep training.
+> A tagged memory study compared nine memory approaches and found no detectable
+> effect on task success. It makes no claim that any memory product fails, and
+> it does not reproduce Google's Sleep training.
 
 ## Three separate tracks
 
@@ -20,7 +21,7 @@ its evidence changes.
 |---|---|---|
 | Local workspace | Ollama-backed extraction, external-memory consolidation, source review, corrections, and deletion | Implemented; human review remains necessary |
 | Lifecycle contracts | Deterministic AND/OR proof cases, preservation, invalidation, and replay checks | Software invariants, not model-accuracy results |
-| Agent-task research | Native retail tools and scoring with bounded, metered model access | Feasibility stage; main comparison not run |
+| Agent-task research | Native retail tools and scoring with bounded, metered model access | Memory study v1 complete: null result |
 
 ## Local workspace
 
@@ -106,12 +107,18 @@ tasks—not the UI's hand-written scenario rules.
 - A 12-task development cohort, one per customer family and customer-disjoint
   from the test split, scored 1.0 on 9 tasks; 3 failed the actor's action
   format early. It is one seed on a judge-free subset, not an accuracy estimate.
+- **Memory study v1**, run under a protocol tagged before any test episode,
+  compared no memory, raw transcripts, one-pass lessons, a sleep-style
+  replay/reweight/prune analogue, induced workflows, Mem0, Graphiti, Hindsight,
+  and Honcho on 26 test tasks × 2 runs. **None changed task success
+  detectably** (75% without memory; 73-83% with; all corrected p = 1.0).
+  Same-customer memory was slightly worse than none, not significantly, and
+  stale remembered facts caused the clearest loss. All four providers removed
+  data derived from a deleted conversation.
 - Usage was metered and failures retained. **No memory improvement is claimed.**
 
-The next gate is a reliable scored baseline, a faithful simulator, an isolated
-evaluation split, and a committed/tagged protocol before main comparison.
-
-[Read the research report](research/RESULTS.md) and
+[Read the memory study](research/RESULTS.md#memory-study-v1), the
+[blog draft](docs/BLOG-DRAFT.md), and
 [measured cost assumptions](research/COSTS.md) before running model calls.
 
 ## Validate

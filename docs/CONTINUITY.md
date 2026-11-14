@@ -72,8 +72,9 @@ ENV/task-basis rewards of 1.0, reproduced by fresh zero-inference replay. Earlie
 format failures remain counted; another selected task failed strict reference
 preflight before inference, traced offline to a copied placeholder ID. On the
 devbox, an approved 12-task cohort scored 1.0 on 9 tasks with 3 early
-actor-format failures, and replay agreed. Human simulator review, a committed
-held-out partition, and the main-study gates remain unfinished.
+actor-format failures, and replay agreed. A tagged memory study then compared
+nine memory conditions and found no detectable effect on task success. Human
+simulator review and any follow-up study remain open.
 
 For another machine, use [the devbox handoff and copy-paste prompt](DEVBOX-HANDOFF.md).
 It covers pinned setup, offline validation, private evidence that Git does not

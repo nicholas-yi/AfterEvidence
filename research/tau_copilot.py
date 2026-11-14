@@ -398,6 +398,10 @@ async def run(
                         message.model_dump(mode="json") for message in orchestrator.get_messages()
                     ],
                 }
+            try:
+                quota_after: object = data_value(await quota_snapshot(client))
+            except Exception as error:  # a report must never be lost to a post-episode check
+                quota_after = {"error": f"{type(error).__name__}: {error}"[:300]}
             report.update(
                 {
                     "mode": "native-retail-copilot-development",
@@ -418,7 +422,7 @@ async def run(
                     "preflight": preflight,
                     "seconds": time.monotonic() - started,
                     "quota_before": data_value(before),
-                    "quota_after": data_value(await quota_snapshot(client)),
+                    "quota_after": quota_after,
                     "full_official_reward": None,
                 }
             )

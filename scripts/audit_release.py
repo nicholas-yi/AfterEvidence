@@ -39,8 +39,20 @@ def path_errors(name: str) -> list[str]:
         return ["not-in-public-allowlist"]
     if any(part in PRIVATE_DIRECTORIES for part in path.parts) or path.name.startswith(".env"):
         return ["private-or-generated-path"]
-    if path.suffix not in EXTENSIONS:
+    if path.suffix not in EXTENSIONS and not (
+        path.suffix == ".svg" and path.parts[:2] == ("docs", "figures")
+    ):
         return ["unexpected-file-type"]
+    return []
+
+
+def svg_errors(name: str, text: str) -> list[str]:
+    """Published figures must be static: no scripts, event handlers, or external links."""
+    if not name.endswith(".svg"):
+        return []
+    lowered = text.casefold()
+    if "<script" in lowered or re.search(r"\son\w+\s*=", lowered) or "xlink:href" in lowered:
+        return ["active-svg-content"]
     return []
 
 
@@ -87,7 +99,7 @@ def main() -> int:
         except UnicodeDecodeError:
             findings.append((name, "non-utf8-content"))
             continue
-        findings.extend((name, error) for error in text_errors(text))
+        findings.extend((name, error) for error in text_errors(text) + svg_errors(name, text))
     for name, error in findings:
         print(f"BLOCKED {name}: {error}")
     if findings:
