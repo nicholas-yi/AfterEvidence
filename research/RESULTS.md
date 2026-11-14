@@ -280,6 +280,11 @@ reporting. Open:
    same dialogue; 81 requests, 8.13 credits) passed its integration gate; both
    completed 4/4. The tagged 32-family evaluation then ran (partial, 125 of 160
    session-2 sessions): see [Necessary-memory evaluation](#necessary-memory-evaluation) ([design](DESIGN.md#follow-up-necessary-memory-pilots-and-evaluation)).
+7. Changed-mind pilot (4 dev families; 209 requests, 23.07 credits): integration
+   gates passed. Agents given both conversations as labelled transcripts acted on
+   the latest agreement 4/4; with Mem0's memory they executed the superseded item
+   3/4; with Honcho's they declined to act 4/4. Descriptive only; evaluation not
+   approved ([design](DESIGN.md#changed-mind-pilot)).
 
 The software tests check memory mechanics, not that an agent learned useful
 lessons. No Google-style parameter expansion, Knowledge Seeding, or RL dreaming

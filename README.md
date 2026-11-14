@@ -276,7 +276,7 @@ python -m afterevidence serve
 | Question | Status |
 |---|---|
 | Does labelling memories with when they were written, and whether they were later corrected, stop an agent from acting on stale ones? | A first small synthetic run could not separate the conditions: the agent checked the live account every time, ignoring stale and valid memories alike. No comparison result. |
-| When a customer changes their mind between conversations, does memory make the agent act on the latest agreement rather than the stale one? | Designed, not yet run. |
+| When a customer changes their mind between conversations, does memory make the agent act on the latest agreement rather than the stale one? | In a 4-customer pilot, agents given both conversations word for word acted on the latest agreement 4 of 4 times. With Mem0's memory they carried out the superseded exchange 3 of 4 times; with Honcho's they declined to act 4 of 4 times. Too small for an effect estimate. |
 | Do agents that query memory step by step, rather than once up front, benefit more? | Not yet tested. |
 
 Designs: [research design](research/DESIGN.md).

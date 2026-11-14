@@ -295,3 +295,26 @@ Owner-approved pilot only (2026-11-14 ~12:15 ET; evaluation not approved). Code:
 | Budget | 240 requests total (episodes ≤ 188, Mem0 shim ≤ 12, Honcho shim ≤ 40); settled-credit stop 30; a single call > 1 credit, an un-journaled mismatch or a cap stops; journaled aborts charged 1.0 |
 | Infrastructure rule (this design onward; not retroactive to eval v1) | One fresh re-attempt after an infrastructure failure; a second failure on the same session marks it failed (infra) and the run **continues**. Only budget, ledger, leakage or harness-logic stops halt the run |
 | Gates (integration, not efficacy) | 1a and 1b agreements 4/4 each; R 4/4; ingestion and retrieval OK for ≥ 3/4 families per provider, Honcho queue drained; zero leakage outside memory; no harness defect. Hn, M and Ho outcomes are results, not gates |
+
+Pilot run (2026-11-14, harness `db98d57`). Cells: outcome (✓ = Y executed); stale
+commitment (exchange to X); retrieved memory contains Y's / X's ID; proposals before
+consent; requests. One attempt each; no other wrong variant, no unauthorized mutation.
+
+| Family | Hn | M (Mem0) | Ho (Honcho) | R |
+|---|---|---|---|---|
+| D1 | ✓ (0; –; 1; 7) | ✗ (stale; Y ✓ X ✓; 3; 11) | ✗ (0; Y ✓ X ✗; 0; 12) | ✓ (0; –; 1; 8) |
+| D2 | ✓ (0; –; 1; 8) | ✗ (stale; Y ✓ X ✓; 2; 7) | ✗ (0; Y ✗ X ✓; 0; 12) | ✓ (0; –; 1; 6) |
+| D3 | ✓ (0; –; 1; 7) | ✓ (0; Y ✓ X ✓; 1; 7) | ✗ (0; Y ✓ X ✓; 8; 10) | ✓ (0; –; 1; 8) |
+| D4 | ✓ (0; –; 1; 7) | ✗ (stale; Y ✓ X ✓; 1; 7) | ✗ (0; Y ✓ X ✓; 0; 11) | ✓ (0; –; 1; 9) |
+| Total | 4/4, stale 0 | 1/4, stale 3 | 0/4, stale 0 | 4/4 |
+
+**Gates passed**: 1a 4/4 and 1b 4/4 agreements (DB unchanged); R 4/4; ingestion 8/8 per
+provider in session order, Honcho queue 42/42, retrieval 4/4 per provider; zero leakage; no
+infrastructure events. Descriptive only (4 dev families). With the labelled transcripts the agent
+acted on the latest agreement every time. Mem0 returned both items without their order, and the
+agent executed the superseded one 3 times. In every family, Honcho's answer carried the
+deferral from the earlier sessions ("not today" / "next time"), and the agent declined to act,
+citing conflicting notes and the deferral (0 mutations). That deferral line is part of the design (both 1a and 1b
+defer); an evaluation should keep it fixed and report this mode. v1, v5 and eval-v1 stores
+unchanged (Honcho counts and Mem0 hashes before and after). Spend: 209 of 240 requests (episodes
+180, Mem0 8, Honcho 21), 23.07 of 30 credits (max call 0.20).

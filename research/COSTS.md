@@ -260,3 +260,7 @@ credits.
   Honcho shim 111), **152.99 AI credits** recorded, 155.99 charged with 3 aborts
   at 1.0 (max single call 0.20). Cumulative: **14,526 requests**, about
   **1,650.94 credits** recorded.
+- Changed-mind pilot (owner approval: 240 requests including provider shims /
+  30-credit stop; 2026-11-14; integration gates passed): **209 requests** (episodes
+  180, Mem0 shim 8, Honcho shim 21), all billed, **23.07 AI credits** (max single
+  call 0.20). Cumulative: **14,735 requests**, about **1,674.01 credits** recorded.
