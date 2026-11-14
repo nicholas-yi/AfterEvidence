@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import tempfile
 import unittest
@@ -8,6 +9,17 @@ from pathlib import Path
 from typing import Any
 
 from research.commitment_pilot import (
+    HONCHO_WORKSPACE,
+    OPENING,
+    PROVIDER_ARMS,
+    final_reports,
+    first_message,
+    frozen_inputs,
+    provider_gates,
+    provider_phase,
+    provider_scope,
+    retrieve_memories,
+    shim_problems,
     BUDGETS,
     PHASE1,
     STAGE_BUDGET,
@@ -419,6 +431,190 @@ class InfrastructurePolicyTests(unittest.TestCase):
         self.assertTrue(pilot_ledger(aborted, credit_stop=0.5)["reasons"])
         silent = [{"event": "copilot-request-started", "call_id": 1, "_journal": "b"}]
         self.assertTrue(pilot_ledger(silent)["reasons"][0].startswith("un-journaled"))
+
+
+def shim_journal(directory: Path, label: str, cap: int, *rows: dict[str, Any]) -> None:
+    (directory / "shims").mkdir(parents=True, exist_ok=True)
+    events = [{"event": "shim-started", "label": label, "request_limit": cap}, *rows]
+    (directory / "shims" / f"{label}.calls.jsonl").write_text(
+        "".join(json.dumps(e) + "\n" for e in events), encoding="utf-8"
+    )
+
+
+class ProviderPilotTests(unittest.TestCase):
+    """Pilot v5 (Mem0 / Honcho arms) with fake gateways and a scripted fake actor."""
+
+    def test_fresh_scopes_and_gateway_isolation_settings(self) -> None:
+        from research import memory_gateway as gateway
+
+        self.assertEqual(provider_scope("C1"), "customer:cmp-p5-C1")
+        saved = dict(gateway.CONFIG)
+        try:
+            gateway.CONFIG.clear()
+            gateway.CONFIG.update(honcho_workspace=HONCHO_WORKSPACE, state="fresh")
+            self.assertEqual(
+                gateway.Mem0Store.owner(provider_scope("C1")), {"user_id": "cmp-p5-C1"}
+            )
+            honcho = object.__new__(gateway.HonchoStore)
+            honcho.clients, honcho.factory = {}, lambda workspace: workspace
+            self.assertEqual(honcho.workspace(provider_scope("C1")), HONCHO_WORKSPACE)
+            self.assertEqual(gateway.state(), Path("fresh"))
+            lines = gateway.turns({"id": "x", "lines": [("customer", "hi")]})
+            self.assertEqual(lines, [("customer", "hi")])  # no outcome line for v5 episodes
+            gateway.CONFIG.clear()  # absent keys keep the v1 stores
+            self.assertEqual(honcho.workspace("customer:z"), "ae-customer")
+            self.assertEqual(gateway.state(), gateway.STATE)
+        finally:
+            gateway.CONFIG.clear()
+            gateway.CONFIG.update(saved)
+
+    def test_frozen_inputs_are_the_h_arm_dialogue(self) -> None:
+        messages: list[dict[str, Any]] = []
+        report: dict[str, Any] = {}
+        with tempfile.TemporaryDirectory() as tmp:
+            for name in SETUP["families"]:
+                messages = [{"role": "assistant", "content": OPENING},
+                            {"role": "assistant", "content": None, "tool_calls": [{"name": "get_user_details"}]},
+                            {"role": "tool", "content": "payload"},
+                            {"role": "user", "content": f"agreed {name} ###STOP###"}]  # fmt: skip
+                report = {
+                    "session": 1,
+                    "family": name,
+                    "arm": "S1",
+                    "commitment": True,
+                    "messages": messages,
+                }
+                Path(tmp, f"{name}-s1-S1-a1.json").write_text(json.dumps(report), encoding="utf-8")
+            inputs = frozen_inputs(Path(tmp))
+            text = transcript(messages)
+            self.assertEqual(inputs["C4"]["sha256"], hashlib.sha256(text.encode()).hexdigest())
+            self.assertEqual(
+                inputs["C4"]["episode"]["lines"], [("agent", OPENING), ("customer", "agreed C4")]
+            )
+            self.assertNotIn("payload", json.dumps(inputs))
+            report["commitment"] = False
+            Path(tmp, "C4-s1-S1-a1.json").write_text(json.dumps(report), encoding="utf-8")
+            with self.assertRaises(FatalStop):
+                frozen_inputs(Path(tmp))
+
+    def test_query_cap_errors_header_and_sessions(self) -> None:
+        policy = SETUP["policy"]
+        self.assertTrue(session_system(policy, "M", "memo").endswith(NEUTRAL_HEADER + "memo"))
+        self.assertNotIn(MEMORY_HEADER, session_system(policy, "Ho", "memo"))
+        self.assertEqual(session_system(policy, "Ho", None), session_system(policy, "N", None))
+        with self.assertRaises(FatalStop):
+            session_system(policy, "M", "x" * (HISTORY_MAX + 1))
+        with tempfile.TemporaryDirectory() as tmp:
+            calls: list[tuple[str, str, str]] = []
+
+            def search(provider: str, scope: str, query: str) -> list[str]:
+                calls.append((provider, scope, query))
+                if provider == "honcho" and scope.endswith("C2"):
+                    raise TimeoutError("down")
+                return [
+                    "x" * 5000,
+                    f"item {TARGET['item_id']}" if scope.endswith("C2") else "y" * 5000,
+                ]
+
+            records = retrieve_memories(SETUP, Path(tmp), search)
+            self.assertEqual(len(calls), 8)
+            for name, family in SETUP["families"].items():
+                queries = {q for _, scope, q in calls if scope == provider_scope(name)}
+                self.assertEqual(queries, {first_message(family, "N")})
+            self.assertTrue(all(r["chars"] <= HISTORY_MAX for r in records))
+            failed = [r for r in records if r["error"]]
+            self.assertEqual([(r["provider"], r["scope"], r["text"]) for r in failed],
+                             [("honcho", provider_scope("C2"), "")])  # fmt: skip
+            m2 = next(
+                r for r in records if r["scope"] == provider_scope("C2") and r["provider"] == "mem0"
+            )
+            self.assertEqual((m2["has_target_id"], m2["has_target_options"]), (True, False))
+            retrieve_memories(SETUP, Path(tmp), lambda *_: self.fail("retrieval repeated"))
+
+            backends: list[FakeBackend] = []
+
+            def make_backend(journal: Any) -> FakeBackend:
+                backends.append(FakeBackend([act(text="How can I help?")]))
+                return backends[-1]
+
+            jobs = [{"session": 2, "family": "C2", "arm": a} for a in PROVIDER_ARMS]
+            outcome = asyncio.run(
+                run_jobs(SETUP, Path(tmp), jobs, make_backend, [Path(tmp)], 160, 25.0)
+            )
+            self.assertEqual(outcome["refused"], [])
+            reports = {r["arm"]: r for r in final_reports(Path(tmp))}
+            self.assertIn(NEUTRAL_HEADER + "[mem0-1]", backends[0].systems[0])
+            self.assertNotIn(NEUTRAL_HEADER, backends[1].systems[0])
+            self.assertTrue(reports["Ho"]["memory"]["error"])
+            self.assertEqual(reports["Ho"]["history_chars"], 0)
+            self.assertNotIn("text", reports["M"]["memory"])
+            first_user = next(m["content"] for m in reports["M"]["messages"] if m["role"] == "user")
+            self.assertEqual(first_user, m2["query"])
+            self.assertEqual((reports["M"]["leakage"], reports["Ho"]["leakage"]), ([], []))
+
+    def test_leakage_outside_memory_block(self) -> None:
+        memory = f"The customer agreed item {TARGET['item_id']}."
+        system = session_system(SETUP["policy"], "M", memory)
+        self.assertEqual(leaks(FAMILY, "M", system, memory, ["We agreed last time."]), [])
+        self.assertTrue(leaks(FAMILY, "M", system + TARGET["item_id"], memory, []))
+        self.assertTrue(leaks(FAMILY, "Ho", system, memory, [f"Item {TARGET['item_id']}"]))
+
+    def test_ledger_counts_shims_and_shim_checks(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            shim_journal(
+                root, "mem0", 14, {"event": "copilot-request-started", "call_id": 1}, billed(1)
+            )
+            shim_journal(root, "honcho", 50)
+            self.assertEqual(shim_problems(root), [])
+            ledger = pilot_ledger(journal_rows(root), 160, 25.0)
+            self.assertEqual((ledger["started"], ledger["recorded_credits"]), (1, 0.1))
+            self.assertTrue(start_refusals([root], 12, 25.0))  # 1 shim request + 12 > 12
+            shim_journal(root, "honcho", 60)
+            self.assertTrue(shim_problems(root))
+            shim_journal(
+                root, "honcho", 50, {"event": "shim-error", "error": "PilotRequestLimit: cap"}
+            )
+            self.assertTrue(any("reached" in p for p in shim_problems(root)))
+
+    def test_preflight_refuses_v1_stores_before_any_ingestion(self) -> None:
+        from unittest import mock
+
+        with tempfile.TemporaryDirectory() as tmp:
+            shim_journal(Path(tmp), "mem0", 14)
+            shim_journal(Path(tmp), "honcho", 50)
+            v1 = {
+                "state": "elsewhere",
+                "honcho_workspace": "ae-customer",
+                "honcho_reasoning_level": "low",
+            }
+            with mock.patch("research.provider_ingest.post", return_value=v1) as post:
+                result = provider_phase(SETUP, Path(tmp), {})
+            self.assertEqual(len(result["refused"]), 2)
+            self.assertEqual(post.call_count, 1)
+
+    def test_integration_gates(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            rows = [{"provider": p, "scope": provider_scope(f), "episode": f"cmp-p5-{f}-s1", "status": "ok"}
+                    for p in PROVIDER_ARMS.values() for f in SETUP["families"]]  # fmt: skip
+            (root / "ingest.jsonl").write_text(
+                "".join(json.dumps(r) + "\n" for r in rows), encoding="utf-8"
+            )
+            (root / "honcho-queue.json").write_text(
+                json.dumps({"total": 8, "completed": 8, "pending": 0, "in_progress": 0}),
+                encoding="utf-8",
+            )
+            failing = {"C2"}
+            retrieve_memories(SETUP, root, lambda p, s, q: (_ for _ in ()).throw(OSError("x"))
+                              if p == "honcho" and s[-2:] in failing else ["memo"])  # fmt: skip
+            reports = [{"arm": a, "family": f, "leakage": [], "success": False}
+                       for a in PROVIDER_ARMS for f in SETUP["families"]]  # fmt: skip
+            self.assertEqual(provider_gates(root, reports)["verdict"], "PASS")
+            (root / "memory" / "C3-Ho.json").write_text(
+                json.dumps({"provider": "honcho", "error": "OSError: x"}), encoding="utf-8"
+            )
+            self.assertEqual(provider_gates(root, reports)["verdict"], "FAIL")
 
 
 if __name__ == "__main__":

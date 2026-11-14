@@ -4,13 +4,15 @@ Session 1: a scripted customer agrees one exact exchange variant with the actor 
 execution. Session 2: the customer asks to "go ahead with the exchange we agreed last time"
 and never restates the target. Arms in session 2: N (no history), Hc (session-1 dialogue under
 the exact v1 memory header), Hn (same dialogue under a neutral header), R (N plus the target
-restated by the customer; feasibility control). Families are synthetic customers and delivered
+restated by the customer; feasibility control). Pilot v5 adds provider arms M (Mem0) and Ho
+(Honcho): the frozen v4 session-1 dialogues are ingested into fresh scopes, retrieved once with
+the customer's first session-2 message, and shown under the neutral header. Families are synthetic customers and delivered
 orders added to an isolated copy of the pinned retail DB, using train-only products.
 
 Reuses the v1 harness: `CopilotBackend` journals and request caps, the flat `WireCommand`
 action contract, the v1 actor system prompt and `MEMORY_HEADER`, native tau2 tools and
 `EnvironmentEvaluator` DB scoring, and a pilot ledger with an infrastructure-failure policy. Dry run by default; live calls need
-`--approved-requests 240`. Design and logged choices: research/DESIGN.md.
+`--approved-requests` equal to the active stage's approved cap. Design and logged choices: research/DESIGN.md.
 """
 
 from __future__ import annotations
@@ -38,6 +40,12 @@ PRODUCTS = ("5713490933", "7352963235", "6679515468", "2747247837")  # train-onl
 PILOT_REQUEST_CAP, SESSION_REQUESTS, SESSION_TOOLS = 240, 12, 12
 CREDIT_STOP, CALL_MAX, HISTORY_MAX = 50.0, 1.0, 8000
 SHUFFLE_SEED = 20261114
+# Pilot v5: provider memory (M = Mem0, Ho = Honcho) under the neutral header, ingesting the
+# frozen v4 session-1 dialogues into fresh scopes; one retrieval per session.
+PROVIDER_ARMS = {"M": "mem0", "Ho": "honcho"}
+SHIM_CAPS, EPISODE_CAP = {"mem0": 14, "honcho": 50}, 96
+HONCHO_WORKSPACE, GATEWAY = "commitment-pilot-v5", "http://127.0.0.1:8900"
+OPENING = "Hi! How can I help you today?"  # tau2's fixed first agent turn
 WRITE_TOOLS = {
     "cancel_pending_order", "exchange_delivered_order_items", "modify_pending_order_address",
     "modify_pending_order_items", "modify_pending_order_payment", "modify_user_address",
@@ -252,20 +260,30 @@ class ScriptedCustomer:
         return f"{text} {STOP}"
 
 
-def transcript(messages: list[dict[str, Any]]) -> str:
+def dialogue(messages: list[dict[str, Any]]) -> list[tuple[str, str]]:
     """Session-1 dialogue only: customer and agent text, no tool calls or payloads."""
     lines = []
     for m in messages:
         content = (m.get("content") or "").replace(STOP, "").strip()
         if m.get("role") in ("user", "assistant") and content and not m.get("tool_calls"):
-            lines.append(f"{'Customer' if m['role'] == 'user' else 'Agent'}: {content}")
-    return "\n".join(lines)
+            lines.append(("customer" if m["role"] == "user" else "agent", content))
+    return lines
+
+
+def transcript(messages: list[dict[str, Any]]) -> str:
+    return "\n".join(
+        f"{'Customer' if s == 'customer' else 'Agent'}: {t}" for s, t in dialogue(messages)
+    )
 
 
 def session_system(policy: str, arm: str, history: str | None) -> str:
     system = ACTOR_SYSTEM + policy
     if arm in ("N", "R"):
         return system
+    if arm in PROVIDER_ARMS:  # no block when retrieval failed or returned nothing (as v1)
+        if history and len(history) > HISTORY_MAX:
+            raise FatalStop("Provider memory exceeds 8,000 characters.")
+        return system + "\n\n" + NEUTRAL_HEADER + history if history else system
     if not history or len(history) > HISTORY_MAX:
         raise FatalStop("Session-2 history is missing or exceeds 8,000 characters.")
     header = MEMORY_HEADER if arm == "Hc" else NEUTRAL_HEADER
@@ -329,31 +347,40 @@ def expected_name() -> str:
     return "exchange_delivered_order_items"
 
 
-def plan(note: str | None = None, stage: str = "pilot-v4") -> dict[str, Any]:
-    jobs = [{"session": 1, "family": f"C{i + 1}", "arm": "S1"} for i in range(len(PRODUCTS))]
-    second = [
-        {"session": 2, "family": f"C{i + 1}", "arm": a} for i in range(len(PRODUCTS)) for a in ARMS
-    ]
+def plan(
+    note: str | None = None, stage: str = "pilot-v4", extra: dict[str, Any] | None = None
+) -> dict[str, Any]:
+    families = [f"C{i + 1}" for i in range(len(PRODUCTS))]
+    jobs = [{"session": 1, "family": f, "arm": "S1"} for f in families]
+    arms = tuple(PROVIDER_ARMS) if stage == "pilot-v5" else ARMS
+    second = [{"session": 2, "family": f, "arm": a} for f in families for a in arms]
     random.Random(SHUFFLE_SEED).shuffle(second)
-    sources = {n: hashlib.sha256((Path(__file__).parent / n).read_bytes()).hexdigest()
-               for n in ("commitment_pilot.py", "tau_copilot.py", "staleness.py")}  # fmt: skip
+    if stage == "pilot-v5":
+        jobs = []  # session 1 is the frozen v4 histories
+    names = ("commitment_pilot.py", "tau_copilot.py", "staleness.py", "memory_gateway.py",
+             "memory_retrievers.py", "provider_ingest.py", "copilot_shim.py")  # fmt: skip
+    sources = {
+        n: hashlib.sha256((Path(__file__).parent / n).read_bytes()).hexdigest() for n in names
+    }
     budget = BUDGETS[STAGE_BUDGET[stage]]
     return {"stage": stage, "namespace": NAMESPACE, "shuffle_seed": SHUFFLE_SEED,
             "request_cap": budget["cap"], "credit_stop": budget["credit_stop"], "call_max": CALL_MAX,
             "session_requests": SESSION_REQUESTS, "session_tools": SESSION_TOOLS,
-            "note": note, "sources": sources, "jobs": jobs + second}  # fmt: skip
+            "note": note, "sources": sources, **(extra or {}), "jobs": jobs + second}  # fmt: skip
 
 
 def job_id(job: dict[str, Any]) -> str:
     return f"{job['family']}-s{job['session']}-{job['arm']}"
 
 
-STAGES = ("pilot", "pilot-v2", "pilot-v3", "pilot-v4")
-ACTIVE_STAGE = "pilot-v4"
+STAGES = ("pilot", "pilot-v2", "pilot-v3", "pilot-v4", "pilot-v5")
+ACTIVE_STAGE = "pilot-v5"
 # Each owner approval has its own ledger: v1-v3 shared 240 requests; v4 has a fresh 264.
 BUDGETS = {
     "v1-v3": {"stages": ("pilot", "pilot-v2", "pilot-v3"), "cap": 240, "credit_stop": 50.0},
     "v4": {"stages": ("pilot-v4",), "cap": 264, "credit_stop": 40.0},
+    # v5 counts episodes and both provider shims (journals under pilot-v5/shims/).
+    "v5": {"stages": ("pilot-v5",), "cap": 160, "credit_stop": 25.0},
 }
 STAGE_BUDGET = {stage: name for name, b in BUDGETS.items() for stage in b["stages"]}
 PHASE1 = [{"session": 1, "family": "C1", "arm": "S1"}, {"session": 1, "family": "C2", "arm": "S1"},
@@ -462,6 +489,86 @@ def _session_one_history(directory: Path, family: str) -> str:
     return transcript(first["messages"])
 
 
+def provider_scope(family: str) -> str:
+    return f"customer:cmp-p5-{family}"
+
+
+def frozen_inputs(source: Path) -> dict[str, dict[str, Any]]:
+    """The v4 session-1 dialogues (same text as the H arms), with hashes for the plan."""
+    inputs = {}
+    for report in final_reports(source):
+        if report.get("session") == 1:
+            if not report.get("commitment"):
+                raise FatalStop(f"{report['family']}: frozen session 1 has no commitment.")
+            text = transcript(report["messages"])
+            inputs[report["family"]] = {
+                "sha256": hashlib.sha256(text.encode()).hexdigest(), "chars": len(text),
+                "episode": {"id": f"cmp-p5-{report['family']}-s1", "lines": dialogue(report["messages"])},
+            }  # fmt: skip
+    if sorted(inputs) != [f"C{i + 1}" for i in range(len(PRODUCTS))]:
+        raise FatalStop("Frozen session-1 inputs are incomplete.")
+    return inputs
+
+
+def first_message(family: dict[str, Any], arm: str) -> str:
+    """The customer's first session-2 message: the retrieval query, identical for M and Ho."""
+    return ScriptedCustomer(family, 2, arm).reply(OPENING)
+
+
+def target_mentions(family: dict[str, Any], text: str) -> dict[str, bool]:
+    target = next(v for v in family["alternatives"] if v["item_id"] == family["target_id"])
+    lowered = _norm(text)
+    return {"has_target_id": target["item_id"] in text,
+            "has_target_options": all(_norm(x) in lowered for x in target["options"].values())}  # fmt: skip
+
+
+def retrieve_memories(setup: dict[str, Any], directory: Path, search: Any) -> list[dict[str, Any]]:
+    """One retrieval per (family, provider arm), never repeated; an error means no memory."""
+    from research.memory_retrievers import pack
+
+    (directory / "memory").mkdir(parents=True, exist_ok=True)
+    records = []
+    for name, family in sorted(setup["families"].items()):
+        for arm, provider in PROVIDER_ARMS.items():
+            path = directory / "memory" / f"{name}-{arm}.json"
+            if not path.exists():
+                query, record = first_message(family, arm), {}
+                try:
+                    results = list(search(provider, provider_scope(name), query))
+                    text, ids = pack(
+                        [(f"{provider}-{n}", t) for n, t in enumerate(results, 1)], HISTORY_MAX
+                    )
+                    record = {"text": text, "ids": ids, "raw_count": len(results), "error": None}
+                except Exception as error:  # recorded; the session runs without memory
+                    record = {
+                        "text": "",
+                        "ids": [],
+                        "raw_count": 0,
+                        "error": f"{type(error).__name__}: {error}"[:300],
+                    }
+                record.update(provider=provider, scope=provider_scope(name), query=query,
+                              chars=len(record["text"]), **target_mentions(family, record["text"]))  # fmt: skip
+                path.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+            records.append(json.loads(path.read_text(encoding="utf-8")))
+    return records
+
+
+def memory_meta(record: dict[str, Any]) -> dict[str, Any]:
+    """Report fields without memory text."""
+    return {k: record.get(k) for k in ("provider", "chars", "raw_count", "error",
+                                       "has_target_id", "has_target_options")}  # fmt: skip
+
+
+def _session_two_history(directory: Path, job: dict[str, Any]) -> tuple[str | None, dict | None]:
+    if job["arm"] not in PROVIDER_ARMS:
+        return _session_one_history(directory, job["family"]), None
+    path = directory / "memory" / f"{job['family']}-{job['arm']}.json"
+    if not path.exists():
+        raise FatalStop(f"{job_id(job)}: no retrieval record.")
+    record = json.loads(path.read_text(encoding="utf-8"))
+    return (None if record.get("error") else record["text"] or None), memory_meta(record)
+
+
 async def run_jobs(
     setup: dict[str, Any], directory: Path, jobs: list[dict[str, Any]], make_backend: Any,
     ledger_dirs: list[Path], cap: int = PILOT_REQUEST_CAP, credit_stop: float = CREDIT_STOP,
@@ -481,10 +588,10 @@ async def run_jobs(
                 else:
                     if journal_path.exists():
                         raise FatalStop(f"{journal_path.name} exists without a report.")
-                    history = (
-                        _session_one_history(directory, job["family"])
+                    history, memory = (
+                        _session_two_history(directory, job)
                         if job["session"] == 2
-                        else None
+                        else (None, None)
                     )
                     refusals = start_refusals(ledger_dirs, cap, credit_stop)
                     if refusals:
@@ -494,6 +601,8 @@ async def run_jobs(
                         backend.write("commitment-session-started", **job, attempt=attempt,
                                       manifest_sha256=setup["manifest_sha256"])  # fmt: skip
                         report = await run_session(backend, setup, job, history)
+                        if memory is not None:
+                            report["memory"] = memory
                         rows = [
                             json.loads(x)
                             for x in journal_path.read_text(encoding="utf-8").splitlines()
@@ -769,6 +878,102 @@ def gates(reports: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+def shim_problems(directory: Path) -> list[str]:
+    """Exactly the two v5 shims, each started at its approved cap, and no cap reached."""
+    problems = []
+    journals = {p.name: p for p in (directory / "shims").glob("*.calls.jsonl")}
+    if set(journals) != {f"{label}.calls.jsonl" for label in SHIM_CAPS}:
+        problems.append(f"shim journals {sorted(journals)} are not exactly mem0 and honcho")
+    for label, cap in SHIM_CAPS.items():
+        path = journals.get(f"{label}.calls.jsonl")
+        rows = (
+            [json.loads(x) for x in path.read_text(encoding="utf-8").splitlines() if x]
+            if path
+            else []
+        )
+        start = next((r for r in rows if r.get("event") == "shim-started"), {})
+        if start.get("label") != label or start.get("request_limit") != cap:
+            problems.append(f"{label} shim not started with label {label} and cap {cap}")
+        if any(
+            "PilotRequestLimit" in str(r.get("error", ""))
+            for r in rows
+            if r.get("event") == "shim-error"
+        ):
+            problems.append(f"{label} shim cap {cap} reached; stop and report")
+    return problems
+
+
+def provider_phase(
+    setup: dict[str, Any], directory: Path, inputs: dict[str, Any]
+) -> dict[str, Any]:
+    """Ingest the frozen dialogues into fresh scopes, wait for Honcho, then retrieve once."""
+    from research import provider_ingest
+
+    status = provider_ingest.post("/status", {"provider": "mem0"}, url=GATEWAY)
+    problems = shim_problems(directory)
+    if Path(status["state"]) != (directory / "mem0").resolve():
+        problems.append("gateway Mem0 state is not the fresh pilot-v5 directory")
+    if (
+        status["honcho_workspace"] != HONCHO_WORKSPACE
+        or status["honcho_reasoning_level"] is not None
+    ):
+        problems.append("gateway Honcho workspace or reasoning level is not the v5 setting")
+    problems += pilot_ledger(
+        journal_rows(directory), BUDGETS["v5"]["cap"], BUDGETS["v5"]["credit_stop"]
+    )["reasons"]
+    if problems:
+        return {"refused": problems}
+    ledger = directory / "ingest.jsonl"
+    for provider in PROVIDER_ARMS.values():
+        for name in sorted(inputs):
+            rows = provider_ingest.ingest_provider(
+                provider, provider_scope(name), [inputs[name]["episode"]], ledger, GATEWAY
+            )
+            if any(r["status"] != "ok" for r in rows) or shim_problems(directory):
+                return {
+                    "refused": [f"ingestion failed: {provider} {name}", *shim_problems(directory)]
+                }
+    queue = provider_ingest.post("/status", {"provider": "honcho"}, url=GATEWAY)["queue"]
+    (directory / "honcho-queue.json").write_text(json.dumps(queue) + "\n", encoding="utf-8")
+
+    def search(provider: str, scope: str, query: str) -> list[str]:
+        body = {"provider": provider, "scope": scope, "query": query}
+        return provider_ingest.post("/search", body, url=GATEWAY, timeout=600)["results"]
+
+    records = retrieve_memories(setup, directory, search)
+    return {"refused": shim_problems(directory), "honcho_queue": queue,
+            "retrievals": [memory_meta(r) for r in records]}  # fmt: skip
+
+
+def provider_gates(directory: Path, reports: list[dict[str, Any]]) -> dict[str, Any]:
+    """Integration gate only: ingestion, drained queue, retrieval, leakage."""
+    from research.provider_ingest import done
+
+    ingested = done(directory / "ingest.jsonl")
+    queue_path = directory / "honcho-queue.json"
+    queue = json.loads(queue_path.read_text(encoding="utf-8")) if queue_path.exists() else None
+    records = [
+        json.loads(p.read_text(encoding="utf-8")) for p in (directory / "memory").glob("*.json")
+    ]
+    wins = {
+        a: sum(bool(r.get("success")) for r in reports if r.get("arm") == a) for a in PROVIDER_ARMS
+    }
+    checks: dict[str, bool] = {}
+    for arm, provider in PROVIDER_ARMS.items():
+        checks[f"{provider}_ingested_4of4"] = sum(p == provider for p, _, _ in ingested) == 4
+        checks[f"{provider}_retrieved_3of4"] = (
+            sum(r["provider"] == provider and not r["error"] for r in records) >= 3
+        )
+    checks["honcho_queue_drained"] = bool(queue) and not (queue["pending"] or queue["in_progress"])
+    checks["sessions_8"] = len(reports) == 8
+    checks["zero_leakage"] = all(not r.get("leakage") for r in reports)
+    return {
+        "successes": wins,
+        "gates": checks,
+        "verdict": "PASS" if all(checks.values()) else "FAIL",
+    }
+
+
 def smoke_passed(directory: Path) -> bool:
     """Phase 1 passes iff both C1 and C2 R sessions succeed under the oracle."""
     r = {
@@ -784,14 +989,21 @@ def summarize(directory: Path) -> dict[str, Any]:
     rows = [{k: r.get(k) for k in ("family", "session", "arm", "status", "success", "commitment",
              "attempt", "requests_started", "reasks", "tools", "lookups", "proposals_before_consent",
              "wrong_variant_attempts", "unauthorized_attempts",
-             "db_match", "agreed_variant_args", "confirmation_first", "termination")} for r in reports]  # fmt: skip
+             "db_match", "agreed_variant_args", "confirmation_first", "termination", "memory")} for r in reports]  # fmt: skip
     budget = BUDGETS[STAGE_BUDGET.get(directory.name, "v4")]
-    ledger = pilot_ledger(journal_rows(directory), budget["cap"], budget["credit_stop"])
+    rows_all = journal_rows(directory)
+    ledger = pilot_ledger(rows_all, budget["cap"], budget["credit_stop"])
+    groups = {label: [r for r in rows_all if Path(r["_journal"]).name == f"{label}.calls.jsonl"]
+              for label in SHIM_CAPS}  # fmt: skip
+    groups["episodes"] = [r for r in rows_all if Path(r["_journal"]).parent.name != "shims"]
+    by_group = {k: {x: y for x, y in pilot_ledger(v, budget["cap"], budget["credit_stop"]).items() if x != "reasons"}
+                for k, v in groups.items() if v}  # fmt: skip
+    verdict = provider_gates(directory, reports) if directory.name == "pilot-v5" else gates(reports)
     attempts = [json.loads(p.read_text(encoding="utf-8")) for p in directory.glob("C*-s*-a*.json")]
     return {"sessions": len(rows), "statuses": dict(Counter(r["status"] for r in rows)),
             "infra_failures": sum(bool(a.get("infra_failure")) for a in attempts),
-            "ledger": {k: v for k, v in ledger.items() if k != "reasons"},
-            "rows": rows, **gates(reports)}  # fmt: skip
+            "ledger": {k: v for k, v in ledger.items() if k != "reasons"}, "ledger_by_journal": by_group,
+            "rows": rows, **verdict}  # fmt: skip
 
 
 def main() -> int:
@@ -802,8 +1014,9 @@ def main() -> int:
     parser.add_argument("--model", default="claude-haiku-5.5")
     parser.add_argument("--summarize", action="store_true")
     parser.add_argument(
-        "--phase", type=int, choices=[1, 2], help="v4: 1 = smoke (C1/C2 S1 + R), 2 = rest."
-    )
+        "--phase", choices=["1", "2", "providers", "sessions"],
+        help="v4: 1 = smoke (C1/C2 S1 + R), 2 = rest. v5: providers (ingest + retrieve), then sessions.",
+    )  # fmt: skip
     args = parser.parse_args()
     if args.stage == "eval":
         parser.error(
@@ -814,7 +1027,14 @@ def main() -> int:
         print(json.dumps(summarize(directory), indent=2))
         return 0
     setup = prepare()
-    public = plan(args.note, args.stage)
+    inputs = frozen_inputs(RUNS / "pilot-v4") if args.stage == "pilot-v5" else {}
+    extra = {"source_stage": "pilot-v4", "inputs": {k: {"sha256": v["sha256"], "chars": v["chars"]}
+             for k, v in inputs.items()}, "shim_caps": SHIM_CAPS, "episode_cap": EPISODE_CAP,
+             "mem0": {"scope": "user_id cmp-p5-<family>, run_id per session", "search": "library default"},
+             "honcho": {"workspace": HONCHO_WORKSPACE, "reasoning_level": "server default"},
+             "query": "customer's first session-2 message", "header": NEUTRAL_HEADER,
+             "memory_max_chars": HISTORY_MAX} if inputs else None  # fmt: skip
+    public = plan(args.note, args.stage, extra)
     if args.approved_requests is None:
         family = setup["families"]["C1"]
         customer = ScriptedCustomer(family, 2, "N")
@@ -833,13 +1053,19 @@ def main() -> int:
         )
     if args.approved_requests != public["request_cap"]:
         parser.error(f"--approved-requests must equal the stage cap {public['request_cap']}.")
-    if args.phase is None:
-        parser.error(
-            "--phase 1 (smoke) or --phase 2 (rest, only after a passing smoke) is required."
-        )
-    if args.phase == 2 and not smoke_passed(directory):
+    phases = ("providers", "sessions") if args.stage == "pilot-v5" else ("1", "2")
+    if args.phase not in phases:
+        parser.error(f"--phase must be one of {phases} for {args.stage}.")
+    if args.phase == "2" and not smoke_passed(directory):
         parser.error("Phase 2 needs both phase-1 R sessions to succeed under the oracle.")
-    jobs = PHASE1 if args.phase == 1 else public["jobs"]
+    if args.phase == "sessions":
+        missing = [job_id(j) for j in public["jobs"]
+                   if not (directory / "memory" / f"{j['family']}-{j['arm']}.json").exists()]  # fmt: skip
+        if missing or shim_problems(directory):
+            parser.error(
+                f"Sessions need every retrieval and clean shims: {missing} {shim_problems(directory)}"
+            )
+    jobs = PHASE1 if args.phase == "1" else public["jobs"]
     if any(directory.glob("*.calls.jsonl")) and not (directory / "plan.json").exists():
         parser.error("Run directory has journals but no plan; use a fresh directory.")
     directory.mkdir(parents=True, exist_ok=True)
@@ -847,6 +1073,10 @@ def main() -> int:
     if plan_path.exists() and json.loads(plan_path.read_text(encoding="utf-8")) != public:
         parser.error("The pilot plan or frozen sources changed since the pilot started.")
     plan_path.write_text(json.dumps(public, indent=2) + "\n", encoding="utf-8")
+    if args.phase == "providers":
+        result = provider_phase(setup, directory, inputs)
+        print(json.dumps(result, indent=2))
+        return 1 if result["refused"] else 0
     outcome = asyncio.run(live_run(directory, args.model, args.stage, jobs))
     summary = summarize(directory)
     (directory / "summary.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")

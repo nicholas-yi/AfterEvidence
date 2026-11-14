@@ -8,6 +8,13 @@ Copilot shim (embeddings go to local nomic-embed-text). Operations:
 - POST /search {provider, scope, query}: return memory strings for one query.
 - POST /delete {provider, scope, episode_id}: remove one source episode.
 - POST /dump {provider, scope}: list stored memory strings (lifecycle probes).
+- POST /status {provider}: isolation settings in force; for Honcho, waits for a drained
+  deriver queue and returns its counts.
+
+Optional config keys isolate later pilots from the memory-study stores: "state" (Mem0
+directory), "honcho_workspace" (workspace for "customer:" scopes) and
+"honcho_reasoning_level" (null = the server default). Absent keys keep v1 behaviour.
+Episodes without an "outcome" get no outcome line.
 
 Scopes starting with "customer:" are per-customer (same-customer study); any other
 scope is a shared agent-level store (cross-customer study).
@@ -27,15 +34,20 @@ STATE = Path(__file__).resolve().parent / "runs" / "memory-study" / "gateway"
 CONFIG: dict[str, Any] = {}
 
 
+def state() -> Path:
+    return Path(CONFIG.get("state") or STATE)
+
+
 def shim(provider: str) -> str:
     return CONFIG["shims"][provider]
 
 
 def turns(episode: dict[str, Any]) -> list[tuple[str, str]]:
     result = [(speaker, text) for speaker, text in episode["lines"]]
-    result.append(
-        ("agent", f"[outcome] Automatic check for this conversation: {episode['outcome']}.")
-    )
+    if "outcome" in episode:
+        result.append(
+            ("agent", f"[outcome] Automatic check for this conversation: {episode['outcome']}.")
+        )
     return result
 
 
@@ -66,9 +78,9 @@ class Mem0Store:
                 "embedder": {"provider": "openai", "config": {
                     "model": "nomic-embed-text", "openai_base_url": base, "api_key": token, "embedding_dims": 768}},
                 "vector_store": {"provider": "qdrant", "config": {
-                    "path": str(STATE / "mem0-qdrant" / "bank"), "collection_name": "ae",
+                    "path": str(state() / "mem0-qdrant" / "bank"), "collection_name": "ae",
                     "embedding_model_dims": 768, "on_disk": True}},
-                "history_db_path": str(STATE / "mem0-history-bank.db"),
+                "history_db_path": str(state() / "mem0-history-bank.db"),
             })  # fmt: skip
         return self.instances["shared"]
 
@@ -95,7 +107,8 @@ class Mem0Store:
         return {"events": len((result or {}).get("results", []))}
 
     def search(self, scope: str, query: str) -> list[str]:
-        found = self.memory(scope).search(query, limit=10, filters=self.owner(scope))
+        # Library-default search (top_k 20); mem0 2.2.1 ignored the limit=10 that v1 passed.
+        found = self.memory(scope).search(query, filters=self.owner(scope))
         return [item["memory"] for item in found.get("results", [])]
 
     def delete(self, scope: str, episode_id: str) -> dict[str, Any]:
@@ -241,7 +254,8 @@ class HonchoStore:
         )
 
     def workspace(self, scope: str):
-        name = "ae-customer" if scope.startswith("customer:") else "ae-" + safe(scope)
+        customer = CONFIG.get("honcho_workspace", "ae-customer")
+        name = customer if scope.startswith("customer:") else "ae-" + safe(scope)
         if name not in self.clients:
             self.clients[name] = self.factory(name)
         return self.clients[name]
@@ -252,7 +266,7 @@ class HonchoStore:
             return safe(scope.removeprefix("customer:"))
         return "customer-" + safe(episode["id"])
 
-    def wait(self, honcho: Any, limit: float = 900) -> None:
+    def wait(self, honcho: Any, limit: float = 900) -> dict[str, int]:
         # Work is enqueued asynchronously after add_messages, so require two empty polls.
         deadline = time.monotonic() + limit
         empty = 0
@@ -262,7 +276,8 @@ class HonchoStore:
             busy = (status.pending_work_units or 0) + (status.in_progress_work_units or 0)
             empty = empty + 1 if busy == 0 else 0
             if empty >= 2:
-                return
+                return {k: getattr(status, f"{k}_work_units", 0) or 0
+                        for k in ("total", "completed", "in_progress", "pending")}  # fmt: skip
             time.sleep(3)
         raise TimeoutError("Honcho deriver queue did not drain.")
 
@@ -274,8 +289,7 @@ class HonchoStore:
         session.add_messages(
             [speakers[s].message(("[tool] " if s == "tool" else "") + t) for s, t in turns(episode)]
         )
-        self.wait(honcho)
-        return {"session": session.id}
+        return {"session": session.id, "queue": self.wait(honcho)}
 
     def search(self, scope: str, query: str) -> list[str]:
         honcho = self.workspace(scope)
@@ -288,7 +302,8 @@ class HonchoStore:
                 "What has this support agent learned from past conversations that is relevant to "
                 f"handling this new customer request? Request: {query}"
             )
-        answer = peer.chat(question, reasoning_level="low")
+        level = CONFIG.get("honcho_reasoning_level", "low")
+        answer = peer.chat(question, reasoning_level=level) if level else peer.chat(question)
         text = getattr(answer, "content", answer)
         return [str(text)] if text else []
 
@@ -358,6 +373,18 @@ async def delete(request: Request):
         return {"result": await call(body["provider"], "delete", body["scope"], body["episode_id"])}
 
 
+@app.post("/status")
+async def status(request: Request):
+    body = await request.json()
+    result: dict[str, Any] = {"state": str(state().resolve()),
+                              "honcho_workspace": CONFIG.get("honcho_workspace", "ae-customer"),
+                              "honcho_reasoning_level": CONFIG.get("honcho_reasoning_level", "low")}  # fmt: skip
+    if body.get("provider") == "honcho":
+        honcho = store("honcho")
+        result["queue"] = await asyncio.to_thread(honcho.wait, honcho.workspace("customer:"))
+    return result
+
+
 @app.post("/dump")
 async def dump(request: Request):
     body = await request.json()
@@ -374,7 +401,7 @@ def main() -> None:
     parser.add_argument("--port", type=int, default=8900)
     args = parser.parse_args()
     CONFIG.update(json.loads(args.config.read_text(encoding="utf-8")))
-    STATE.mkdir(parents=True, exist_ok=True)
+    state().mkdir(parents=True, exist_ok=True)
     uvicorn.run(app, host="127.0.0.1", port=args.port, log_level="warning")
 
 
