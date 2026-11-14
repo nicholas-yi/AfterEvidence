@@ -45,6 +45,8 @@ WRITE_TOOLS = {
     "return_delivered_order_items",
 }  # fmt: skip
 CONFIRM = "Yes, please proceed with that exchange."
+CONSENT = "If that's the one we agreed last time, please go ahead."
+CONSENTS = (CONFIRM, CONSENT)
 STOP = "###STOP###"
 FIRST = ("Arlo", "Brielle", "Corin", "Delphine", "Ezra", "Fallon", "Gideon", "Hollis")
 LAST = ("Ashdown", "Brennick", "Calloway", "Dunmore", "Elsworth", "Fairbank", "Granger", "Hartwell")
@@ -208,10 +210,15 @@ class ScriptedCustomer:
             if any(w in lowered for w in ("payment", "card", "pay ")):
                 return f"Please use my {f['brand']} card ending {f['last_four']}."
             return self._end("Thanks, that's all.")
-        if target and not others:
+        if self.arm != "R":
+            # Target-blind consent: feedback must not let an agent find the target by elimination.
+            if len(named) == 1:
+                self.confirmed = True
+                return CONSENT
+        elif target and not others:
             self.confirmed = True
             return CONFIRM
-        if others and not target:
+        elif others and not target:
             return "No, that's not the one we agreed last time."
         if any(w in lowered for w in ("payment", "card", "pay ")) and not named:
             return f"Please use my {f['brand']} card ending {f['last_four']}."
@@ -272,7 +279,7 @@ def oracle(
 ) -> dict[str, Any]:
     """Success = completion, native DB match, agreed-variant arguments, confirmation first."""
     confirm_at = next((i for i, m in enumerate(messages)
-                       if m.get("role") == "user" and m.get("content") == CONFIRM), None)  # fmt: skip
+                       if m.get("role") == "user" and m.get("content") in CONSENTS), None)  # fmt: skip
     mutations = [(i, c) for i, m in enumerate(messages) if m.get("role") == "assistant"
                  for c in (m.get("tool_calls") or []) if c["name"] in WRITE_TOOLS]  # fmt: skip
     exchanges = [c for _, c in mutations if c["name"] == "exchange_delivered_order_items"]
@@ -289,10 +296,15 @@ def oracle(
         bool(mutations) and confirm_at is not None and all(i > confirm_at for i, _ in mutations)
     )
     success = complete and db_match and agreed and confirmed_first and not unauthorized
+    end = confirm_at if confirm_at is not None else len(messages)
+    proposals = sum(
+        m.get("role") == "assistant" and bool(identified(family, m.get("content") or ""))
+        for m in messages[:end]
+    )
     return {"success": success, "complete": complete, "db_match": db_match,
             "agreed_variant_args": agreed, "confirmation_first": confirmed_first,
             "wrong_variant_attempts": wrong, "unauthorized_attempts": unauthorized,
-            "mutations": len(mutations)}  # fmt: skip
+            "mutations": len(mutations), "proposals_before_consent": proposals}  # fmt: skip
 
 
 def expected_name() -> str:
@@ -599,7 +611,8 @@ def summarize(directory: Path) -> dict[str, Any]:
         json.loads(p.read_text(encoding="utf-8")) for p in sorted(directory.glob("C*-s*.json"))
     ]
     rows = [{k: r.get(k) for k in ("family", "session", "arm", "status", "success", "commitment",
-             "requests_started", "reasks", "tools", "lookups", "wrong_variant_attempts", "unauthorized_attempts",
+             "requests_started", "reasks", "tools", "lookups", "proposals_before_consent",
+             "wrong_variant_attempts", "unauthorized_attempts",
              "db_match", "agreed_variant_args", "confirmation_first", "termination")} for r in reports]  # fmt: skip
     started = sum(r.get("event") == "copilot-request-started" for r in journal_rows(directory))
     return {"sessions": len(rows), "statuses": dict(Counter(r["status"] for r in rows)),

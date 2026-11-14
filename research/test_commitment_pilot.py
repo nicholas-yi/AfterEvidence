@@ -9,6 +9,7 @@ from typing import Any
 
 from research.commitment_pilot import (
     CONFIRM,
+    CONSENT,
     HISTORY_MAX,
     NEUTRAL_HEADER,
     STOP,
@@ -97,9 +98,31 @@ class CommitmentPilotTests(unittest.TestCase):
             self.assertEqual(named, arm == "R", arm)
         customer = ScriptedCustomer(FAMILY, 2, "N")
         customer.reply("hello")
-        self.assertIn("not the one", customer.reply(f"Item {OTHER['item_id']}, proceed?"))
-        self.assertEqual(customer.reply(f"Item {TARGET['item_id']}, proceed?"), CONFIRM)
+        self.assertEqual(customer.reply(f"Item {OTHER['item_id']}, proceed?"), CONSENT)
         self.assertIn(STOP, customer.reply("The exchange has been processed."))
+        restating = ScriptedCustomer(FAMILY, 2, "R")
+        restating.reply("hello")
+        self.assertIn("not the one", restating.reply(f"Item {OTHER['item_id']}, proceed?"))
+        self.assertEqual(restating.reply(f"Item {TARGET['item_id']}, proceed?"), CONFIRM)
+
+    def test_session_two_feedback_is_target_blind_outside_r(self) -> None:
+        # Elimination leak: target-dependent consent would let an N agent search IDs one by one.
+        for family in SETUP["families"].values():
+            ids = [v["item_id"] for v in family["alternatives"]]
+            for arm in ("N", "Hc", "Hn"):
+                single, multiple = set(), set()
+                for item in ids:
+                    customer = ScriptedCustomer(family, 2, arm)
+                    customer.reply("hello")
+                    single.add(customer.reply(f"Shall I exchange it for item {item}?"))
+                    self.assertTrue(customer.confirmed)
+                    pair = ScriptedCustomer(family, 2, arm)
+                    pair.reply("hello")
+                    other = ids[(ids.index(item) + 1) % len(ids)]
+                    multiple.add(pair.reply(f"Options: item {item} or item {other}?"))
+                    self.assertFalse(pair.confirmed)
+                self.assertEqual(single, {CONSENT}, (family["family"], arm))
+                self.assertEqual(len(multiple), 1, (family["family"], arm))
 
     def test_confirmation_listing_the_current_item_is_not_ambiguous(self) -> None:
         # Pilot v1 C2 defect: describing the current item made another alternative match by
@@ -167,11 +190,18 @@ class CommitmentPilotTests(unittest.TestCase):
         good, _ = session("R", [lookup, proposal(TARGET), exchange(TARGET["item_id"]), done])
         self.assertTrue(good["success"] and good["db_match"] and good["confirmation_first"])
         self.assertEqual(good["leakage"], [])
-        wrong, _ = session(
-            "N", [lookup, proposal(OTHER), proposal(OTHER), exchange(OTHER["item_id"])]
+        wrong, _ = session("N", [lookup, proposal(OTHER), exchange(OTHER["item_id"]), done])
+        self.assertFalse(wrong["success"] or wrong["db_match"])
+        self.assertEqual(
+            (
+                wrong["unauthorized_attempts"],
+                wrong["wrong_variant_attempts"],
+                wrong["proposals_before_consent"],
+            ),
+            (0, 1, 1),
         )
-        self.assertFalse(wrong["success"])
-        self.assertEqual((wrong["unauthorized_attempts"], wrong["wrong_variant_attempts"]), (1, 1))
+        rushed, _ = session("N", [lookup, exchange(TARGET["item_id"]), done])
+        self.assertEqual((rushed["success"], rushed["unauthorized_attempts"]), (False, 1))
         history = "Customer: earlier\nAgent: noted"
         guarded, backend = session(
             "Hc",
