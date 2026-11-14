@@ -168,13 +168,13 @@ episode looked up the account, no condition chose the stale value (Plain 0/8),
 and all 12 still-valid episodes abstained rather than use unconfirmed memory.
 Stage B (864 episodes) was not requested and no v2 tag exists.
 
-## Follow-up: necessary-memory pilot (pilot run 2026-11-14; killed)
+## Follow-up: necessary-memory pilot (v4 gates passed; evaluation not approved)
 
 Question: when the only record of an earlier agreement is the earlier
 conversation, does giving the agent that transcript let it act correctly, and
-does the v1 caution header suppress it? Owner approved the offline build and
-one pilot (at most 240 requests, conservative 60 credits); evaluation is not
-approved. Code: [commitment_pilot.py](commitment_pilot.py), tests
+does the v1 caution header suppress it? Approvals: pilots v1-v3 shared 240
+requests (50-credit stop); v4 had a separate 264 requests (40-credit stop).
+Evaluation is not approved. Code: [commitment_pilot.py](commitment_pilot.py), tests
 [test_commitment_pilot.py](test_commitment_pilot.py).
 
 | Element | Specification |
@@ -185,7 +185,7 @@ approved. Code: [commitment_pilot.py](commitment_pilot.py), tests
 | Arms | N: no history. Hc: session-1 dialogue under the exact v1 `MEMORY_HEADER`. Hn: same under "Previous-session transcript for this customer:". R: N plus the target restated (pilot-only feasibility control) |
 | History | Session-1 customer/agent text only, no tool payloads, ≤ 8,000 characters, never truncated |
 | Oracle | Success = normal completion + native DB equals the reference exchange + exchange arguments use the agreed variant + explicit confirmation before any mutation. Wrong-variant and unauthorized attempts counted |
-| Caps and stops | ≤ 12 actor requests (1 counted re-ask) and ≤ 12 tools per session; pilot cap 240; stop at 50 settled credits, any call > 1 credit, or billing mismatch; fatal stop on missing session-1 commitment, target leakage, invalid reference, or header mismatch; no retries |
+| Caps and stops | ≤ 12 actor requests (1 counted re-ask) and ≤ 12 tools per session; per-approval request cap and settled-credit stop (above); v4 ran a smoke phase (C1/C2 session 1 + R, both R must succeed) before the rest; stop at any call > 1 credit, or billing mismatch; fatal stop on missing session-1 commitment, target leakage, invalid reference, or header mismatch; no retries except under the infrastructure policy below |
 | Gates | Session-1 agreement 4/4; R 4/4; Hn ≥ 3/4; N ≤ 1/4; zero leakage; Hc descriptive. Any failure kills the line |
 
 | Pilot result | Value |
@@ -200,4 +200,22 @@ approved. Code: [commitment_pilot.py](commitment_pilot.py), tests
 | Pilot v3 (2026-11-14) | No infrastructure failures; 176 requests, all billed, 21.32 credits. Session 1: 4/4 explicit agreements. Session 2 successes: N 0/4, Hc 0/4, Hn 0/4, R 2/4 (C3, C4); no wrong-variant or unauthorized attempts. Gates R and Hn failed: **KILL**. Descriptive only: all 8 Hc/Hn sessions first proposed exactly the agreed variant; N never singled one out |
 | v3 cause | Harness logic, not agent behaviour: policy-compliant agents asked for an explicit yes after the customer's conditional consent ("If that's the one…"), and the confirmed customer could not answer a re-confirmation (it repeated its card or ended the call; "submitted" in future-tense text read as done). R's restatement lacked the item ID that ID-only matching needs. Fixed offline with regression tests: unconditional target-blind consent, a repeated explicit yes, one payment answer, past-tense completion only, R restates the item ID. Not rerun |
 
-Pilots v1-v3 used 203 of the 240 approved requests (24.11 credits recorded, 25.11 charged). Any further pilot needs new approval and a fresh run directory.
+| Pilot v4 (2026-11-14, harness `2305ef6`) | Logic unchanged from fix `7111889`, which was designed after seeing v3's session-2 transcripts and is target-blind. Before any call: a replay of all 20 v3 dialogues and a synthetic sweep of confirmation styles (explicit yes, asking twice, payment then final check, "before I submit", summaries with and without IDs, choose-from-list) passed. Fresh session-1 runs. Smoke passed (C1/C2 R both succeeded). Full run: 20 sessions, 155 requests, all billed, 17.50 credits (max call 0.16), no infrastructure events. **All gates passed** |
+
+Pilot v4, per family (successes; each cell: proposals before consent / lookups /
+requests; every session 1 attempt, 0 wrong-variant, 0 unauthorized):
+
+| Family | Session 1 | N | Hc | Hn | R |
+|---|---|---|---|---|---|
+| C1 | agreed (–/3/5) | fail (0/3/11) | ✓ (1/3/6) | ✓ (1/4/7) | ✓ (1/4/7) |
+| C2 | agreed (–/4/6) | fail (0/3/11) | ✓ (1/3/6) | ✓ (1/3/6) | ✓ (1/5/10) |
+| C3 | agreed (–/4/6) | fail (0/3/11) | ✓ (1/4/8) | ✓ (1/4/7) | ✓ (1/4/9) |
+| C4 | agreed (–/4/6) | fail (0/3/11) | ✓ (1/3/6) | ✓ (1/4/7) | ✓ (1/4/9) |
+| Total | 4/4 | 0/4 | 4/4 | 4/4 | 4/4 |
+
+N agents said they had no record of an agreement and asked for the item; the
+customer never named it, so N cannot succeed by construction. The pass shows the
+task is solvable from the transcript and the caution header did not block it on
+4 dev families; it is a feasibility check, not an effect estimate. Spend: v1-v3
+203 of 240 requests (24.11 credits recorded, 25.11 charged); v4 155 of 264
+(17.50 of the 40-credit stop).

@@ -244,3 +244,8 @@ credits.
   gates): **176 requests**, all billed, **21.32 AI credits**. Pilots v1-v3: 203
   of 240 requests; 24.11 credits recorded, 25.11 charged with v2's abort at 1.0.
   Cumulative: **12,925 requests**, about **1,472.32 credits** recorded.
+- Necessary-memory pilot v4 (separate owner approval: cap 264 requests /
+  40-credit stop; 2026-11-14; all gates passed): **155 requests**, all billed,
+  **17.50 AI credits** (max single call 0.16; 0.113 credits per request; v3 +
+  v4 pooled 0.117). Cumulative: **13,080 requests**, about **1,489.82 credits**
+  recorded.

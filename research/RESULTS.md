@@ -235,12 +235,11 @@ reporting. Open:
    valid unconfirmed memory. Stage B is not requested as designed.
 5. Other actors or retrieval styles (per-turn or agentic retrieval) under a
    new tagged protocol.
-6. Necessary-memory pilot: v1 killed at its session-1 gate by a scripted-customer
-   matching defect (17 requests, 1.94 credits); v2 stopped by a 150 s service
-   timeout (10 requests, 0.86 credits; one unbilled). v3, with an infrastructure
-   retry policy, ran all 20 sessions (176 requests, 21.32 credits) and was killed
-   at the R and Hn gates by a scripted-customer confirmation defect, now fixed
-   offline; not rerun ([design](DESIGN.md#follow-up-necessary-memory-pilot-pilot-run-2026-11-14-killed)).
+6. Necessary-memory pilot: v1-v3 were stopped by scripted-customer defects or a
+   service timeout (203 requests, 24.11 credits), each fixed offline. v4 (new
+   approval; 155 requests, 17.50 credits) passed every gate on 4 dev families:
+   Hn 4/4, Hc 4/4, R 4/4, N 0/4, zero leakage. A feasibility pilot, not an
+   effect estimate; evaluation not approved ([design](DESIGN.md#follow-up-necessary-memory-pilot-v4-gates-passed-evaluation-not-approved)).
 
 The software tests check memory mechanics, not that an agent learned useful
 lessons. No Google-style parameter expansion, Knowledge Seeding, or RL dreaming
