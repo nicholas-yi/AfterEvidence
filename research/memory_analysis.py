@@ -253,6 +253,8 @@ def cluster_effect(clusters: dict[str, list[int]], seed: int = 0) -> dict[str, A
         ),
         "bootstrap_se": round(statistics.stdev(boots), 4),
         "sign_flip_p": round((extreme + 1) / (RESAMPLES + 1), 4),
+        # Unrounded, for display: 4-decimal values can round the wrong way at one decimal.
+        "exact": (estimate, boots[int(0.025 * RESAMPLES)], boots[int(0.975 * RESAMPLES) - 1]),
     }
 
 

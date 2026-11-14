@@ -1,0 +1,87 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="910" height="426" viewBox="0 0 910 426" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="13">
+<rect width="910" height="426" fill="#ffffff"/>
+<text x="16" y="30" text-anchor="start" font-size="16" font-weight="bold" fill="#1f2328">Success stayed between 73% and 83% for every condition, at similar cost</text>
+<text x="16" y="52" text-anchor="start" font-size="13" font-weight="normal" fill="#59636e">Study 1: 52 paired episodes per condition</text>
+<text x="170" y="80" text-anchor="start" font-size="13" font-weight="bold" fill="#1f2328">Task success (95% interval)</text>
+<text x="540" y="80" text-anchor="start" font-size="13" font-weight="bold" fill="#1f2328">AI credits per episode</text>
+<line x1="170" y1="86" x2="170" y2="362" stroke="#d8dee4" stroke-width="1"/>
+<text x="170" y="380" text-anchor="middle" font-size="12" font-weight="normal" fill="#59636e">50%</text>
+<line x1="230" y1="86" x2="230" y2="362" stroke="#d8dee4" stroke-width="1"/>
+<text x="230" y="380" text-anchor="middle" font-size="12" font-weight="normal" fill="#59636e">60%</text>
+<line x1="290" y1="86" x2="290" y2="362" stroke="#d8dee4" stroke-width="1"/>
+<text x="290" y="380" text-anchor="middle" font-size="12" font-weight="normal" fill="#59636e">70%</text>
+<line x1="350" y1="86" x2="350" y2="362" stroke="#d8dee4" stroke-width="1"/>
+<text x="350" y="380" text-anchor="middle" font-size="12" font-weight="normal" fill="#59636e">80%</text>
+<line x1="410" y1="86" x2="410" y2="362" stroke="#d8dee4" stroke-width="1"/>
+<text x="410" y="380" text-anchor="middle" font-size="12" font-weight="normal" fill="#59636e">90%</text>
+<line x1="470" y1="86" x2="470" y2="362" stroke="#d8dee4" stroke-width="1"/>
+<text x="470" y="380" text-anchor="middle" font-size="12" font-weight="normal" fill="#59636e">100%</text>
+<line x1="540" y1="86" x2="540" y2="362" stroke="#d8dee4" stroke-width="1"/>
+<text x="540" y="380" text-anchor="middle" font-size="12" font-weight="normal" fill="#59636e">0</text>
+<line x1="640" y1="86" x2="640" y2="362" stroke="#d8dee4" stroke-width="1"/>
+<text x="640" y="380" text-anchor="middle" font-size="12" font-weight="normal" fill="#59636e">1</text>
+<line x1="740" y1="86" x2="740" y2="362" stroke="#d8dee4" stroke-width="1"/>
+<text x="740" y="380" text-anchor="middle" font-size="12" font-weight="normal" fill="#59636e">2</text>
+<line x1="840" y1="86" x2="840" y2="362" stroke="#d8dee4" stroke-width="1"/>
+<text x="840" y="380" text-anchor="middle" font-size="12" font-weight="normal" fill="#59636e">3</text>
+<line x1="320" y1="86" x2="320" y2="362" stroke="#59636e" stroke-width="1.2" stroke-dasharray="4 3"/>
+<text x="158" y="111" text-anchor="end" font-size="13" font-weight="normal" fill="#1f2328">No memory</text>
+<line x1="240.8" y1="107" x2="378.8" y2="107" stroke="#59636e" stroke-width="2.2"/>
+<circle cx="320" cy="107" r="5" fill="#59636e"/>
+<text x="384.8" y="111" text-anchor="start" font-size="12" font-weight="normal" fill="#59636e">39/52</text>
+<rect x="540" y="99" width="202.5" height="16" fill="#59636e" fill-opacity="0.8"/>
+<text x="748.5" y="111" text-anchor="start" font-size="12" font-weight="normal" fill="#59636e">2.02</text>
+<text x="158" y="141" text-anchor="end" font-size="13" font-weight="normal" fill="#1f2328">Raw transcripts</text>
+<line x1="266" y1="137" x2="396.8" y2="137" stroke="#0072B2" stroke-width="2.2"/>
+<circle cx="342.8" cy="137" r="5" fill="#0072B2"/>
+<text x="402.8" y="141" text-anchor="start" font-size="12" font-weight="normal" fill="#59636e">41/52</text>
+<rect x="540" y="129" width="224.5" height="16" fill="#0072B2" fill-opacity="0.8"/>
+<text x="770.5" y="141" text-anchor="start" font-size="12" font-weight="normal" fill="#59636e">2.25</text>
+<text x="158" y="171" text-anchor="end" font-size="13" font-weight="normal" fill="#1f2328">One-pass lessons</text>
+<line x1="266" y1="167" x2="396.8" y2="167" stroke="#0072B2" stroke-width="2.2"/>
+<circle cx="342.8" cy="167" r="5" fill="#0072B2"/>
+<text x="402.8" y="171" text-anchor="start" font-size="12" font-weight="normal" fill="#59636e">41/52</text>
+<rect x="540" y="159" width="227.4" height="16" fill="#0072B2" fill-opacity="0.8"/>
+<text x="773.4" y="171" text-anchor="start" font-size="12" font-weight="normal" fill="#59636e">2.27</text>
+<text x="158" y="201" text-anchor="end" font-size="13" font-weight="normal" fill="#1f2328">Sleep-style lessons</text>
+<line x1="278.6" y1="197" x2="405.2" y2="197" stroke="#0072B2" stroke-width="2.2"/>
+<circle cx="354.8" cy="197" r="5" fill="#0072B2"/>
+<text x="411.2" y="201" text-anchor="start" font-size="12" font-weight="normal" fill="#59636e">42/52</text>
+<rect x="540" y="189" width="210.7" height="16" fill="#0072B2" fill-opacity="0.8"/>
+<text x="756.7" y="201" text-anchor="start" font-size="12" font-weight="normal" fill="#59636e">2.11</text>
+<text x="158" y="231" text-anchor="end" font-size="13" font-weight="normal" fill="#1f2328">Workflows</text>
+<line x1="291.8" y1="227" x2="413.6" y2="227" stroke="#0072B2" stroke-width="2.2"/>
+<circle cx="366.2" cy="227" r="5" fill="#0072B2"/>
+<text x="419.6" y="231" text-anchor="start" font-size="12" font-weight="normal" fill="#59636e">43/52</text>
+<rect x="540" y="219" width="197.3" height="16" fill="#0072B2" fill-opacity="0.8"/>
+<text x="743.3" y="231" text-anchor="start" font-size="12" font-weight="normal" fill="#59636e">1.97</text>
+<text x="158" y="261" text-anchor="end" font-size="13" font-weight="normal" fill="#1f2328">Mem0</text>
+<line x1="291.8" y1="257" x2="413.6" y2="257" stroke="#0072B2" stroke-width="2.2"/>
+<circle cx="366.2" cy="257" r="5" fill="#0072B2"/>
+<text x="419.6" y="261" text-anchor="start" font-size="12" font-weight="normal" fill="#59636e">43/52</text>
+<rect x="540" y="249" width="205" height="16" fill="#0072B2" fill-opacity="0.8"/>
+<text x="751" y="261" text-anchor="start" font-size="12" font-weight="normal" fill="#59636e">2.05</text>
+<text x="158" y="291" text-anchor="end" font-size="13" font-weight="normal" fill="#1f2328">Graphiti</text>
+<line x1="278.6" y1="287" x2="405.2" y2="287" stroke="#0072B2" stroke-width="2.2"/>
+<circle cx="354.8" cy="287" r="5" fill="#0072B2"/>
+<text x="411.2" y="291" text-anchor="start" font-size="12" font-weight="normal" fill="#59636e">42/52</text>
+<rect x="540" y="279" width="217" height="16" fill="#0072B2" fill-opacity="0.8"/>
+<text x="763" y="291" text-anchor="start" font-size="12" font-weight="normal" fill="#59636e">2.17</text>
+<text x="158" y="321" text-anchor="end" font-size="13" font-weight="normal" fill="#1f2328">Hindsight</text>
+<line x1="228.2" y1="317" x2="369.2" y2="317" stroke="#0072B2" stroke-width="2.2"/>
+<circle cx="308.6" cy="317" r="5" fill="#0072B2"/>
+<text x="375.2" y="321" text-anchor="start" font-size="12" font-weight="normal" fill="#59636e">38/52</text>
+<rect x="540" y="309" width="212.9" height="16" fill="#0072B2" fill-opacity="0.8"/>
+<rect x="752.9" y="309" width="31.4" height="16" fill="#E69F00" fill-opacity="1"/>
+<text x="790.3" y="321" text-anchor="start" font-size="12" font-weight="normal" fill="#59636e">2.44</text>
+<text x="158" y="351" text-anchor="end" font-size="13" font-weight="normal" fill="#1f2328">Honcho</text>
+<line x1="266" y1="347" x2="396.8" y2="347" stroke="#0072B2" stroke-width="2.2"/>
+<circle cx="342.8" cy="347" r="5" fill="#0072B2"/>
+<text x="402.8" y="351" text-anchor="start" font-size="12" font-weight="normal" fill="#59636e">41/52</text>
+<rect x="540" y="339" width="208.1" height="16" fill="#0072B2" fill-opacity="0.8"/>
+<rect x="748.1" y="339" width="16.9" height="16" fill="#E69F00" fill-opacity="1"/>
+<text x="771" y="351" text-anchor="start" font-size="12" font-weight="normal" fill="#59636e">2.25</text>
+<text x="170" y="412" text-anchor="start" font-size="12" font-weight="normal" fill="#59636e">dashed line: success without memory</text>
+<rect x="540" y="402" width="12" height="12" fill="#E69F00" fill-opacity="1"/>
+<text x="558" y="412" text-anchor="start" font-size="12" font-weight="normal" fill="#59636e">extra model calls the memory system made at retrieval</text>
+</svg>

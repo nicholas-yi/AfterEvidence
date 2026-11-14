@@ -35,7 +35,7 @@ identifiers disappeared from all four providers (Honcho only on a recheck).
 Memory was built from 30 learning-pool episodes whose customers never appear in
 the test split.
 
-![Study 1 success and cost](../docs/figures/study1-success-cost.svg)
+![Study 1 success and cost](../docs/figures/study1-success-cost-light.svg)
 
 | Condition | Successes / 52 | Rate (95% CI) | Wins / losses vs none | Holm p | Credits per episode |
 |---|---:|---|---:|---:|---:|

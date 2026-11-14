@@ -4,6 +4,7 @@ import csv
 import unittest
 from pathlib import Path
 
+from research.figures import render_all
 from research.memory_analysis import EPISODE_FIELDS, tables_from_csv
 
 CSV = Path(__file__).resolve().parent / "data" / "memory-study-v1-episodes.csv"
@@ -52,6 +53,11 @@ class PublishedMemoryStudyTests(unittest.TestCase):
         for (study, name), (difference, ci95) in POST_HOC.items():
             post_hoc = tables[study][name]["post_hoc"]
             self.assertEqual((post_hoc["difference"], post_hoc["ci95"]), (difference, ci95))
+
+    def test_readme_figures_match_the_csv(self) -> None:
+        for path, svg in render_all().items():
+            self.assertTrue(path.exists(), path.name)
+            self.assertEqual(path.read_text(encoding="utf-8"), svg, f"{path.name} is stale")
 
 
 if __name__ == "__main__":

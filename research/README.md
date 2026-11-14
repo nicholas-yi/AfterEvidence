@@ -63,7 +63,8 @@ agent-learning evidence.
 - [Cost estimates and resource boundaries](COSTS.md).
 - [Actual outcomes and remaining gates](RESULTS.md).
 - [Public per-episode table for Studies 1 and 2](data/memory-study-v1-episodes.csv),
-  recomputed by `python -m research.memory_analysis --csv` and checked in CI.
+  recomputed by `python -m research.memory_analysis --csv` and checked in CI;
+  [README figures](figures.py) are regenerated from it (`python -m research.figures`).
 - [Benchmark and SDK pins](benchmark-lock.json).
 - [Non-editable dependency constraints](dependencies.lock.txt), combined with the source pins.
 - [Source-aware memory controls](memory_methods.py).
