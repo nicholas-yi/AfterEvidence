@@ -616,9 +616,12 @@ reporting. Open:
    covers all 602 memory-study episodes (learning pool 30, Study 1 468 including
    5 planned episodes without a report, Study 2 104). A heuristic flag marks 105
    for priority (not scored, no stop marker, transfer, or possible disclosure of
-   unknown information). Open human decisions: reviewer, sample (all episodes
-   or flagged plus a random draw), and what a failed fidelity check does to an
-   episode. v1 outcomes stay as recorded; review may only annotate them.
+   unknown information). Proposed default for the owner to accept or change:
+   reviewer = owner; a seeded sample (seed 20261113) stratified across
+   conditions of 20 flagged and 10 unflagged episodes with transcripts, plus every Study 2
+   task 110 and 98 episode (36 distinct episodes, marked in the indexes'
+   `default_sample` column). A failed fidelity check is annotated per episode
+   with a sensitivity analysis; v1 primary results never change.
 2. More power: more test runs per task, or a harder task set where the
    no-memory baseline is further from ceiling, before any small effect is claimed.
 3. Policy-compliance scoring: the judge-needing tasks need an approved,

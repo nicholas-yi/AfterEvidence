@@ -129,7 +129,8 @@ to none".
 The public [AfterEvidence](https://github.com/nicholas-yi/AfterEvidence)
 repository provides the [protocol](../research/PROTOCOL-MEMORY.md),
 [runbook](../research/MEMORY-STUDY.md), and implementation; historical journals
-and provider state remain private. A clone alone cannot fully audit or replay
-the reported runs. The study logged 12,428 started requests and 1,425.05
+and provider state remain private. The study can be repeated with new model
+calls (results will vary), but the reported tables cannot be recomputed from the
+public repository alone. The study logged 12,428 started requests and 1,425.05
 recorded credits; eight billing snapshots are missing. About $14.25 is recorded
 allowance value, not an invoice.
