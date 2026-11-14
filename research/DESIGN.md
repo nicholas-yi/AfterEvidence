@@ -157,7 +157,7 @@ It tests a related functional question, not Google's algorithm. No weights
 are trained and no Sleep reproduction is claimed. A later parametric track
 would require an appropriate training setup and its own controlled protocol.
 
-## Proposed follow-up: staleness-aware memory (approval pending; not tagged, not run)
+## Follow-up: staleness-aware memory (Stage A run; Stage B not requested)
 
 Controlled synthetic diagnostic of stale-memory handling. Not a tau2 score, not
 memory distilled from agent experience, does not re-test v1. Memory records are
@@ -214,3 +214,15 @@ Annotated carry the same records; only the metadata differs.
   --approved-requests 144`.
 - Secondary, no spend planned: a semantic-deletion probe (paraphrased facts
   derived from a deleted source) would extend Study 3's literal-identifier check.
+
+**Stage A result (owner-approved, run 2026-11-13; dev families, descriptive
+only).** 36/36 episodes completed with no stop reason: 74 requests started and
+billed, 1.07 recorded credits, 2 counted re-asks (malformed output correctly
+rejected; no mechanics fix needed). Every episode looked up the account before
+submitting. `reset` and `corrected`: 12/12 correct for each condition, so Plain
+chose the obsolete value in **0 of 8**: the pre-specified floor check failed.
+`current`: all 12 abstained, including Plain and Annotated, stating that the
+remembered preference was not confirmed by the account, so the positive control
+would also fail. Under these instructions this actor did not act on unconfirmed
+memory at all. Stage B is not requested as designed and v2 is not tagged;
+any redesign would be a new proposal informed by these dev episodes.

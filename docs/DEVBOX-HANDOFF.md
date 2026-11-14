@@ -37,7 +37,7 @@ The app and the research harness are separate tracks. No new UI demo is needed.
 | Memory-study stack | Docker (Neo4j, Hindsight, Honcho), Ollama embeddings, provider venv, shims and gateway on the devbox; see [runbook](../research/MEMORY-STUDY.md) |
 | Latest laptop validation | 66 core/publication tests and 28 research tests passed; Ruff, research Pyright, and old-journal replay passed |
 | Devbox validation | Exact 81-entry lock reproduced; core, research, Ruff 0.17.5, and research Pyright checks pass; preflight 0/1/2 matches laptop |
-| Follow-up study | Staleness diagnostic [proposed](../research/DESIGN.md#proposed-follow-up-staleness-aware-memory-approval-pending-not-tagged-not-run): approval pending, not tagged, not run; no demonstrated memory improvement |
+| Follow-up study | Staleness diagnostic [Stage A run](../research/DESIGN.md#follow-up-staleness-aware-memory-stage-a-run-stage-b-not-requested): floor check failed (0/8 stale choices; actor abstained on valid unconfirmed memory); Stage B not requested; no v2 tag |
 
 Task 1 has no nonempty NL assertions or communication targets. Its task-basis
 score is not an independent policy-compliance or conversation-quality
@@ -50,8 +50,9 @@ A matching database still does not establish simulator fidelity.
 The devbox cohort used **162 of 360 approved requests** and **16.05978 AI
 credits**. The memory study then started **12,428 of 16,000 approved requests**
 and recorded **1,425.05 credits** (8 aborted requests have no billing record).
-Cumulative Copilot usage is about **12,648 requests /
-1,447.14 credits** (about $14.47). These are not separate API invoices.
+Staleness Stage A then used **74 of 144 approved requests** and **1.07 credits**.
+Cumulative Copilot usage is about **12,722 requests /
+1,448.21 credits** (about $14.48). These are not separate API invoices.
 Unused allowance is not permission to change a cohort, retry tasks, add judges,
 switch models, or start another study. Obtain explicit approval for the next
 inference plan.
@@ -148,9 +149,9 @@ tune anything on them. Decisions before more inference:
 1. Human review of simulator fidelity from the private packet in
    `research/runs/memory-study/review/` (decisions listed in
    [results](../research/RESULTS.md#remaining-gates-and-next-steps)).
-2. Owner approval, stage by stage, of the
-   [proposed staleness diagnostic](../research/DESIGN.md#proposed-follow-up-staleness-aware-memory-approval-pending-not-tagged-not-run)
-   before it is tagged or run; any other follow-up needs its own tagged protocol.
+2. The [staleness diagnostic](../research/DESIGN.md#follow-up-staleness-aware-memory-stage-a-run-stage-b-not-requested)
+   failed its Stage A floor check; Stage B is not requested and no v2 tag
+   exists. Any redesign or other follow-up needs its own approval and tag.
 3. An approved, validated NL-assertion judge if judge-needing tasks are added.
 
 ## Private evidence is not in this clone
@@ -205,14 +206,14 @@ found no literal identifiers of the deleted source afterwards (Honcho only on a
 recheck); semantic erasure was not tested. No human has reviewed simulator
 fidelity; the private packet is in research/runs/memory-study/review/.
 
-Proceed offline. The approval-pending staleness diagnostic is in
-research/DESIGN.md with offline code in research/staleness.py; do not tag or
-run it without explicit stage approval. Keep hidden scoring criteria, reference
+Proceed offline. The staleness diagnostic in research/DESIGN.md ran Stage A
+(36 dev episodes) and failed its floor check; do not run Stage B or tag v2
+without new explicit approval. Keep hidden scoring criteria, reference
 actions, and task_audit output out of actor/memory inputs. Do not start model
 calls until I approve a concrete design, total request cap (actor, simulator,
 provider calls, retries, judges), and cost estimate.
 
-Cumulative usage is about 12,648 requests / 1,447.14 AI credits. Unused
+Cumulative usage is about 12,722 requests / 1,448.21 AI credits. Unused
 allowance is not blanket authorization. Raw journals and provider data are
 private and not in Git; ask before any historical replay.
 Keep the current flat WireCommand action contract and its regression tests.

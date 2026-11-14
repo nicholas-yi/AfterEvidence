@@ -628,8 +628,10 @@ reporting. Open:
    validated NL-assertion judge.
 4. Memory that knows when it is stale: Study 2's clearest losses came from
    remembered facts invalidated by a database reset. A controlled synthetic
-   diagnostic is [proposed in the design](DESIGN.md#proposed-follow-up-staleness-aware-memory-approval-pending-not-tagged-not-run)
-   (approval pending; not tagged, not run).
+   diagnostic was [designed](DESIGN.md#follow-up-staleness-aware-memory-stage-a-run-stage-b-not-requested);
+   its approved Stage A (36 dev episodes) hit the pre-specified floor: no
+   condition chose the stale value, and the actor abstained rather than use
+   valid unconfirmed memory. Stage B is not requested as designed.
 5. Other actors or retrieval styles (per-turn or agentic retrieval) under a
    new tagged protocol.
 

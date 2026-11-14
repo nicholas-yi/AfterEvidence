@@ -117,9 +117,11 @@ to none".
 ## What I would try next
 
 - **Staleness-aware memory:** store when and from what each fact came, and
-  have the agent check current tool results before acting on it. A controlled
-  synthetic diagnostic is [proposed](../research/DESIGN.md#proposed-follow-up-staleness-aware-memory-approval-pending-not-tagged-not-run)
-  but not yet approved or run.
+  have the agent check current tool results before acting on it. A small
+  synthetic [pilot](../research/DESIGN.md#follow-up-staleness-aware-memory-stage-a-run-stage-b-not-requested)
+  (36 development episodes) could not discriminate: the agent always checked
+  the live account, never acted on stale memory, and also declined to use
+  valid memory it could not confirm. It was not scaled up.
 - **Harder tasks or a weaker base agent**, where a no-memory agent has more
   room to fail.
 - **Agentic retrieval** instead of one up-front lookup.

@@ -226,3 +226,6 @@ credits.
   (13.28) provider calls are in the table rows above.
 - Cumulative Copilot usage across all AfterEvidence pilots and studies:
   **12,648 requests** and about **1,447.14 AI credits** (about $14.47).
+- Staleness Stage A (owner-approved cap 144 requests / 36 credits, 2026-11-13):
+  **74 requests** started, all billed, **1.07 AI credits** recorded (max single
+  call 0.026). Cumulative: **12,722 requests**, about **1,448.21 credits**.
