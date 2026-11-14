@@ -887,7 +887,9 @@ class ChangedMindTests(unittest.TestCase):
             first.reply("Here are the options.")
             first.reply(f"Item {x} is in stock. Is that the one?")
             self.assertTrue(first.agreed and first.done)
+            before = json.dumps(family, sort_keys=True)
             change = customer_cls(family, 1, "S1b")
+            self.assertEqual(json.dumps(family, sort_keys=True), before)  # never mutates the family
             opening = change.reply(OPENING)
             self.assertIn("changed my mind", opening)
             self.assertFalse(_names_target(self.x_view(family), opening) or y in opening)
@@ -896,6 +898,12 @@ class ChangedMindTests(unittest.TestCase):
                 f"Is it item {x}?", f"Options: {', '.join(ids)}.", "Which item did we agree earlier?",
                 f"Instead of item {x}, item {y}?")]  # fmt: skip
             self.assertIn("I changed my mind", replies[0])
+            target = next(v for v in family["alternatives"] if v["item_id"] == y)
+            probe = customer_cls(family, 1, "S1b")
+            probe.reply(OPENING)
+            options_only = probe.reply(f"The {', '.join(target['options'].values())} one?")
+            self.assertFalse(probe.agreed)
+            self.assertIn("exact item ID", options_only)  # options without the ID are not agreement
             self.assertIn("the one we agreed last time", replies[2])
             self.assertFalse(change.agreed)
             self.assertFalse(
@@ -912,7 +920,7 @@ class ChangedMindTests(unittest.TestCase):
         customer_cls = self.cm.ChangedMindCustomer
         for family in self.setup["families"].values():
             ids = [v["item_id"] for v in family["alternatives"]]
-            for arm in ("Hn", "M", "Ho"):
+            for arm in ("N", "Hc", "Hn", "M", "Ho"):
                 single, multi = set(), set()
                 for item in ids:
                     customer = customer_cls(family, 2, arm)
@@ -926,7 +934,9 @@ class ChangedMindTests(unittest.TestCase):
                         other.reply(f"Item {item} or item {ids[0] if item != ids[0] else ids[1]}?")
                     )
                     self.assertEqual(leaks(family, arm, "", None, [opening]), [])
-                self.assertEqual(len(single), 1, (family["family"], arm))  # X, Y and others alike
+                self.assertEqual(
+                    single, {CONSENT}, (family["family"], arm)
+                )  # X, Y and others alike
                 self.assertEqual(len(multi), 1, (family["family"], arm))
             control = customer_cls(family, 2, "R")
             restated = control.reply(OPENING)
