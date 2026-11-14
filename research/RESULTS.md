@@ -238,8 +238,9 @@ reporting. Open:
 6. Necessary-memory pilot: v1-v3 were stopped by scripted-customer defects or a
    service timeout (203 requests, 24.11 credits), each fixed offline. v4 (new
    approval; 155 requests, 17.50 credits) passed every gate on 4 dev families:
-   Hn 4/4, Hc 4/4, R 4/4, N 0/4, zero leakage. A feasibility pilot, not an
-   effect estimate; evaluation not approved ([design](DESIGN.md#follow-up-necessary-memory-pilot-v4-gates-passed-evaluation-not-approved)).
+   Hn 4/4, Hc 4/4, R 4/4, N 0/4, zero leakage. v5 (Mem0 and Honcho given the
+   same dialogue; 81 requests, 8.13 credits) passed its integration gate; both
+   completed 4/4. Feasibility pilots, not effect estimates; evaluation not approved ([design](DESIGN.md#follow-up-necessary-memory-pilot-v4-gates-passed-evaluation-not-approved)).
 
 The software tests check memory mechanics, not that an agent learned useful
 lessons. No Google-style parameter expansion, Knowledge Seeding, or RL dreaming

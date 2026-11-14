@@ -248,7 +248,7 @@ python -m afterevidence serve
 | Question | Status |
 |---|---|
 | Does labelling memories with when they were written, and whether they were later corrected, stop an agent from acting on stale ones? | A first small synthetic run could not separate the conditions: the agent checked the live account every time, ignoring stale and valid memories alike. No comparison result. |
-| When a task cannot be done without remembering an earlier agreement, does memory of that conversation let the agent finish it, and does a cautionary memory header hold it back? | In a 4-customer pilot, agents given the earlier conversation completed the agreed exchange in 8 of 8 sessions, with either memory header; without it, as designed, none could (0 of 4). A pilot this small shows the setup works; it is not an effect estimate. |
+| When a task cannot be done without remembering an earlier agreement, does memory of that conversation let the agent finish it, and does a cautionary memory header hold it back? | In a 4-customer pilot, agents given the earlier conversation completed the agreed exchange in 8 of 8 sessions, with either memory header; without it, as designed, none could (0 of 4). Agents given Mem0's or Honcho's memory of that conversation also completed 4 of 4 each. A pilot this small shows the setup works; it is not an effect estimate. |
 | Do agents that query memory step by step, rather than once up front, benefit more? | Not yet tested. |
 
 Designs: [research design](research/DESIGN.md).

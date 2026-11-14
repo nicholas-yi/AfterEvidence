@@ -68,6 +68,8 @@ Secrets (shim token, Neo4j password) live in git-ignored `research/providers/`.
 
    Bind to `0.0.0.0` only for shims that containers call; the token is mandatory.
 5. **Gateway**: `research\.venv-providers\Scripts\python.exe -m research.memory_gateway --config research\providers\gateway.json`.
+   Later pilots use their own config with the optional `state`, `honcho_workspace`
+   and `honcho_reasoning_level` keys so they never touch the study's stores.
 
 ## Pipeline
 

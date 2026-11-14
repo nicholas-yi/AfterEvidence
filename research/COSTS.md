@@ -249,3 +249,8 @@ credits.
   **17.50 AI credits** (max single call 0.16; 0.113 credits per request; v3 +
   v4 pooled 0.117). Cumulative: **13,080 requests**, about **1,489.82 credits**
   recorded.
+- Necessary-memory pilot v5 (separate owner approval: cap 160 requests including
+  provider shims / 25-credit stop; 2026-11-14; integration gate passed): **81
+  requests**, all billed, **8.13 AI credits** (episodes 59 / 6.48, Mem0 shim 4 /
+  0.40, Honcho shim 18 / 1.25; max single call 0.20). Cumulative: **13,161
+  requests**, about **1,497.95 credits** recorded.

@@ -219,3 +219,32 @@ task is solvable from the transcript and the caution header did not block it on
 4 dev families; it is a feasibility check, not an effect estimate. Spend: v1-v3
 203 of 240 requests (24.11 credits recorded, 25.11 charged); v4 155 of 264
 (17.50 of the 40-credit stop).
+
+Pilot v5 (provider integration; separate approval: 160 requests including both
+provider shims, 25-credit stop; harness `c20f63e`):
+
+| Element | Specification |
+|---|---|
+| Arms | M (Mem0) and Ho (Honcho), C1-C4; everything else as Hn (actor, policy, tools, customer, oracle, caps, neutral header) |
+| Ingest | The frozen v4 session-1 dialogues (same text as Hn; SHA-256 in `plan.json`), no tool payloads or outcome line. Fresh scopes: Mem0 `user_id` `cmp-p5-<family>` in a new store directory, `run_id` per session; Honcho workspace `commitment-pilot-v5`, a peer per customer plus an agent peer, one session per conversation. Honcho deriver queue drained (two empty polls) before retrieval |
+| Retrieval | Once, before the session, with the customer's first session-2 message. Mem0 library-default search (top_k 20; v1's `limit=10` was ignored by mem0 2.2.1, so unchanged). Honcho dialectic on the customer peer at the server default level, which is `low` at `5c7d24b` (the level v1 set explicitly). Rendered as in v1, capped at 8,000 characters; a retrieval error means no memory block |
+| Gate (integration only) | Ingestion 4/4 per provider with the queue drained; retrieval without error ≥ 3/4 per provider; zero leakage outside the memory block; no harness-logic defect. Shim caps Mem0 14, Honcho 50, episodes ≤ 96 |
+
+| Family | M: memory chars (ID / options) | M | Ho: memory chars (ID / options) | Ho |
+|---|---|---|---|---|
+| C1 | 522 (✓/✓) | ✓ (1/4/7) | 668 (✓/✓) | ✓ (1/4/10) |
+| C2 | 877 (✓/✓) | ✓ (1/4/7) | 544 (✗/✓) | ✓ (1/4/7) |
+| C3 | 747 (✓/✓) | ✓ (1/4/7) | 679 (✓/✓) | ✓ (1/4/7) |
+| C4 | 1,056 (✓/✓) | ✓ (1/4/7) | 522 (✓/✓) | ✓ (1/4/7) |
+
+Cells: whether the retrieved text contains the agreed item ID and all its option
+values; outcome (proposals before consent / lookups / requests). Every session
+had 1 attempt, 0 wrong-variant and 0 unauthorized attempts. In C2-Ho the memory
+named the options but not the ID, and the agent resolved the ID from the product
+catalogue. **Integration gate passed**: ingestion 4/4 each (Honcho queue 24/24
+work units completed), retrieval 8/8 without error, zero leakage, no infrastructure
+events. One Honcho dialectic call got a shim 502 (a forced tool call answered in
+text twice); Honcho's client retried and the retrieval succeeded. v1 Honcho
+workspaces and the v1 Mem0 store were unchanged (read-only counts and file hashes
+before and after). Spend: 81 of 160 requests (episodes 59, Mem0 4, Honcho 18),
+8.13 of 25 credits (max call 0.20). Descriptive only; no efficacy claim.
