@@ -16,9 +16,12 @@ from research.commitment_pilot import (
     FatalStop,
     ScriptedCustomer,
     identified,
+    journal_rows,
     leaks,
     oracle,
+    pilot_ledger,
     prepare,
+    run_jobs,
     run_session,
     session_system,
     start_refusals,
@@ -221,9 +224,108 @@ class CommitmentPilotTests(unittest.TestCase):
         self.assertTrue(leaks(FAMILY, "N", system + TARGET["item_id"], None, []))
         with tempfile.TemporaryDirectory() as tmp:
             Path(tmp, "x.calls.jsonl").write_text(
-                '{"event": "copilot-request-started"}\n', encoding="utf-8"
+                '{"event": "copilot-request-started", "call_id": 1}\n', encoding="utf-8"
             )
-            self.assertTrue(any(r.startswith("count mismatch") for r in start_refusals(Path(tmp))))
+            self.assertTrue(any(r.startswith("un-journaled") for r in start_refusals([Path(tmp)])))
+
+
+def billed(call_id: int) -> dict[str, Any]:
+    usage = {"usage": {"input_tokens": 1, "output_tokens": 1}, "requests": {"count": 1}}
+    return {"event": "copilot-request-completed", "call_id": call_id,
+            "metrics": {"ai_credits_status": "complete", "total_nano_aiu": 1e8,
+                        "model_metrics": {"m": usage}}}  # fmt: skip
+
+
+class JournalingBackend(FakeBackend):
+    """Fake actor that journals like CopilotBackend: TIMEOUT aborts; TRANSPORT leaves no record."""
+
+    def __init__(self, replies: list[str], journal: Any) -> None:
+        super().__init__(replies)
+        self.journal = journal
+
+    def write(self, event: str, **fields: object) -> None:
+        self.journal.write(json.dumps({"event": event, **fields}) + "\n")
+        self.journal.flush()
+
+    async def complete(self, system: str, prompt: str, response_schema: Any = None) -> str:
+        if self.calls >= self.limit:
+            raise PilotRequestLimit("cap")
+        self.calls += 1
+        self.write("copilot-request-started", call_id=self.calls)
+        reply = self.replies.pop(0) if self.replies else act(text="Anything else?")
+        if reply == "TIMEOUT":
+            self.write("copilot-request-aborted", call_id=self.calls)
+            raise TimeoutError("Copilot response exceeded 150 seconds.")
+        if reply == "TRANSPORT":
+            raise ConnectionError("transport closed")
+        self.write("copilot-response-received", call_id=self.calls)
+        self.journal.write(json.dumps(billed(self.calls)) + "\n")
+        return reply
+
+
+class InfrastructurePolicyTests(unittest.TestCase):
+    S1 = {"session": 1, "family": "C2", "arm": "S1"}
+    AGREE = [
+        act(text="Several options are in stock."),
+        act(text=f"Confirming item {TARGET['item_id']}."),
+    ]
+
+    def run_jobs(self, scripts: list[list[str]], jobs: list[dict], directory: Path) -> dict:
+        queue = list(scripts)
+        return asyncio.run(run_jobs(SETUP, directory, jobs,
+                                    lambda journal: JournalingBackend(queue.pop(0), journal), [directory]))  # fmt: skip
+
+    def test_timeout_and_transport_errors_get_one_fresh_reattempt(self) -> None:
+        for failure in ("TIMEOUT", "TRANSPORT"):
+            with tempfile.TemporaryDirectory() as tmp:
+                result = self.run_jobs([[failure], list(self.AGREE)], [self.S1], Path(tmp))
+                self.assertEqual(result["refused"], [], failure)
+                self.assertEqual([e["attempt"] for e in result["infra_events"]], [1])
+                self.assertTrue(result["results"][0]["commitment"])
+                first = json.loads(Path(tmp, "C2-s1-S1-a1.json").read_text(encoding="utf-8"))
+                self.assertTrue(first["infra_failure"])
+                ledger = pilot_ledger(journal_rows(Path(tmp)))
+                self.assertEqual((ledger["aborted"], ledger["reasons"]), (1, []))
+                self.assertAlmostEqual(ledger["charged_credits"], ledger["recorded_credits"] + 1.0)
+
+    def test_second_infrastructure_failure_is_fatal(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            result = self.run_jobs([["TIMEOUT"], ["TIMEOUT"]], [self.S1], Path(tmp))
+            self.assertIn("second infrastructure failure", result["refused"][0])
+
+    def test_agent_failures_are_never_reattempted(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            result = self.run_jobs([["bad", "still bad"], list(self.AGREE)], [self.S1], Path(tmp))
+            self.assertIn("no explicit session-1 commitment", result["refused"][0])
+            self.assertFalse(Path(tmp, "C2-s1-S1-a2.json").exists())
+        with tempfile.TemporaryDirectory() as tmp:
+            result = self.run_jobs(
+                [[act(text="Options?")] * 8, list(self.AGREE)], [self.S1], Path(tmp)
+            )
+            self.assertIn("no explicit session-1 commitment", result["refused"][0])
+            self.assertFalse(Path(tmp, "C2-s1-S1-a2.json").exists())
+        with tempfile.TemporaryDirectory() as tmp:
+            lookup = act("find_user_id_by_email", email=FAMILY["email"])
+            wrong = [
+                lookup,
+                proposal(OTHER),
+                exchange(OTHER["item_id"]),
+                act(text="Done, it has been processed."),
+            ]
+            s2 = {"session": 2, "family": "C2", "arm": "N"}
+            result = self.run_jobs([list(self.AGREE), wrong, wrong], [self.S1, s2], Path(tmp))
+            self.assertEqual(result["refused"], [])
+            self.assertEqual([r["attempt"] for r in result["results"]], [1, 1])
+            self.assertFalse(result["results"][1]["success"])
+
+    def test_aborted_is_charged_and_unjournaled_mismatch_stops(self) -> None:
+        aborted = [{"event": "copilot-request-started", "call_id": 1, "_journal": "a"},
+                   {"event": "copilot-request-aborted", "call_id": 1, "_journal": "a"}]  # fmt: skip
+        self.assertEqual(pilot_ledger(aborted)["reasons"], [])
+        self.assertEqual(pilot_ledger(aborted)["charged_credits"], 1.0)
+        self.assertTrue(pilot_ledger(aborted, credit_stop=0.5)["reasons"])
+        silent = [{"event": "copilot-request-started", "call_id": 1, "_journal": "b"}]
+        self.assertTrue(pilot_ledger(silent)["reasons"][0].startswith("un-journaled"))
 
 
 if __name__ == "__main__":

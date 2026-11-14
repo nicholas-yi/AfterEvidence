@@ -9,7 +9,7 @@ orders added to an isolated copy of the pinned retail DB, using train-only produ
 
 Reuses the v1 harness: `CopilotBackend` journals and request caps, the flat `WireCommand`
 action contract, the v1 actor system prompt and `MEMORY_HEADER`, native tau2 tools and
-`EnvironmentEvaluator` DB scoring, and `ledger_stops`. Dry run by default; live calls need
+`EnvironmentEvaluator` DB scoring, and a pilot ledger with an infrastructure-failure policy. Dry run by default; live calls need
 `--approved-requests 240`. Design and logged choices: research/DESIGN.md.
 """
 
@@ -27,7 +27,6 @@ from collections import Counter
 from pathlib import Path
 from typing import Any
 
-from research.staleness import ledger_stops
 from research.tau_copilot import MEMORY_HEADER, WireCommand
 
 RUNS = Path(__file__).resolve().parent / "runs" / "commitment"
@@ -329,20 +328,206 @@ def job_id(job: dict[str, Any]) -> str:
     return f"{job['family']}-s{job['session']}-{job['arm']}"
 
 
-def journal_rows(directory: Path) -> list[dict[str, Any]]:
+STAGES = ("pilot", "pilot-v2", "pilot-v3")
+ACTIVE_STAGE = "pilot-v3"
+INFRA_RETRIES, ABORT_CHARGE = 1, 1.0
+ATTEMPT = re.compile(r"^(C\d+-s\d+-\w+?)(?:-a(\d+))?\.json$")
+
+
+def journal_rows(*directories: Path) -> list[dict[str, Any]]:
     rows = []
-    for path in sorted(directory.rglob("*.calls.jsonl")):
-        rows += [json.loads(x) for x in path.read_text(encoding="utf-8").splitlines() if x]
+    for directory in directories:
+        for path in sorted(directory.rglob("*.calls.jsonl")):
+            for line in path.read_text(encoding="utf-8").splitlines():
+                if line:
+                    rows.append({**json.loads(line), "_journal": str(path)})
     return rows
 
 
-def start_refusals(directory: Path) -> list[str]:
-    rows = journal_rows(directory)
-    reasons = ledger_stops(rows, PILOT_REQUEST_CAP, CREDIT_STOP, CALL_MAX)
-    started = sum(r.get("event") == "copilot-request-started" for r in rows)
-    if started + SESSION_REQUESTS > PILOT_REQUEST_CAP:
-        reasons.append(f"next session could exceed the cap: {started} + {SESSION_REQUESTS}")
+def pilot_ledger(
+    rows: list[dict[str, Any]], cap: int = PILOT_REQUEST_CAP, credit_stop: float = CREDIT_STOP
+) -> dict[str, Any]:
+    """Spend across all pilot journals. A journaled abort is charged ABORT_CHARGE credits;
+    a started request with neither billing nor an abort record is an un-journaled mismatch."""
+    from research.costing import summarize_micro
+
+    reasons: list[str] = []
+    started = completed = aborted = 0
+    recorded = 0.0
+    journals: dict[str, list[dict[str, Any]]] = {}
+    for row in rows:
+        journals.setdefault(row.get("_journal", ""), []).append(row)
+    for name, items in journals.items():
+        ids = {e: {r.get("call_id") for r in items if r.get("event") == f"copilot-request-{e}"}
+               for e in ("started", "completed", "aborted")}  # fmt: skip
+        started += len(ids["started"])
+        completed += len(ids["completed"])
+        aborted += len(ids["aborted"] - ids["completed"])
+        missing = ids["started"] - ids["completed"] - ids["aborted"]
+        if missing:
+            reasons.append(f"un-journaled mismatch in {Path(name).name}: calls {sorted(missing, key=str)}")
+        for row in items:
+            if row.get("event") != "copilot-request-completed":
+                continue
+            try:
+                credits = float(str(summarize_micro([row])["ai_credits"]))
+            except ValueError as error:
+                reasons.append(f"missing billing in {Path(name).name}: {error}")
+                continue
+            recorded += credits
+            if credits > CALL_MAX:
+                reasons.append(f"call cost {credits:.3f} > {CALL_MAX} credit")
+    charged = recorded + ABORT_CHARGE * aborted
+    if started > cap:
+        reasons.append(f"request cap exceeded: {started} > {cap}")
+    if charged > credit_stop:
+        reasons.append(f"charged credits {charged:.2f} > {credit_stop}")
+    return {"started": started, "completed": completed, "aborted": aborted,
+            "recorded_credits": round(recorded, 4), "charged_credits": round(charged, 4),
+            "reasons": reasons}  # fmt: skip
+
+
+def start_refusals(directories: list[Path]) -> list[str]:
+    ledger = pilot_ledger(journal_rows(*directories))
+    reasons = list(ledger["reasons"])
+    if ledger["started"] + SESSION_REQUESTS > PILOT_REQUEST_CAP:
+        reasons.append(
+            f"next session could exceed the cap: {ledger['started']} + {SESSION_REQUESTS}"
+        )
     return reasons
+
+
+def infra_failure(report: dict[str, Any], rows: list[dict[str, Any]]) -> bool:
+    """Mechanical: the session failed and its last model request produced no response
+    (per-call timeout, SDK/transport/connection error, or an aborted request)."""
+    if report.get("status") != "failed":
+        return False
+    started = [r.get("call_id") for r in rows if r.get("event") == "copilot-request-started"]
+    if not started:
+        return False
+    answered = {"copilot-response-received", "copilot-request-completed"}
+    return not any(r.get("call_id") == started[-1] and r.get("event") in answered for r in rows)
+
+
+def final_reports(directory: Path) -> list[dict[str, Any]]:
+    """The last attempt of each session (legacy un-suffixed files count as attempt 1)."""
+    latest: dict[str, tuple[int, Path]] = {}
+    for path in directory.glob("C*-s*.json"):
+        match = ATTEMPT.match(path.name)
+        if match:
+            attempt = int(match.group(2) or 1)
+            if attempt >= latest.get(match.group(1), (0, path))[0]:
+                latest[match.group(1)] = (attempt, path)
+    return [json.loads(p.read_text(encoding="utf-8")) for _, p in
+            (latest[k] for k in sorted(latest))]  # fmt: skip
+
+
+def _session_one_history(directory: Path, family: str) -> str:
+    first = next((r for r in final_reports(directory)
+                  if r.get("family") == family and r.get("session") == 1), None)  # fmt: skip
+    if first is None or not first.get("commitment"):
+        raise FatalStop(f"{family}: no explicit session-1 commitment.")
+    return transcript(first["messages"])
+
+
+async def run_jobs(
+    setup: dict[str, Any], directory: Path, jobs: list[dict[str, Any]], make_backend: Any,
+    ledger_dirs: list[Path],
+) -> dict[str, Any]:  # fmt: skip
+    """Serial sessions; one fresh re-attempt after an infrastructure failure, none otherwise."""
+    results: list[dict[str, Any]] = []
+    infra: list[dict[str, Any]] = []
+    try:
+        for job in jobs:
+            attempt = 0
+            while True:
+                attempt += 1
+                output = directory / f"{job_id(job)}-a{attempt}.json"
+                journal_path = output.with_suffix(".calls.jsonl")
+                if output.exists():
+                    report = json.loads(output.read_text(encoding="utf-8"))
+                else:
+                    if journal_path.exists():
+                        raise FatalStop(f"{journal_path.name} exists without a report.")
+                    history = (
+                        _session_one_history(directory, job["family"])
+                        if job["session"] == 2
+                        else None
+                    )
+                    refusals = start_refusals(ledger_dirs)
+                    if refusals:
+                        return {"refused": refusals, "results": results, "infra_events": infra}
+                    with journal_path.open("x", encoding="utf-8", newline="\n") as journal:
+                        backend = make_backend(journal)
+                        backend.write("commitment-session-started", **job, attempt=attempt,
+                                      manifest_sha256=setup["manifest_sha256"])  # fmt: skip
+                        report = await run_session(backend, setup, job, history)
+                        rows = [
+                            json.loads(x)
+                            for x in journal_path.read_text(encoding="utf-8").splitlines()
+                            if x
+                        ]
+                        report["attempt"], report["infra_failure"] = (
+                            attempt,
+                            infra_failure(report, rows),
+                        )
+                        last = [
+                            r.get("call_id")
+                            for r in rows
+                            if r.get("event") == "copilot-request-started"
+                        ][-1:]
+                        aborted = {
+                            r.get("call_id")
+                            for r in rows
+                            if r.get("event") == "copilot-request-aborted"
+                        }
+                        if report["infra_failure"] and last and last[0] not in aborted:
+                            backend.write("copilot-request-aborted", call_id=last[0],
+                                          billing="no response; journaled by the pilot, cost unknown")  # fmt: skip
+                    output.write_text(
+                        json.dumps(report, indent=2, default=str) + "\n", encoding="utf-8"
+                    )
+                if not report.get("infra_failure"):
+                    break
+                infra.append(
+                    {"session": job_id(job), "attempt": attempt, "error": report.get("error")}
+                )
+                if attempt > INFRA_RETRIES:
+                    raise FatalStop(f"{job_id(job)}: second infrastructure failure.")
+            results.append({k: report.get(k) for k in
+                            ("family", "session", "arm", "status", "success", "commitment", "attempt")})  # fmt: skip
+            if job["session"] == 1 and not report.get("commitment"):
+                raise FatalStop(f"{job['family']}: no explicit session-1 commitment.")
+    except FatalStop as fatal:
+        return {"refused": [f"FATAL: {fatal}"], "results": results, "infra_events": infra}
+    return {"refused": [], "results": results, "infra_events": infra}
+
+
+async def live_run(directory: Path, model: str, note: str | None) -> dict[str, Any]:
+    from research.copilot_backend import CopilotBackend, isolated_client, quota_snapshot
+
+    setup = prepare()
+    directory.mkdir(parents=True, exist_ok=True)
+    (directory / "manifest.json").write_text(setup["manifest"] + "\n", encoding="utf-8")
+    client = isolated_client()
+    try:
+        await client.start()
+        selected = next((m for m in await client.list_models() if m.id == model), None)
+        if selected is None or (selected.policy is not None and selected.policy.state != "enabled"):
+            raise ValueError("Model is not enabled for this Copilot account.")
+        quota = (await quota_snapshot(client)).quota_snapshots.get("premium_interactions")
+        if quota is None or quota.remaining_percentage < 1:
+            raise RuntimeError("Quota unavailable or below 1%; no inference permitted.")
+
+        def make_backend(journal: Any) -> Any:
+            return CopilotBackend(
+                client, model, directory / "isolated-copilot", journal, SESSION_REQUESTS
+            )
+
+        return await run_jobs(setup, directory, plan(note)["jobs"], make_backend,
+                              [RUNS / s for s in STAGES])  # fmt: skip
+    finally:
+        await client.stop()
 
 
 def _vendor_env() -> tuple[Any, Any]:
@@ -531,63 +716,6 @@ async def run_session(
                 if m.get("role") == "assistant" for c in (m.get("tool_calls") or [])), **result, "messages": messages}  # fmt: skip
 
 
-async def live_run(directory: Path, model: str) -> dict[str, Any]:
-    from research.copilot_backend import CopilotBackend, isolated_client, quota_snapshot
-
-    setup = prepare()
-    directory.mkdir(parents=True, exist_ok=True)
-    (directory / "manifest.json").write_text(setup["manifest"] + "\n", encoding="utf-8")
-    client = isolated_client()
-    results: list[dict[str, Any]] = []
-    try:
-        await client.start()
-        selected = next((m for m in await client.list_models() if m.id == model), None)
-        if selected is None or (selected.policy is not None and selected.policy.state != "enabled"):
-            raise ValueError("Model is not enabled for this Copilot account.")
-        quota = (await quota_snapshot(client)).quota_snapshots.get("premium_interactions")
-        if quota is None or quota.remaining_percentage < 1:
-            raise RuntimeError("Quota unavailable or below 1%; no inference permitted.")
-        for job in plan()["jobs"]:
-            output = directory / f"{job_id(job)}.json"
-            journal_path = output.with_suffix(".calls.jsonl")
-            if output.exists() or journal_path.exists():
-                results.append({**job, "status": "skipped-existing"})
-                continue
-            history = None
-            if job["session"] == 2:
-                first = json.loads(
-                    (directory / f"{job['family']}-s1-S1.json").read_text(encoding="utf-8")
-                )
-                if not first.get("commitment"):
-                    raise FatalStop(f"{job['family']}: no explicit session-1 commitment.")
-                history = transcript(first["messages"])
-            refusals = start_refusals(directory)
-            if refusals:
-                return {"refused": refusals, "results": results}
-            with journal_path.open("x", encoding="utf-8", newline="\n") as journal:
-                backend = CopilotBackend(
-                    client, model, directory / "isolated-copilot", journal, SESSION_REQUESTS
-                )
-                backend.write(
-                    "commitment-session-started", **job, manifest_sha256=setup["manifest_sha256"]
-                )
-                report = await run_session(backend, setup, job, history)
-            output.write_text(json.dumps(report, indent=2, default=str) + "\n", encoding="utf-8")
-            results.append(
-                {
-                    k: report.get(k)
-                    for k in ("family", "session", "arm", "status", "success", "commitment")
-                }
-            )
-            if job["session"] == 1 and not report["commitment"]:
-                raise FatalStop(f"{job['family']}: no explicit session-1 commitment.")
-    except FatalStop as fatal:
-        return {"refused": [f"FATAL: {fatal}"], "results": results}
-    finally:
-        await client.stop()
-    return {"refused": [], "results": results}
-
-
 def gates(reports: list[dict[str, Any]]) -> dict[str, Any]:
     first = [r for r in reports if r["session"] == 1]
     by_arm = {a: [r for r in reports if r["session"] == 2 and r["arm"] == a] for a in ARMS}
@@ -607,23 +735,24 @@ def gates(reports: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 def summarize(directory: Path) -> dict[str, Any]:
-    reports = [
-        json.loads(p.read_text(encoding="utf-8")) for p in sorted(directory.glob("C*-s*.json"))
-    ]
+    reports = final_reports(directory)
     rows = [{k: r.get(k) for k in ("family", "session", "arm", "status", "success", "commitment",
-             "requests_started", "reasks", "tools", "lookups", "proposals_before_consent",
+             "attempt", "requests_started", "reasks", "tools", "lookups", "proposals_before_consent",
              "wrong_variant_attempts", "unauthorized_attempts",
              "db_match", "agreed_variant_args", "confirmation_first", "termination")} for r in reports]  # fmt: skip
-    started = sum(r.get("event") == "copilot-request-started" for r in journal_rows(directory))
+    ledger = pilot_ledger(journal_rows(directory))
+    attempts = [json.loads(p.read_text(encoding="utf-8")) for p in directory.glob("C*-s*-a*.json")]
     return {"sessions": len(rows), "statuses": dict(Counter(r["status"] for r in rows)),
-            "requests_started": started, "rows": rows, **gates(reports)}  # fmt: skip
+            "infra_failures": sum(bool(a.get("infra_failure")) for a in attempts),
+            "ledger": {k: v for k, v in ledger.items() if k != "reasons"},
+            "rows": rows, **gates(reports)}  # fmt: skip
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Necessary-memory pilot; dry run by default.")
-    parser.add_argument("--stage", choices=["pilot", "pilot-v2", "eval"], default="pilot-v2")
+    parser.add_argument("--stage", choices=[*STAGES, "eval"], default=ACTIVE_STAGE)
     parser.add_argument("--approved-requests", type=int)
-    parser.add_argument("--note", help="Provenance note recorded in the v2 plan (required to run).")
+    parser.add_argument("--note", help="Provenance note recorded in the plan (required to run).")
     parser.add_argument("--model", default="claude-haiku-5.5")
     parser.add_argument("--summarize", action="store_true")
     args = parser.parse_args()
@@ -645,8 +774,10 @@ def main() -> int:
         print("\n--- dry run, no model calls: session-2 N opening for C1 ---")
         print(customer.reply("Hi! How can I help you today?"))
         return 0
-    if args.stage == "pilot":
-        parser.error("Pilot v1 is closed (killed); run --stage pilot-v2 with its own approval.")
+    if args.stage != ACTIVE_STAGE:
+        parser.error(
+            f"{args.stage} is closed; only {ACTIVE_STAGE} may run, under its own approval."
+        )
     if not args.note:
         parser.error(
             "--note is required: record why this pilot exists and the harness fix it follows."
@@ -660,12 +791,16 @@ def main() -> int:
     if plan_path.exists() and json.loads(plan_path.read_text(encoding="utf-8")) != public:
         parser.error("The pilot plan or frozen sources changed since the pilot started.")
     plan_path.write_text(json.dumps(public, indent=2) + "\n", encoding="utf-8")
-    outcome = asyncio.run(live_run(directory, args.model))
+    outcome = asyncio.run(live_run(directory, args.model, args.note))
     summary = summarize(directory)
     (directory / "summary.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
     print(
         json.dumps(
-            {"refused": outcome["refused"], **{k: v for k, v in summary.items() if k != "rows"}},
+            {
+                "refused": outcome["refused"],
+                "infra_events": outcome["infra_events"],
+                **{k: v for k, v in summary.items() if k != "rows"},
+            },
             indent=2,
         )
     )
