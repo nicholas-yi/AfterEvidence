@@ -35,8 +35,11 @@ class PublishedCommitmentEvaluationTests(unittest.TestCase):
         self.assertEqual((r["included"], r["excluded"], r["complete"]), (32, [], False))
         for arm, (k, n, ci, credits) in ARMS.items():
             cell = r["arms"][arm]
-            self.assertEqual((cell["successes"], cell["n"], tuple(cell["wilson95"]),
-                              cell["credits_per_session"]), (k, n, ci, credits), arm)  # fmt: skip
+            self.assertEqual(
+                (cell["successes"], cell["n"], tuple(cell["wilson95"])), (k, n, ci), arm
+            )
+            # Python 3.12's compensated sum() can move a value sitting on a rounding boundary.
+            self.assertAlmostEqual(cell["credits_per_session"], credits, delta=0.0011, msg=arm)
         primary = r["primary"]
         self.assertEqual((primary["pairs"], primary["wins"], primary["losses"]), (22, 22, 0))
         self.assertTrue(primary["significant"])
