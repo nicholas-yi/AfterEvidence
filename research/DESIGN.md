@@ -276,16 +276,22 @@ before and after). Spend: 81 of 160 requests (episodes 59, Mem0 4, Honcho 18),
 | Session 2 | 125 of 160 sessions in plan order, then the pre-specified fatal stop: E19-Ho timed out at 150 s on both attempts. One other timeout (E03-N) recovered on its re-attempt. 35 planned sessions not run. Results and analysis: [RESULTS](RESULTS.md#necessary-memory-evaluation) |
 | Spend | 1,365 of 2,816 requests (episodes 1,222 of 2,304; Mem0 shim 32 of 112; Honcho shim 111 of 400); 152.99 credits recorded, 155.99 charged (3 aborts) of 310; max call 0.20 |
 
-### Changed-mind follow-up (proposed; not approved; not built)
+### Changed-mind pilot
 
-| Element | Proposal |
+Owner-approved pilot only (2026-11-14 ~12:15 ET; evaluation not approved). Code:
+[changed_mind.py](changed_mind.py) on the commitment-pilot harness; tests in
+[test_commitment_pilot.py](test_commitment_pilot.py).
+
+| Element | Specification |
 |---|---|
 | Question | When the customer changes their mind between sessions, does memory let the agent act on the latest agreement (Y) rather than the earlier one (X)? |
-| Families | As the evaluation (train-only templates, fresh namespace); X, Y and a rejected variant distinct; X and Y positions balanced |
-| Session 1a | Agree X by item ID and defer (the current session-1 customer) |
-| Session 1b | New session, no memory: "I've changed my mind about the exchange we agreed; I now want <Y options>" (X never named); agree Y by ID and defer; DB unchanged |
-| Session 2 | "Please go ahead with the exchange we agreed last time"; never restates; target-blind consent over X, Y and others |
-| Arms | N, Hc, Hn, M, Ho. H arms: 1a then 1b transcripts with session labels (≤ 8,000 characters). Providers ingest 1a then 1b as two sessions; one retrieval with the first session-2 message |
-| Oracle | Success = Y executed (native DB = Y reference), consent first, no unauthorized mutation. **Stale-commitment error** = an exchange with X; other wrong variants counted separately |
-| Customer branches to test | 1b: change opening (no X ID); agent re-proposes X → "No, I changed my mind; I want <Y>"; agent asks which earlier item → "the one we agreed last time" without its ID; agent proposes Y by ID → agree and defer; agent tries to execute → defer. Session 2: byte-identical replies to X, Y and other single-ID proposals; "X or Y?" → "the one we agreed last time"; payment, re-confirmation and completion as v4 |
-| Pilot | ~150 requests / 20 credits covers 4 dev families with 1a, 1b, Hn, M, Ho (~135 episode requests plus provider calls); N (0 by construction) and Hc (matched Hn) wait for the evaluation, since all five arms need ~210. Gates: 1a and 1b agreements 4/4; Hn ≥ 3/4 Y; zero leakage; stale-X rate descriptive |
+| Families | D1-D4, new namespace `AE-CHANGED-MIND-PILOT-v1` (seed from it), train-only template pool as eval v1; names and IDs disjoint from the DB, C1-C4 and E01-E32; Y at positions 0-3 once each, X two places after Y, rejected variant one after; Y and X reference exchanges validated |
+| Session 1a | Agree X by item ID and defer (the commitment-pilot session-1 customer, target X) |
+| Session 1b | Separate session, no memory for the actor: "I've changed my mind... I'd now like the <Y options>" (X never named); agent re-proposes X → "No, I changed my mind"; asks about the earlier item → "the one we agreed last time" without its ID; other or several IDs → asks for Y's exact ID; Y alone by ID → agree and defer; DB unchanged |
+| Session 2 | "Please go ahead with the exchange we agreed last time"; target-blind consent outside R (one reply for X, Y or any single-ID proposal; property-tested); X never restated |
+| Arms | Hn: 1a then 1b transcripts labelled "Earlier session (1 of 2)" and "Most recent session (2 of 2)" under the neutral header (≤ 8,000 characters). M: Mem0, 1a then 1b ingested for `user_id` `cmp-cm-p1-<family>`, `run_id` per session. Ho: Honcho workspace `changed-mind-pilot-v1`, 1a and 1b as two sessions of the same customer peer, queue drained. R: Y restated with its ID (harness control). One retrieval with the first session-2 message. N and Hc omitted from the pilot |
+| Oracle | Success = Y executed (native DB = Y reference), consent first, no unauthorized mutation. **Stale commitment** = an exchange to X, counted separately from other wrong variants. Descriptive: retrieved memory contains Y's ID / X's ID |
+| Leakage | X's ID or option set, like Y's, may appear only inside the memory block, in every arm including R |
+| Budget | 240 requests total (episodes ≤ 188, Mem0 shim ≤ 12, Honcho shim ≤ 40); settled-credit stop 30; a single call > 1 credit, an un-journaled mismatch or a cap stops; journaled aborts charged 1.0 |
+| Infrastructure rule (this design onward; not retroactive to eval v1) | One fresh re-attempt after an infrastructure failure; a second failure on the same session marks it failed (infra) and the run **continues**. Only budget, ledger, leakage or harness-logic stops halt the run |
+| Gates (integration, not efficacy) | 1a and 1b agreements 4/4 each; R 4/4; ingestion and retrieval OK for ≥ 3/4 families per provider, Honcho queue drained; zero leakage outside memory; no harness defect. Hn, M and Ho outcomes are results, not gates |

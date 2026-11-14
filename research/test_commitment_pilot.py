@@ -863,5 +863,183 @@ class EvalResumeDryPassTests(unittest.TestCase):
         self.assertEqual(session_one_artifacts(REAL_EVAL), before)  # the real run is untouched
 
 
+class ChangedMindTests(unittest.TestCase):
+    """Changed-mind pilot: customer branches, X/Y target-blindness, end-to-end dry pass."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        from research import changed_mind
+
+        cls.cm = changed_mind
+        cls.setup = changed_mind.prepare()
+
+    def x_view(self, family: dict[str, Any]) -> dict[str, Any]:
+        return {**family, "target_id": family["stale_id"]}
+
+    def test_sessions_1a_and_1b_branches(self) -> None:
+        from research.commitment_pilot import _names_target
+
+        customer_cls = self.cm.ChangedMindCustomer
+        for family in self.setup["families"].values():
+            x, y = family["stale_id"], family["target_id"]
+            first = customer_cls(family, 1, "S1a")
+            first.reply(OPENING)
+            first.reply("Here are the options.")
+            first.reply(f"Item {x} is in stock. Is that the one?")
+            self.assertTrue(first.agreed and first.done)
+            change = customer_cls(family, 1, "S1b")
+            opening = change.reply(OPENING)
+            self.assertIn("changed my mind", opening)
+            self.assertFalse(_names_target(self.x_view(family), opening) or y in opening)
+            ids = [v["item_id"] for v in family["alternatives"]]
+            replies = [change.reply(t) for t in (
+                f"Is it item {x}?", f"Options: {', '.join(ids)}.", "Which item did we agree earlier?",
+                f"Instead of item {x}, item {y}?")]  # fmt: skip
+            self.assertIn("I changed my mind", replies[0])
+            self.assertIn("the one we agreed last time", replies[2])
+            self.assertFalse(change.agreed)
+            self.assertFalse(
+                any(_names_target(self.x_view(family), r) for r in [opening, *replies])
+            )
+            agreed = change.reply(f"Item {y} it is. Confirm?")
+            self.assertTrue(change.agreed and change.done and STOP in agreed)
+            slow, last = customer_cls(family, 1, "S1b"), ""
+            for _ in range(7):
+                last = slow.reply("Let me check.")
+            self.assertTrue(slow.done and not slow.agreed and STOP in last)
+
+    def test_session_two_is_target_blind_over_x_and_y(self) -> None:
+        customer_cls = self.cm.ChangedMindCustomer
+        for family in self.setup["families"].values():
+            ids = [v["item_id"] for v in family["alternatives"]]
+            for arm in ("Hn", "M", "Ho"):
+                single, multi = set(), set()
+                for item in ids:
+                    customer = customer_cls(family, 2, arm)
+                    opening = customer.reply(OPENING)
+                    single.add(
+                        customer.reply(f"I can exchange it for item {item}. Shall I proceed?")
+                    )
+                    other = customer_cls(family, 2, arm)
+                    other.reply(OPENING)
+                    multi.add(
+                        other.reply(f"Item {item} or item {ids[0] if item != ids[0] else ids[1]}?")
+                    )
+                    self.assertEqual(leaks(family, arm, "", None, [opening]), [])
+                self.assertEqual(len(single), 1, (family["family"], arm))  # X, Y and others alike
+                self.assertEqual(len(multi), 1, (family["family"], arm))
+            control = customer_cls(family, 2, "R")
+            restated = control.reply(OPENING)
+            self.assertIn(family["target_id"], restated)
+            self.assertEqual(leaks(family, "R", "", None, [restated]), [])  # X never restated
+            self.assertTrue(leaks(family, "Hn", "", None, [f"item {family['stale_id']}"]))
+
+    def test_end_to_end_dry_pass(self) -> None:
+        from unittest import mock
+
+        cm, setup = self.cm, self.setup
+        families = setup["families"]
+        with tempfile.TemporaryDirectory() as tmp:
+            run = Path(tmp)
+            public = cm.plan(setup, "dry pass")
+            first_jobs = cm.select(public["jobs"], "session1", [])
+            self.assertEqual(len(first_jobs), 8)
+            seen: list[tuple[dict[str, Any], FakeBackend]] = []
+
+            class Scripted(FakeBackend):
+                def write(self, event: str, **fields: object) -> None:
+                    if event != "commitment-session-started":
+                        return
+                    job = {k: fields[k] for k in ("session", "family", "arm")}
+                    seen.append((job, self))
+                    f = families[str(job["family"])]
+                    x, y = f["stale_id"], f["target_id"]
+                    done = act(text="The exchange has been processed.")
+
+                    def run_exchange(item: str) -> list[str]:
+                        return [act(text=f"I can exchange it for item {item}. Shall I proceed?"),
+                                act("exchange_delivered_order_items", order_id=f["order_id"],
+                                    item_ids=[f["current"]["item_id"]], new_item_ids=[item],
+                                    payment_method_id=f["payment_id"]), done]  # fmt: skip
+
+                    self.replies = {
+                        "S1a": [
+                            act(text="Here are the options."),
+                            act(text=f"Item {x}: is that the one?"),
+                        ],
+                        "S1b": [act(text=f"Item {y}: is that the one?")],
+                        "Hn": run_exchange(y),
+                        "R": run_exchange(y),
+                        "M": run_exchange(x),
+                        "Ho": [act(text="Which item would you like?")] * 12,
+                    }[str(job["arm"])]
+
+            def backend(_: Any) -> Scripted:
+                return Scripted([])
+
+            outcome = asyncio.run(run_jobs(setup, run, first_jobs, backend, [run], 240, 30.0, 188,
+                                           exclude_uncommitted=True, infra_continue=True))  # fmt: skip
+            self.assertEqual(outcome["refused"], [])
+            self.assertEqual(cm.committed(run), sorted(families))
+
+            shim_journal(run, "mem0", 12)
+            shim_journal(run, "honcho", 40)
+            ingested: dict[tuple[str, str], list[str]] = {}
+
+            def gateway(
+                path: str, body: dict[str, Any], url: str = "", timeout: int = 0
+            ) -> dict[str, Any]:
+                if path == "/status":
+                    return {"state": str((run / "mem0").resolve()), "honcho_workspace": "changed-mind-pilot-v1",
+                            "honcho_reasoning_level": None,
+                            "queue": {"total": 8, "completed": 8, "pending": 0, "in_progress": 0}}  # fmt: skip
+                if path == "/ingest":
+                    ingested.setdefault((body["provider"], body["scope"]), []).append(
+                        body["episode"]["id"]
+                    )
+                    return {"result": {}}
+                f = families[body["scope"].removeprefix("customer:cmp-cm-p1-")]
+                return {
+                    "results": [
+                        f"Agreed item {f['stale_id']}, then changed to item {f['target_id']}."
+                    ]
+                }
+
+            with mock.patch("research.provider_ingest.post", side_effect=gateway):
+                providers = provider_phase(setup, run, cm.provider_inputs(run), "cm-pilot-v1")
+            self.assertEqual(providers["refused"], [])
+            self.assertEqual(len(ingested), 8)
+            for (_, scope), episodes in ingested.items():
+                prefix = scope.removeprefix("customer:")
+                self.assertEqual(
+                    episodes, [f"{prefix}-s1a", f"{prefix}-s1b"]
+                )  # same customer, in order
+
+            second = cm.select(public["jobs"], "sessions", cm.committed(run))
+            self.assertEqual(len(second), 16)
+            seen.clear()
+            outcome = asyncio.run(run_jobs(setup, run, second, backend, [run], 240, 30.0, 188,
+                                           exclude_uncommitted=True, history_fn=cm.history,
+                                           infra_continue=True))  # fmt: skip
+            self.assertEqual(outcome["refused"], [])
+            self.assertEqual([j for j, _ in seen], second)
+            for job, used in seen:
+                system = used.systems[0]
+                if job["arm"] == "Hn":
+                    self.assertIn(NEUTRAL_HEADER + "Earlier session (1 of 2):", system)
+                    self.assertIn("Most recent session (2 of 2):", system)
+                elif job["arm"] == "R":
+                    self.assertNotIn(NEUTRAL_HEADER, system)
+            summary = cm.summarize(run, setup)
+            arms = summary["arms"]
+            self.assertEqual({a: (v["successes"], v["n"], v["stale_commitment"]) for a, v in arms.items()},
+                             {"Hn": (4, 4, 0), "M": (0, 4, 4), "Ho": (0, 4, 0), "R": (4, 4, 0)})  # fmt: skip
+            m_rows = [r for r in summary["rows"] if r["arm"] == "M"]
+            self.assertTrue(all(r["memory_has_X"] and r["memory_has_Y"] and r["wrong_variant_other"] == 0
+                                for r in m_rows))  # fmt: skip
+            self.assertEqual(summary["verdict"], "PASS")
+            self.assertEqual(len(summary["rows"]), 24)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -54,6 +54,9 @@ AMEND_HASHES = Path(__file__).resolve().parent / "commitment-eval-v1-amend1-hash
 PROVIDER_STAGES: dict[str, dict[str, Any]] = {
     "pilot-v5": {"prefix": "cmp-p5-", "workspace": HONCHO_WORKSPACE, "shim_caps": SHIM_CAPS,
                  "episode_cap": EPISODE_CAP, "stop_on_ingest_error": True},
+    "cm-pilot-v1": {"prefix": "cmp-cm-p1-", "workspace": "changed-mind-pilot-v1",
+                    "shim_caps": {"mem0": 12, "honcho": 40}, "episode_cap": 188,
+                    "stop_on_ingest_error": True},
     EVAL_STAGE: {"prefix": "cmp-eval-", "workspace": "commitment-eval-v1",
                  "shim_caps": {"mem0": 112, "honcho": 400}, "episode_cap": 2304,
                  "stop_on_ingest_error": False},
@@ -161,16 +164,18 @@ def eval_seed(tag_commit: str) -> int:
 
 
 def build_eval_families(
-    db: dict[str, Any], seed: int, pool: list[str], count: int = 32
-) -> list[dict[str, Any]]:
+    db: dict[str, Any], seed: int, pool: list[str], count: int = 32, prefix: str = "E",
+    width: int = 2, namespace: str | None = None, avoid: list[dict[str, Any]] | None = None,
+) -> list[dict[str, Any]]:  # fmt: skip
     """Fresh sealed families: seeded products from the pool, target position 0-3 balanced,
-    new names and IDs (new namespace), disjoint from the pinned DB and the dev families C1-C4."""
-    rng, namespace = random.Random(seed), f"AE-COMMIT-EVAL-v1-{seed}"
+    new names and IDs (new namespace), disjoint from the pinned DB, the dev families C1-C4,
+    and any `avoid` families."""
+    rng, namespace = random.Random(seed), namespace or f"AE-COMMIT-EVAL-v1-{seed}"
     positions = [i % 4 for i in range(count)]
     rng.shuffle(positions)
     products = [pool[i % len(pool)] for i in range(count)]
     rng.shuffle(products)
-    dev = build_families(db)
+    dev = build_families(db) + list(avoid or [])
     taken_names = {(u["name"]["first_name"], u["name"]["last_name"]) for u in db["users"].values()}
     taken_names |= {(f["first"], f["last"]) for f in dev}
     names = [(a, b) for a in FIRST for b in LAST if (a, b) not in taken_names]
@@ -185,7 +190,7 @@ def build_eval_families(
         first, last = names[index - 1]
         suffix = _digits(index, "user", 4, namespace)
         families.append({
-            "family": f"E{index:02d}", "product_id": product_id, "product": product["name"],
+            "family": f"{prefix}{index:0{width}d}", "product_id": product_id, "product": product["name"],
             "user_id": f"{first.lower()}_{last.lower()}_{suffix}", "first": first, "last": last,
             "email": f"{first.lower()}.{last.lower()}{suffix[:2]}@example.com",
             "zip": _digits(index, "zip", 5, namespace), "order_id": "#W" + _digits(index, "order", 7, namespace),
@@ -389,6 +394,13 @@ def leaks(
         problems.append("target in system prompt outside history")
     if arm != "R" and any(_names_target(family, t) for t in user_texts):
         problems.append("target in customer messages")
+    stale = family.get("stale_id")  # changed-mind design: the superseded agreement X
+    if stale:
+        view = {**family, "target_id": stale}
+        if _names_target(view, prefix):
+            problems.append("stale item in system prompt outside history")
+        if any(_names_target(view, t) for t in user_texts):
+            problems.append("stale item in customer messages")
     return problems
 
 
@@ -518,13 +530,15 @@ BUDGETS = {
     "v5": {"stages": ("pilot-v5",), "cap": 160, "credit_stop": 25.0},
     # Evaluation: episodes <= 2,304, Mem0 shim <= 112, Honcho shim <= 400.
     "eval": {"stages": (EVAL_STAGE,), "cap": 2816, "credit_stop": 310.0},
+    # Changed-mind pilot: episodes <= 188, Mem0 shim <= 12, Honcho shim <= 40.
+    "cm-pilot": {"stages": ("cm-pilot-v1",), "cap": 240, "credit_stop": 30.0},
 }
 STAGE_BUDGET = {stage: name for name, b in BUDGETS.items() for stage in b["stages"]}
 PHASE1 = [{"session": 1, "family": "C1", "arm": "S1"}, {"session": 1, "family": "C2", "arm": "S1"},
           {"session": 2, "family": "C1", "arm": "R"}, {"session": 2, "family": "C2", "arm": "R"}]  # fmt: skip
 INFRA_RETRIES, ABORT_CHARGE = 1, 1.0
 # Dev (C1-C4) and evaluation (E01-E32) family IDs (the C-only pattern stopped eval-v1).
-ATTEMPT = re.compile(r"^([CE]\d+-s\d+-\w+?)(?:-a(\d+))?\.json$")
+ATTEMPT = re.compile(r"^([CDE]\d+-s\d+-\w+?)(?:-a(\d+))?\.json$")
 
 
 def journal_rows(*directories: Path) -> list[dict[str, Any]]:
@@ -729,8 +743,11 @@ async def run_jobs(
     setup: dict[str, Any], directory: Path, jobs: list[dict[str, Any]], make_backend: Any,
     ledger_dirs: list[Path], cap: int = PILOT_REQUEST_CAP, credit_stop: float = CREDIT_STOP,
     episode_cap: int | None = None, exclude_uncommitted: bool = False,
+    history_fn: Any = None, infra_continue: bool = False,
 ) -> dict[str, Any]:  # fmt: skip
-    """Serial sessions; one fresh re-attempt after an infrastructure failure, none otherwise."""
+    """Serial sessions; one fresh re-attempt after an infrastructure failure, none otherwise.
+    With infra_continue, a second infrastructure failure marks that session failed (infra) and
+    the run continues (rule for the changed-mind design onward; eval v1 used a fatal stop)."""
     results: list[dict[str, Any]] = []
     infra: list[dict[str, Any]] = []
     try:
@@ -746,7 +763,7 @@ async def run_jobs(
                     if journal_path.exists():
                         raise FatalStop(f"{journal_path.name} exists without a report.")
                     history, memory = (
-                        _session_two_history(directory, job)
+                        (history_fn or _session_two_history)(directory, job)
                         if job["session"] == 2
                         else (None, None)
                     )
@@ -791,6 +808,8 @@ async def run_jobs(
                     {"session": job_id(job), "attempt": attempt, "error": report.get("error")}
                 )
                 if attempt > INFRA_RETRIES:
+                    if infra_continue:
+                        break
                     raise FatalStop(f"{job_id(job)}: second infrastructure failure.")
             results.append({k: report.get(k) for k in
                             ("family", "session", "arm", "status", "success", "commitment", "attempt")})  # fmt: skip
@@ -802,8 +821,9 @@ async def run_jobs(
 
 
 async def live_run(
-    directory: Path, model: str, stage: str, jobs: list[dict[str, Any]], setup: dict[str, Any]
-) -> dict[str, Any]:
+    directory: Path, model: str, stage: str, jobs: list[dict[str, Any]], setup: dict[str, Any],
+    **options: Any,
+) -> dict[str, Any]:  # fmt: skip
     from research.copilot_backend import CopilotBackend, isolated_client, quota_snapshot
 
     directory.mkdir(parents=True, exist_ok=True)
@@ -829,7 +849,7 @@ async def live_run(
         episode_cap = PROVIDER_STAGES.get(stage, {}).get("episode_cap")
         return await run_jobs(setup, directory, jobs, make_backend,
                               [RUNS / s for s in budget["stages"]], budget["cap"], budget["credit_stop"],
-                              episode_cap, exclude_uncommitted=stage == EVAL_STAGE)  # fmt: skip
+                              episode_cap, **{"exclude_uncommitted": stage == EVAL_STAGE, **options})  # fmt: skip
     finally:
         await client.stop()
 
@@ -851,16 +871,16 @@ def _vendor_env() -> tuple[Any, Any]:
     return RetailDB, (get_environment, json.loads(Path(RETAIL_DB_PATH).read_text(encoding="utf-8")))
 
 
-def prepare(seed: int | None = None) -> dict[str, Any]:
+def prepare(seed: int | None = None, builder: Any = None) -> dict[str, Any]:
     """Zero-inference setup: families, isolated DB, validated references, tasks. With a seed,
-    the 32 evaluation families replace the dev families."""
+    the 32 evaluation families replace the dev families; `builder(base, pool)` supplies others."""
     RetailDB, (get_environment, base) = _vendor_env()
     from tau2.data_model.message import AssistantMessage, ToolCall, ToolMessage
     from tau2.data_model.tasks import Task
     from tau2.evaluator.evaluator_env import EnvironmentEvaluator
 
     families, pool = build_families(base), list(PRODUCTS)
-    if seed is not None:
+    if seed is not None or builder is not None:
         from research.tau_pilot import VENDOR
 
         data = VENDOR / "data" / "tau2" / "domains" / "retail"
@@ -871,7 +891,7 @@ def prepare(seed: int | None = None) -> dict[str, Any]:
         pool = template_pool(
             base, tasks, json.loads((data / "split_tasks.json").read_text(encoding="utf-8"))
         )
-        families = build_eval_families(base, seed, pool)
+        families = builder(base, pool) if builder else build_eval_families(base, seed or 0, pool)
     db = RetailDB.model_validate(add_families(base, families))
 
     def constructor(solo_mode: bool = False, **_: Any) -> Any:
@@ -924,7 +944,12 @@ async def run_session(
     env = setup["constructor"]()
     schemas = [tool.openai_schema for tool in env.get_tools()]
     names = {tool.name for tool in env.get_tools()}
-    customer = ScriptedCustomer(family, job["session"], arm)
+    custom = setup.get("customer")  # changed-mind design supplies its own customer
+    customer = (
+        custom(family, job["session"], job["arm"])
+        if custom
+        else ScriptedCustomer(family, job["session"], arm)
+    )
     counters = {"reasks": 0, "tools": 0}
     loop = asyncio.get_running_loop()
 
@@ -1105,7 +1130,7 @@ def provider_phase(
             rows = provider_ingest.ingest_provider(
                 provider,
                 provider_scope(name, cfg["prefix"]),
-                [inputs[name]["episode"]],
+                inputs[name].get("episodes") or [inputs[name]["episode"]],  # in session order
                 ledger,
                 GATEWAY,
             )
