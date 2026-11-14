@@ -4,12 +4,19 @@ import asyncio
 from collections import Counter
 import hashlib
 import json
+import shutil
 import tempfile
 import unittest
 from pathlib import Path
 from typing import Any
 
 from research.commitment_pilot import (
+    AMEND_HASHES,
+    RUNS,
+    artifact_problems,
+    select_jobs,
+    session_one_artifacts,
+    EVAL_ARMS,
     EVAL_STAGE,
     PROVIDER_STAGES,
     eval_seed,
@@ -750,6 +757,108 @@ class EvaluationTests(unittest.TestCase):
         self.assertEqual(result["provider_memory"]["M"]["lacking_id_recovered"], [1, 1])
         self.assertEqual(result["provider_memory"]["Ho"]["lacking_id_recovered"], [2, 4])
         self.assertEqual(result["provider_memory"]["Ho"]["retrieval_errors"], 1)
+
+
+REAL_EVAL = RUNS / EVAL_STAGE
+
+
+@unittest.skipUnless((REAL_EVAL / "plan.json").exists(), "private eval-v1 run not present")
+class EvalResumeDryPassTests(unittest.TestCase):
+    """Amendment 1: the whole resume path over a copy of the real eval-v1 run, zero model calls.
+    Fails on a2a2c1d, whose report discovery ignored E-prefixed families."""
+
+    def test_end_to_end_over_a_copy_of_the_real_run(self) -> None:
+        from unittest import mock
+
+        from research.commitment_analysis import analyse, rows_from_runs
+
+        before = session_one_artifacts(REAL_EVAL)
+        record = json.loads(AMEND_HASHES.read_text(encoding="utf-8"))
+        self.assertEqual(artifact_problems(REAL_EVAL, record["artifacts"]), [])
+        stored = json.loads((REAL_EVAL / "plan.json").read_text(encoding="utf-8"))
+        setup = prepare(seed=stored["seed"])
+        self.assertEqual(setup["manifest_sha256"], stored["manifest_sha256"])
+        with tempfile.TemporaryDirectory() as tmp:
+            run = Path(tmp) / EVAL_STAGE
+            shutil.copytree(REAL_EVAL, run, ignore=shutil.ignore_patterns("isolated-copilot"))
+            inputs = frozen_inputs(run, "cmp-eval-", exclude=True)
+            self.assertEqual(len(inputs), 32)  # exclusion: every family committed
+
+            shim_journal(run, "mem0", 112)
+            shim_journal(run, "honcho", 400)
+            ingested: dict[tuple[str, str], dict[str, Any]] = {}
+
+            def gateway(
+                path: str, body: dict[str, Any], url: str = "", timeout: int = 0
+            ) -> dict[str, Any]:
+                if path == "/status":
+                    return {"state": str((run / "mem0").resolve()), "honcho_workspace": "commitment-eval-v1",
+                            "honcho_reasoning_level": None,
+                            "queue": {"total": 32, "completed": 32, "pending": 0, "in_progress": 0}}  # fmt: skip
+                if path == "/ingest":
+                    ingested[(body["provider"], body["scope"])] = body["episode"]
+                    return {"result": {"events": 1}}
+                lines = ingested[(body["provider"], body["scope"])]["lines"]
+                return {"results": [t for speaker, t in lines if speaker == "agent"][-2:]}
+
+            with mock.patch("research.provider_ingest.post", side_effect=gateway):
+                providers = provider_phase(setup, run, inputs, EVAL_STAGE)
+            self.assertEqual(providers["refused"], [])
+            self.assertEqual(sorted(ingested), sorted((p, provider_scope(f, "cmp-eval-"))
+                                                      for p in PROVIDER_ARMS.values() for f in inputs))  # fmt: skip
+            self.assertTrue(all(e["id"] == f"{s.removeprefix('customer:')}-s1" and "outcome" not in e
+                                for (_, s), e in ingested.items()))  # fmt: skip
+            self.assertEqual(len(providers["retrievals"]), 64)
+
+            jobs = select_jobs(stored["jobs"], "sessions", inputs)
+            self.assertEqual(jobs, [j for j in stored["jobs"] if j["session"] == 2])
+            self.assertEqual(len(jobs), 160)
+            seen: list[tuple[dict[str, Any], FakeBackend]] = []
+
+            class Capture(FakeBackend):
+                def write(self, event: str, **fields: object) -> None:
+                    if event == "commitment-session-started":
+                        seen.append(({k: fields[k] for k in ("session", "family", "arm")}, self))
+
+            outcome = asyncio.run(run_jobs(setup, run, jobs, lambda _: Capture([act(text="How can I help?")] * 12),
+                                           [run], 2816, 310.0, 2304, exclude_uncommitted=True))  # fmt: skip
+            self.assertEqual((outcome["refused"], outcome["infra_events"]), ([], []))
+            self.assertEqual([job for job, _ in seen], jobs)  # the plan's seeded order
+            for job, backend in seen:
+                system = backend.systems[0]
+                if job["arm"] in ("Hc", "Hn"):
+                    first = json.loads(
+                        (run / f"{job['family']}-s1-S1-a1.json").read_text(encoding="utf-8")
+                    )
+                    text = transcript(first["messages"])
+                    self.assertEqual(
+                        hashlib.sha256(text.encode()).hexdigest(), inputs[job["family"]]["sha256"]
+                    )
+                    self.assertIn(
+                        (MEMORY_HEADER if job["arm"] == "Hc" else NEUTRAL_HEADER) + text, system
+                    )
+                elif job["arm"] in PROVIDER_ARMS:
+                    self.assertIn(NEUTRAL_HEADER + f"[{PROVIDER_ARMS[job['arm']]}-1]", system)
+                else:
+                    self.assertNotIn(NEUTRAL_HEADER, system)
+                    self.assertNotIn(MEMORY_HEADER, system)
+            self.assertEqual(pilot_ledger(journal_rows(run), 2816, 310.0)["started"], 186)
+            result = analyse(rows_from_runs(run))
+            self.assertEqual(
+                (result["included"], result["excluded"], result["complete"]), (32, [], True)
+            )
+            self.assertEqual(
+                {a: v["n"] for a, v in result["arms"].items()}, dict.fromkeys(EVAL_ARMS, 32)
+            )
+            self.assertEqual(result["leakage_sessions"], 0)
+            self.assertEqual(
+                artifact_problems(run, record["artifacts"]), []
+            )  # session 1, plan, manifest intact
+            (run / "E01-s1-S1-a1.json").write_text("{}", encoding="utf-8")
+            self.assertEqual(
+                artifact_problems(run, record["artifacts"]), ["E01-s1-S1-a1.json: hash differs"]
+            )
+        self.assertEqual(session_one_artifacts(REAL_EVAL), before)  # the real run is untouched
 
 
 if __name__ == "__main__":

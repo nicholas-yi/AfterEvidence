@@ -46,6 +46,10 @@ PROVIDER_ARMS = {"M": "mem0", "Ho": "honcho"}
 SHIM_CAPS, EPISODE_CAP = {"mem0": 14, "honcho": 50}, 96
 HONCHO_WORKSPACE, GATEWAY = "commitment-pilot-v5", "http://127.0.0.1:8900"
 EVAL_STAGE, EVAL_TAG, EVAL_ARMS = "eval-v1", "commitment-eval-v1", ("N", "Hc", "Hn", "M", "Ho")
+# Protocol amendment 1 (discovery-only fix after session 1): sources are frozen at this tag;
+# seed and manifest still come from EVAL_TAG; session-1 artifacts must match the recorded hashes.
+AMEND_TAG = "commitment-eval-v1-amend1"
+AMEND_HASHES = Path(__file__).resolve().parent / "commitment-eval-v1-amend1-hashes.json"
 # Fresh provider scopes per stage; the memory-study and pilot-v5 stores are never touched.
 PROVIDER_STAGES: dict[str, dict[str, Any]] = {
     "pilot-v5": {"prefix": "cmp-p5-", "workspace": HONCHO_WORKSPACE, "shim_caps": SHIM_CAPS,
@@ -450,8 +454,9 @@ SOURCES = ("commitment_pilot.py", "tau_copilot.py", "staleness.py", "memory_gate
            "memory_retrievers.py", "provider_ingest.py", "copilot_shim.py", "commitment_analysis.py")  # fmt: skip
 
 
-def tag_state(tag: str = EVAL_TAG) -> dict[str, Any] | None:
-    """The protocol tag's commit, the derived seed, and frozen sources changed since the tag."""
+def tag_state(tag: str = EVAL_TAG, freeze: str = AMEND_TAG) -> dict[str, Any] | None:
+    """The protocol tag's commit and derived seed; the freeze tag (the amendment if it exists)
+    and the frozen sources changed since it."""
     import subprocess
 
     root = Path(__file__).resolve().parent.parent
@@ -459,13 +464,44 @@ def tag_state(tag: str = EVAL_TAG) -> dict[str, Any] | None:
     def git(*args: str) -> bytes:
         return subprocess.run(["git", *args], cwd=root, capture_output=True, check=True).stdout
 
-    try:
-        commit = git("rev-parse", f"{tag}^{{commit}}").decode().strip()
-    except subprocess.CalledProcessError:
+    def commit_of(name: str) -> str | None:
+        try:
+            return git("rev-parse", f"{name}^{{commit}}").decode().strip()
+        except subprocess.CalledProcessError:
+            return None
+
+    commit = commit_of(tag)
+    if commit is None:
         return None
+    frozen = commit_of(freeze)
+    freeze_tag, freeze_commit = (freeze, frozen) if frozen else (tag, commit)
     changed = [n for n in SOURCES
-               if git("show", f"{commit}:research/{n}") != (Path(__file__).parent / n).read_bytes()]  # fmt: skip
-    return {"tag": tag, "commit": commit, "seed": eval_seed(commit), "changed": changed}
+               if git("show", f"{freeze_commit}:research/{n}") != (Path(__file__).parent / n).read_bytes()]  # fmt: skip
+    return {"tag": tag, "commit": commit, "seed": eval_seed(commit), "freeze_tag": freeze_tag,
+            "freeze_commit": freeze_commit, "changed": changed}  # fmt: skip
+
+
+def session_one_artifacts(directory: Path) -> dict[str, str]:
+    """SHA-256 of every recorded session-1 artifact plus the plan and manifest."""
+    names = [p.name for p in directory.glob("*-s1-*") if p.is_file()] + [
+        "plan.json",
+        "manifest.json",
+    ]
+    return {n: hashlib.sha256((directory / n).read_bytes()).hexdigest()
+            for n in sorted(names) if (directory / n).exists()}  # fmt: skip
+
+
+def artifact_problems(directory: Path, recorded: dict[str, str]) -> list[str]:
+    current = session_one_artifacts(directory)
+    return [f"{n}: {'missing' if n not in current else 'hash differs'}" for n in sorted(recorded)
+            if current.get(n) != recorded[n]] + [f"{n}: unrecorded" for n in sorted(set(current) - set(recorded))]  # fmt: skip
+
+
+def select_jobs(jobs: list[dict[str, Any]], phase: str, included: Any) -> list[dict[str, Any]]:
+    """Evaluation phases: session 1 for every family; session 2 for included families, in plan order."""
+    if phase == "session1":
+        return [j for j in jobs if j["session"] == 1]
+    return [j for j in jobs if j["session"] == 2 and j["family"] in included]
 
 
 def job_id(job: dict[str, Any]) -> str:
@@ -771,7 +807,9 @@ async def live_run(
     from research.copilot_backend import CopilotBackend, isolated_client, quota_snapshot
 
     directory.mkdir(parents=True, exist_ok=True)
-    (directory / "manifest.json").write_text(setup["manifest"] + "\n", encoding="utf-8")
+    manifest = directory / "manifest.json"
+    if not manifest.exists():  # a recorded artifact; never rewritten
+        manifest.write_text(setup["manifest"] + "\n", encoding="utf-8")
     client = isolated_client()
     try:
         await client.start()
@@ -1189,8 +1227,15 @@ def main() -> int:
         parser.error(f"The evaluation needs the annotated protocol tag {EVAL_TAG}.")
     if tag and tag["changed"]:
         parser.error(
-            f"Frozen sources differ from {EVAL_TAG}: {tag['changed']} (a deviation; not run)."
+            f"Frozen sources differ from {tag['freeze_tag']}: {tag['changed']} (a deviation; not run)."
         )
+    amended = bool(tag and tag["freeze_tag"] == AMEND_TAG)
+    if amended:
+        problems = artifact_problems(
+            directory, json.loads(AMEND_HASHES.read_text(encoding="utf-8"))["artifacts"]
+        )
+        if problems:
+            parser.error(f"Session-1 artifacts differ from the amendment record: {problems}")
     setup = prepare(tag["seed"] if tag else None)
     cfg = PROVIDER_STAGES.get(args.stage)
     extra: dict[str, Any] | None = None
@@ -1249,8 +1294,7 @@ def main() -> int:
         inputs = frozen_inputs(directory, cfg["prefix"], exclude=True)
     jobs = PHASE1 if args.phase == "1" else public["jobs"]
     if evaluation:
-        jobs = [j for j in jobs if (j["session"] == 1) == (args.phase == "session1")
-                and (j["session"] == 1 or j["family"] in inputs)]  # fmt: skip
+        jobs = select_jobs(jobs, str(args.phase), inputs)
     caps = cfg["shim_caps"] if cfg else SHIM_CAPS
     if args.phase == "sessions":
         missing = [job_id(j) for j in jobs if j["arm"] in PROVIDER_ARMS
@@ -1263,9 +1307,20 @@ def main() -> int:
         parser.error("Run directory has journals but no plan; use a fresh directory.")
     directory.mkdir(parents=True, exist_ok=True)
     plan_path = directory / "plan.json"
-    if plan_path.exists() and json.loads(plan_path.read_text(encoding="utf-8")) != public:
-        parser.error("The plan or frozen sources changed since the run started.")
-    plan_path.write_text(json.dumps(public, indent=2) + "\n", encoding="utf-8")
+    if plan_path.exists():
+        stored = json.loads(plan_path.read_text(encoding="utf-8"))
+        # Under the amendment, source hashes are checked against its tag (above), not the stored plan.
+        drop = ("sources",) if amended else ()
+        if {k: v for k, v in stored.items() if k not in drop} != {
+            k: v for k, v in public.items() if k not in drop
+        }:
+            parser.error("The plan or frozen sources changed since the run started.")
+    else:
+        plan_path.write_text(json.dumps(public, indent=2) + "\n", encoding="utf-8")
+    if amended and not (directory / "amendment.json").exists():
+        (directory / "amendment.json").write_text(json.dumps(
+            {"tag": AMEND_TAG, "commit": (tag or {}).get("freeze_commit"), "sources": public["sources"]}, indent=2) + "\n",
+            encoding="utf-8")  # fmt: skip
     if evaluation and args.phase == "providers":
         excluded = sorted(set(setup["families"]) - set(inputs))
         (directory / "exclusions.json").write_text(
