@@ -1,7 +1,8 @@
 # Devbox handoff
 
-Updated 2026-11-13. This is a development handoff, not a preregistration or a
-completed memory-efficacy study.
+Updated 2026-11-13. Development handoff. Memory study v1 (tag
+`memory-study-v1`) is complete with a null result; rows above it in the table
+below are historical baseline steps.
 
 ## Get the source
 
@@ -31,12 +32,12 @@ The app and the research harness are separate tracks. No new UI demo is needed.
 | Entity overlap | Tasks 0-4 are one customer; 38 of 74 train tasks share a customer with the test split |
 | Reference policy | v2: only scripted, non-mutating "not found" lookups may fail; train preflight 70 validated, 4 rejected |
 | Devbox cohort | 12 approved tasks run once: **9 scored 1.0**, 3 failed the action contract; 162 of 360 requests; replay agreed |
-| Simulator review | Worksheets generated; AI-assistant preliminary pass done; **human confirmation pending** |
-| Memory study v1 | Tagged protocol `memory-study-v1`; Studies 1-3 complete; **null result** for task success; stale-memory loss in Study 2; all providers delete cleanly ([results](../research/RESULTS.md#memory-study-v1)) |
+| Simulator review | Cohort: AI-assistant preliminary pass only. Memory study: private worksheets + CSV index for all 602 episodes. **No human review yet** |
+| Memory study v1 | Tagged protocol `memory-study-v1`; Studies 1-3 complete; **null result** for task success (not equivalence); stale-memory loss in Study 2; deletion probe found no literal identifiers of the deleted source (Honcho only on recheck) ([results](../research/RESULTS.md#memory-study-v1)) |
 | Memory-study stack | Docker (Neo4j, Hindsight, Honcho), Ollama embeddings, provider venv, shims and gateway on the devbox; see [runbook](../research/MEMORY-STUDY.md) |
 | Latest laptop validation | 66 core/publication tests and 28 research tests passed; Ruff, research Pyright, and old-journal replay passed |
 | Devbox validation | Exact 81-entry lock reproduced; core, research, Ruff 0.17.5, and research Pyright checks pass; preflight 0/1/2 matches laptop |
-| Main study | Not run, not preregistered; no demonstrated memory improvement |
+| Follow-up study | Staleness diagnostic [proposed](../research/DESIGN.md#proposed-follow-up-staleness-aware-memory-approval-pending-not-tagged-not-run): approval pending, not tagged, not run; no demonstrated memory improvement |
 
 Task 1 has no nonempty NL assertions or communication targets. Its task-basis
 score is not an independent policy-compliance or conversation-quality
@@ -47,8 +48,9 @@ they are not independent examples for a later split. The pinned catalog has no
 A matching database still does not establish simulator fidelity.
 
 The devbox cohort used **162 of 360 approved requests** and **16.05978 AI
-credits**. The memory study then used **12,428 of 16,000 approved requests** and
-**1,425.05 credits**. Cumulative Copilot usage is about **12,648 requests /
+credits**. The memory study then started **12,428 of 16,000 approved requests**
+and recorded **1,425.05 credits** (8 aborted requests have no billing record).
+Cumulative Copilot usage is about **12,648 requests /
 1,447.14 credits** (about $14.47). These are not separate API invoices.
 Unused allowance is not permission to change a cohort, retry tasks, add judges,
 switch models, or start another study. Obtain explicit approval for the next
@@ -119,7 +121,7 @@ From the repository root, after research environment setup:
 
 ```powershell
 .\research\.venv\Scripts\python.exe -m unittest discover -s tests -v
-.\research\.venv\Scripts\python.exe -m unittest research.test_memory_methods research.test_costing research.test_copilot_backend research.test_tau_action research.test_native_scoring research.test_task_audit research.test_simulator_review -v
+.\research\.venv\Scripts\python.exe -m unittest research.test_memory_methods research.test_costing research.test_copilot_backend research.test_tau_action research.test_native_scoring research.test_task_audit research.test_simulator_review research.test_memory_study research.test_staleness -v
 .\research\.venv\Scripts\python.exe -m ruff check afterevidence tests research scripts
 .\research\.venv\Scripts\python.exe -m ruff format --check afterevidence tests research scripts
 .\research\.venv\Scripts\python.exe -m pyright --project research\pyrightconfig.json
@@ -143,18 +145,23 @@ The memory study ([results](../research/RESULTS.md#memory-study-v1),
 memory condition on task success. Its test-split outcomes are now spent: do not
 tune anything on them. Decisions before more inference:
 
-1. Human confirmation of simulator worksheets (devbox only, `research/runs`).
-2. A new tagged protocol for any follow-up, for example staleness-aware memory,
-   more runs per task, a harder task subset, or agentic retrieval.
+1. Human review of simulator fidelity from the private packet in
+   `research/runs/memory-study/review/` (decisions listed in
+   [results](../research/RESULTS.md#remaining-gates-and-next-steps)).
+2. Owner approval, stage by stage, of the
+   [proposed staleness diagnostic](../research/DESIGN.md#proposed-follow-up-staleness-aware-memory-approval-pending-not-tagged-not-run)
+   before it is tagged or run; any other follow-up needs its own tagged protocol.
 3. An approved, validated NL-assertion judge if judge-needing tasks are added.
+
 ## Private evidence is not in this clone
 
 Git intentionally excludes `research/runs/`, `data/`, `results/`, vendor
 checkouts, virtual environments, caches, runtimes, and account state.
 The devbox retains the `cohort-20261113b-*` plan, reports, journals, summary,
 and simulator worksheet, plus everything under `research/runs/memory-study/`:
-bank, memory artifacts, all study reports and journals, shim journals, and
-provider data (Docker volumes, Neo4j, Qdrant, Honcho Postgres). Provider secrets
+bank, memory artifacts, all study reports and journals, shim journals, the
+simulator-review packet (`review/`), and provider data (Docker volumes, Neo4j,
+Qdrant, Honcho Postgres). Provider secrets
 live in git-ignored `research/providers/`. The source laptop retains:
 
 - `research/runs/baseline-20261113-plan.json`.
@@ -191,17 +198,19 @@ Do not copy a virtualenv or credentials from another machine.
 
 Known evidence: nine memory conditions (none, raw, consolidated, sleep-style,
 workflows, Mem0, Graphiti, Hindsight, Honcho) showed no detectable effect on
-task success (75% vs 73-83%, all Holm p = 1.0). Same-customer memory was
-slightly worse than none, not significantly; stale remembered facts caused the
-clearest loss. All providers deleted a source conversation's data (Honcho after
-a short delay). Simulator worksheets await human review.
+task success (75% vs 73-83%, all Holm p = 1.0; not evidence of equivalence).
+Same-customer memory was slightly worse than none, not significantly; stale
+remembered facts caused the clearest loss. A three-conversation deletion probe
+found no literal identifiers of the deleted source afterwards (Honcho only on a
+recheck); semantic erasure was not tested. No human has reviewed simulator
+fidelity; the private packet is in research/runs/memory-study/review/.
 
-Proceed offline: draft a follow-up protocol (for example staleness-aware memory,
-more runs per task, or agentic retrieval) and make useful source, test, or doc
-improvements. Keep hidden scoring criteria, reference actions, and task_audit
-output out of actor/memory inputs. Do not start model calls until I approve a
-concrete design, total request cap (actor, simulator, provider calls, retries,
-judges), and cost estimate.
+Proceed offline. The approval-pending staleness diagnostic is in
+research/DESIGN.md with offline code in research/staleness.py; do not tag or
+run it without explicit stage approval. Keep hidden scoring criteria, reference
+actions, and task_audit output out of actor/memory inputs. Do not start model
+calls until I approve a concrete design, total request cap (actor, simulator,
+provider calls, retries, judges), and cost estimate.
 
 Cumulative usage is about 12,648 requests / 1,447.14 AI credits. Unused
 allowance is not blanket authorization. Raw journals and provider data are

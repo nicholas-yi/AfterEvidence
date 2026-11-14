@@ -111,10 +111,13 @@ tasks—not the UI's hand-written scenario rules.
   compared no memory, raw transcripts, one-pass lessons, a sleep-style
   replay/reweight/prune analogue, induced workflows, Mem0, Graphiti, Hindsight,
   and Honcho on 26 test tasks × 2 runs. **None changed task success
-  detectably** (75% without memory; 73-83% with; all corrected p = 1.0).
-  Same-customer memory was slightly worse than none, not significantly, and
-  stale remembered facts caused the clearest loss. All four providers removed
-  data derived from a deleted conversation.
+  detectably** (75% without memory; 73-83% with; all corrected p = 1.0); with
+  two runs per task only large effects were detectable, so this is not evidence
+  of equivalence. Same-customer memory was slightly worse than none, not
+  significantly, and stale remembered facts caused the clearest loss. In a
+  three-conversation deletion probe, the deleted conversation's literal
+  identifiers disappeared from all four providers (Honcho only on a recheck);
+  that does not show complete semantic erasure.
 - Usage was metered and failures retained. **No memory improvement is claimed.**
 
 [Read the memory study](research/RESULTS.md#memory-study-v1), the

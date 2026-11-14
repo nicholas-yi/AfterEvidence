@@ -209,13 +209,20 @@ credits.
 | Study 1 episodes (468 planned) | 8,911 | 990.85 |
 | Study 2 episodes (104) | 1,887 | 213.88 |
 | Study 3 provider calls | 68 | 8.32 |
-| **Total** | **12,428** | **1,425.05** |
+| **Total started** | **12,428** | **1,425.05 recorded** |
 
-- About **$14.25 in allowance value**; 117.9M input and 5.13M output tokens.
+- About **$14.25 in allowance value**, not a separate cash invoice; 117.9M input
+  and 5.13M output tokens.
 - 12,420 of 12,428 started requests have completed billing snapshots. Eight were
-  aborted (credential timeouts or a crash) and are counted as started, not free.
-- Mean credits per Study 1 episode: 1.97-2.27 across conditions, plus 0.31
-  (Hindsight) and 0.17 (Honcho) for retrieval. Mem0 and Graphiti retrieval made
-  no model calls; embeddings ran locally and were not billed.
+  aborted (credential timeouts or a crash): counted as started, cost unknown, so
+  1,425.05 is the recorded total, not a complete one. Recounted from every
+  journal on 2026-11-13.
+- Study 1 credits per episode (1.97-2.27; none 2.02): recorded actor + simulator
+  credits averaged over all 52 planned episodes, plus retrieval 0.31 (Hindsight)
+  and 0.17 (Honcho). Mem0 and Graphiti retrieval made no model calls; embeddings
+  ran locally and were not billed. One-off construction (builders, ingestion)
+  is excluded from per-episode figures.
+- Study 2 figure credits are actor + simulator only; its Mem0 (2.81) and Honcho
+  (13.28) provider calls are in the table rows above.
 - Cumulative Copilot usage across all AfterEvidence pilots and studies:
   **12,648 requests** and about **1,447.14 AI credits** (about $14.47).

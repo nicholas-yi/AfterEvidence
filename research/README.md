@@ -48,8 +48,9 @@ lessons after evidence changes.
   Honcho) on 26 test tasks × 2 runs showed **no detectable effect on task
   success** (75% without memory vs 73-83% with; all Holm p = 1.0). Same-customer
   memory was slightly worse than none (not significant), with a clear loss from
-  stale remembered facts. All four providers removed data derived from a deleted
-  conversation. Total 12,428 requests, 1,425.05 AI credits.
+  stale remembered facts. A deletion probe found no literal identifiers of the
+  deleted conversation afterwards (Honcho only on a recheck). Total 12,428
+  requests started; 1,425.05 AI credits recorded.
 - The source-aware retrieval/accounting/isolation/action-parser tests pass.
 
 No four-condition result from the original design exists; the memory study
@@ -67,6 +68,8 @@ agent-learning evidence.
 - [Native scorer preflight and assessment](native_scoring.py).
 - [Zero-inference task/customer overlap and reference-ID audit](task_audit.py).
 - [Zero-inference simulator-calibration worksheets](simulator_review.py).
+- [Offline fixtures, scorer and stop rules for the proposed staleness diagnostic](staleness.py)
+  (approval pending; see [design](DESIGN.md)).
 - Memory study: [protocol](PROTOCOL-MEMORY.md), [runbook](MEMORY-STUDY.md),
   [Copilot shim](copilot_shim.py), [provider gateway](memory_gateway.py),
   [memory builders](memory_bank.py), [retrievers](memory_retrievers.py),

@@ -83,6 +83,7 @@ All commands from the repository root. Outputs go under the git-ignored
 | Study 2 | `python -m research.study2 --families …/study2-families.json` | Actor + simulator + provider shims |
 | Study 3 | `python -m research.lifecycle` | Provider shims (ingestion only) |
 | Analysis | `python -m research.memory_analysis --root …/study1 --conditions none raw … --out …` | None |
+| Simulator review packet | `python -m research.simulator_review …/study1/*/task-*.json --jobs …/study1/jobs.json --output …/review/study1-worksheet.md --index …/review/study1-index.csv` (likewise bank, study2) | None |
 
 The runner counts every started request in the study directory before each
 episode and skips anything whose output already exists, so an interrupted run

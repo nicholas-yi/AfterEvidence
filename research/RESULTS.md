@@ -398,10 +398,12 @@ as actor, user simulator, and every memory system's internal LLM.
 
 **Headline: no memory system, including the sleep-style condition, changed task
 success detectably.** In Study 1, point estimates ranged from 73% to 83% against
-75% without memory; every Holm-corrected p-value was 1.0. In Study 2, memory of
+75% without memory; every Holm-corrected p-value was 1.0. Only large effects
+were detectable, so this is not evidence of equivalence. In Study 2, memory of
 the same customer's earlier sessions was, if anything, slightly worse than none
 (not significant), and the clearest losses came from stale remembered facts.
-All four providers removed what they derived from a deleted conversation.
+In a three-conversation deletion probe, the deleted conversation's literal
+identifiers disappeared from all four providers (Honcho only on a recheck).
 
 ### Study 1: memory from other customers
 
@@ -413,7 +415,7 @@ the test split.
 
 | Condition | Successes / 52 | Rate (95% CI) | Wins / losses vs none | Holm p | Credits per episode |
 |---|---:|---|---:|---:|---:|
-| none | 39 | 0.750 (0.62-0.85) | - | - | 2.03 |
+| none | 39 | 0.750 (0.62-0.85) | - | - | 2.02 |
 | raw transcripts | 41 | 0.788 (0.66-0.88) | 6 / 4 | 1.0 | 2.25 |
 | consolidated (ExpeL-style) | 41 | 0.788 (0.66-0.88) | 7 / 5 | 1.0 | 2.27 |
 | sleep (replay + reweight + prune) | 42 | 0.808 (0.68-0.89) | 7 / 4 | 1.0 | 2.11 |
@@ -423,9 +425,15 @@ the test split.
 | Hindsight | 38 | 0.731 (0.60-0.83) | 6 / 7 | 1.0 | 2.13 + 0.31 retrieval |
 | Honcho | 41 | 0.788 (0.66-0.88) | 7 / 5 | 1.0 | 2.08 + 0.17 retrieval |
 
+- Credits per episode: recorded actor + simulator credits averaged over all 52
+  planned episodes (no-report episodes keep whatever their journal billed), plus
+  provider retrieval where it made model calls. One-off memory construction is
+  excluded (below). Recomputed 2026-11-13 from the journals with
+  `research.memory_analysis`: identical to the stored analysis. The no-memory
+  value is 2.0248 (all 969 requests billed); an earlier table showed 2.03.
 - With 10-14 discordant pairs per comparison, only large differences were
   detectable; for example, Mem0's 9 wins vs 5 losses gives p = 0.42 unadjusted.
-  The study cannot rule out small effects.
+  The study cannot rule out small or moderate effects in either direction.
 - Excluding the five harness failures (see deviations) leaves every conclusion
   unchanged; the largest shift is workflows at 0.860, p = 0.23 unadjusted.
 - Workflows was the cheapest condition per episode (17.9 requests on average
@@ -484,14 +492,18 @@ that customer's earlier no-memory sessions. The database resets between sessions
   cause is unexplained.
 - Two Honcho episodes failed the action contract within three requests
   (tasks 87 and 104); Study 2 counts them as failures, as preregistered.
-- The eight later sessions with NL assertions are scored on the database only.
+- Scoring is database-only. Unlike Study 1, Study 2 includes eight later
+  sessions with NL assertions; those assertions were not assessed.
+- Figure credits are actor + simulator only. Provider calls for per-customer
+  ingestion and retrieval are excluded: Mem0 22 requests / 2.81 credits, Honcho
+  182 / 13.28 (not split between ingestion and retrieval).
 
 ### Study 3: deleting a source conversation
 
 Three bank episodes from three customers were ingested into an isolated scope per
 provider; the first was deleted with each provider's own delete operation.
 
-| System | Deleted conversation's identifiers after delete | Other identifiers preserved |
+| System | Deleted conversation's literal identifiers after delete | Other identifiers preserved |
 |---|---|---|
 | Mem0 (`delete_all` by run) | removed | 100% |
 | Graphiti (`remove_episode`) | removed | 100% |
@@ -500,10 +512,12 @@ provider; the first was deleted with each provider's own delete operation.
 | Sleep lessons (support counts) | no identifiers by construction; 4/4 lessons kept with reduced support | - |
 | One-pass lessons (conservative provenance) | 0/6 lessons kept | - |
 
-Honcho's session delete is a documented cascading hard delete; the stale
-immediate read is likely cached (not verified). Mem0 needed one gateway fix
-before this check (deviation 3). Probes are literal identifier matches, a
-narrow check: paraphrased facts without identifiers are not detected.
+Honcho's session delete is documented as a cascading hard delete; why the
+immediate read still showed an identifier (for example asynchronous processing
+or caching) was not established. Mem0 needed one gateway fix before this check
+(deviation 3). The probe covers three conversations and literal identifier
+matches only: it does not detect paraphrased or derived facts, so it is not
+evidence of complete semantic erasure.
 
 ### Deviations from the protocol
 
@@ -523,22 +537,28 @@ narrow check: paraphrased facts without identifiers are not detected.
 
 ### Usage
 
-Approved cap 16,000 requests. Used **12,428**: learning-pool episodes 559,
+Approved cap 16,000 requests. Started **12,428**: learning-pool episodes 559,
 smoke tests 46, memory builders 33, provider ingestion and retrieval through
 the shims 924 (Studies 1 and 2), Study 1 episodes 8,911, Study 2 episodes
-1,887, and Study 3 provider calls 68. That is **117.9M input / 5.13M output
-tokens** and **1,425.05 AI credits** (about $14.25 in allowance value). See
-[costs](COSTS.md#memory-study-v1).
+1,887, and Study 3 provider calls 68. 12,420 have complete billing snapshots,
+recording **117.9M input / 5.13M output tokens** and **1,425.05 AI credits**
+(about $14.25 in allowance value, not a separate invoice). The eight
+incomplete requests have unknown cost, so 1,425.05 is the recorded total, not
+a complete one. Request and credit totals recounted from every journal on
+2026-11-13. See [costs](COSTS.md#memory-study-v1).
 
 ### Limitations
 
-- One actor/simulator model, one domain, judge-free tasks only, two runs per
-  test task: small effects are undetectable and results may not transfer.
+- One actor/simulator model, one domain, two runs per test task: small or
+  moderate effects are undetectable and results may not transfer. Study 1 used
+  judge-free tasks; Study 2 is database-scored with eight NL-assertion sessions
+  unassessed.
 - Memory was retrieved once, from the first customer message, under a 2,400
   character cap. Agentic multi-step retrieval was not tested.
 - Providers ran with default pipelines on a substituted LLM and local
   embeddings; their published results use other models.
-- Simulator review covered the earlier 12-task cohort only.
+- No human has reviewed simulator fidelity. The AI assistant's preliminary pass
+  covered the 12-task cohort only; memory-study worksheets exist privately.
 - Stashbird was not run: it depends on internal cloud resources.
 
 ## Preserved evidence
@@ -555,7 +575,10 @@ or raw journals into the public benchmark implementation:
 On the devbox (not on the laptop): `runs/cohort-20261113b-plan.json`, the
 twelve `cohort-20261113b-task-<id>.json` reports with `.calls.jsonl` journals
 and `.stderr.txt` logs, `cohort-20261113b-summary.json`, and
-`cohort-20261113b-simulator-review.md`.
+`cohort-20261113b-simulator-review.md`. Under `runs/memory-study/`: the bank,
+memory artifacts, study reports and journals, shim journals, analyses, and the
+`review/` packet (one simulator worksheet and CSV index each for the learning
+pool, Study 1, and Study 2; built with `research.simulator_review --index`).
 
 Run the zero-inference accounting/replay:
 
@@ -589,15 +612,21 @@ Completed by the memory study: adapter re-ask, customer-disjoint partition,
 experience bank, nine memory conditions, tagged protocol, and null/negative
 reporting. Open:
 
-1. A human should confirm the simulator worksheets, including the new
-   memory-study episodes.
+1. A human should review simulator fidelity. The private `review/` packet
+   covers all 602 memory-study episodes (learning pool 30, Study 1 468 including
+   5 planned episodes without a report, Study 2 104). A heuristic flag marks 105
+   for priority (not scored, no stop marker, transfer, or possible disclosure of
+   unknown information). Open human decisions: reviewer, sample (all episodes
+   or flagged plus a random draw), and what a failed fidelity check does to an
+   episode. v1 outcomes stay as recorded; review may only annotate them.
 2. More power: more test runs per task, or a harder task set where the
    no-memory baseline is further from ceiling, before any small effect is claimed.
 3. Policy-compliance scoring: the judge-needing tasks need an approved,
    validated NL-assertion judge.
 4. Memory that knows when it is stale: Study 2's clearest losses came from
-   remembered facts invalidated by a database reset. Test memory that records
-   time and source, and checks current tool results before acting.
+   remembered facts invalidated by a database reset. A controlled synthetic
+   diagnostic is [proposed in the design](DESIGN.md#proposed-follow-up-staleness-aware-memory-approval-pending-not-tagged-not-run)
+   (approval pending; not tagged, not run).
 5. Other actors or retrieval styles (per-turn or agentic retrieval) under a
    new tagged protocol.
 

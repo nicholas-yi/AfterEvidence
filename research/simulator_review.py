@@ -10,6 +10,7 @@ only be written under the git-ignored `research/runs` directory.
 from __future__ import annotations
 
 import argparse
+import csv
 import json
 import re
 from pathlib import Path
@@ -61,6 +62,8 @@ def review_flags(report: dict[str, Any], task: dict[str, Any]) -> dict[str, Any]
                 disclosed[key] = hits
     return {
         "task_id": report.get("task_id"),
+        "condition": report.get("condition"),
+        "seed": report.get("seed"),
         "status": report.get("status"),
         "termination": report.get("termination"),
         "native_env_reward": report.get("native_env_reward"),
@@ -81,12 +84,32 @@ def review_flags(report: dict[str, Any], task: dict[str, Any]) -> dict[str, Any]
     }
 
 
-def worksheet(report: dict[str, Any], task: dict[str, Any]) -> str:
+def needs_attention(flags: dict[str, Any]) -> bool:
+    """Deterministic triage hint for ordering human review; not a fidelity judgement."""
+    return bool(
+        flags["status"] != "scored"
+        or not flags["ended_with_stop_marker"]
+        or flags["transfer_or_out_of_scope"]
+        or flags["unknown_info_possibly_disclosed"]
+        or flags["empty_user_messages"]
+    )
+
+
+def worksheet(report: dict[str, Any], task: dict[str, Any], source: str | None = None) -> str:
     flags = review_flags(report, task)
     instructions = task["user_scenario"]["instructions"]
+    episode = ", ".join(
+        str(part)
+        for part in (
+            flags["condition"],
+            flags["seed"] is not None and f"seed {flags['seed']}",
+        )
+        if part
+    )
     lines = [
-        f"## Task {flags['task_id']}: {flags['status']}",
+        f"## Task {flags['task_id']}{f' ({episode})' if episode else ''}: {flags['status']}",
         "",
+        *([f"Source: `{source}`", ""] if source else []),
         "Simulator instructions (visible to the simulator, never to the actor):",
         "",
         "```json",
@@ -121,6 +144,34 @@ def worksheet(report: dict[str, Any], task: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+INDEX_FIELDS: tuple[str, ...] = (
+    "source", "task_id", "condition", "seed", "status", "native_env_reward", "requests_started",
+    "user_turns", "ended_with_stop_marker", "transfer_or_out_of_scope",
+    "unknown_info_possibly_disclosed", "empty_user_messages", "needs_attention",
+    "reviewer", "fidelity_ok", "notes",
+)  # fmt: skip
+
+
+def write_index(path: Path, summary: list[dict[str, Any]], jobs: list[dict[str, Any]]) -> None:
+    """One row per episode, with blank reviewer columns; missing planned reports stay visible."""
+    rows = [{**flags, "needs_attention": needs_attention(flags)} for flags in summary]
+    seen = {(str(r["task_id"]), str(r["condition"]), str(r["seed"])) for r in rows}
+    for job in jobs:
+        key = (str(job.get("task")), str(job.get("condition")), str(job.get("seed")))
+        if key not in seen:
+            rows.append(
+                {"task_id": key[0], "condition": key[1], "seed": key[2], "status": "no-report",
+                 "needs_attention": True}
+            )  # fmt: skip
+    with path.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, INDEX_FIELDS, extrasaction="ignore")
+        writer.writeheader()
+        for row in rows:
+            writer.writerow(
+                {k: json.dumps(v) if isinstance(v, dict) else v for k, v in row.items()}
+            )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Render zero-inference simulator review worksheets for recorded episodes."
@@ -128,9 +179,18 @@ def main() -> None:
     parser.add_argument("reports", nargs="+", type=Path)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--vendor", type=Path, default=DEFAULT_VENDOR)
+    parser.add_argument(
+        "--index", type=Path, help="Also write a per-episode CSV index (under research/runs)."
+    )
+    parser.add_argument(
+        "--jobs",
+        type=Path,
+        help="Planned jobs JSON; planned episodes without a report are indexed.",
+    )
     args = parser.parse_args()
     output = args.output.resolve()
-    if not output.is_relative_to(RUNS):
+    index = args.index.resolve() if args.index else None
+    if not output.is_relative_to(RUNS) or (index and not index.is_relative_to(RUNS)):
         parser.error("Worksheets quote transcripts; write them only under research/runs.")
     tasks = {task["id"]: task for task in load(args.vendor)[0]}
     parts = ["# Simulator calibration worksheet", ""]
@@ -138,9 +198,12 @@ def main() -> None:
     for path in args.reports:
         report = json.loads(path.read_text(encoding="utf-8"))
         task = tasks[str(report["task_id"])]
-        parts.append(worksheet(report, task))
-        summary.append(review_flags(report, task))
+        source = path.resolve().relative_to(RUNS).as_posix()
+        parts.append(worksheet(report, task, source))
+        summary.append({"source": source, **review_flags(report, task)})
     output.write_text("\n".join(parts), encoding="utf-8")
+    if index:
+        write_index(index, summary, json.loads(args.jobs.read_text("utf-8")) if args.jobs else [])
     print(json.dumps(summary, indent=2))
 
 

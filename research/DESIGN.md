@@ -156,3 +156,56 @@ This proposed study concerns external experience consolidation and revision.
 It tests a related functional question, not Google's algorithm. No weights
 are trained and no Sleep reproduction is claimed. A later parametric track
 would require an appropriate training setup and its own controlled protocol.
+
+## Proposed follow-up: staleness-aware memory (approval pending; not tagged, not run)
+
+Controlled synthetic diagnostic of stale-memory handling. Not a tau2 score, not
+memory distilled from agent experience, does not re-test v1. Memory records are
+seeded fixtures from [staleness.py](staleness.py). Motivation: Study 2 task 110,
+where remembered facts invalidated by a database reset caused a wrong action.
+
+| Element | Specification |
+|---|---|
+| Family | One synthetic customer and attribute (shipping address or payment card, alternating) with an old and a new value; names and values unique; eval families disjoint from dev |
+| Episode | One request, a live account view, and memory per condition; the actor submits one target or abstains. No user simulator. Hard cap 4 requests, including one counted re-ask |
+| Regime `current` | Memory valid and necessary: account lists both values, no default; correct = new. Positive control and non-harm |
+| Regime `reset` | Account restored to the epoch-2 snapshot; memory records an epoch-3 change to new; correct = old, obsolete = new |
+| Regime `corrected` | Later record m2 reverts m1 (m1 marked superseded); correct = old, obsolete = new |
+| None / Ordinary (O) / Validity-aware (V) | No memory / all records with source session, epoch, supersession, and the restore note / the same rendering minus records that are superseded or newer than the restored snapshot. V uses only retrieval-time metadata; no oracle |
+| Scorer | Deterministic normalized match: correct, obsolete, other, abstain. Hidden labels never reach the actor |
+
+O shows the same metadata V filters on, so V's reduction of stale actions is
+largely expected by construction. The informative quantities are (a) O's
+obsolete-target rate versus None in `reset` and `corrected` (does the actor heed
+visible validity metadata and live tools?), (b) the memory-necessity positive
+control, and (c) V's non-harm in `current`.
+
+| Decision (48 eval families are the unit) | Rule |
+|---|---|
+| Primary endpoint | Per family, obsolete-target rate over `reset` and `corrected` × 2 replicates |
+| Primary test (the only one) | Family-mean (O − V) ≥ 0.20 **and** one-sided 95% family-paired bootstrap lower bound > 0 (10,000 resamples, seed 0) |
+| Gate: positive control | `current`: family-mean correct rate O − None ≥ 0.50 |
+| Gate: non-harm | `current`: family-mean correct rate V − O ≥ −0.05 |
+| Efficacy claim | Only if both gates and the primary rule pass; O − None and per-regime rates are descriptive |
+
+| Stage (separate approvals) | Design | Episodes | Hard request cap | Credits |
+|---|---|---:|---:|---|
+| A: development | 4 fixed dev families × 3 regimes × 3 conditions × 1 | 36 | 144 | ≤ 36 at a conservative 0.25 per request |
+| B: evaluation | 48 families × 3 × 3 × 2 replicates | 864 | 3,456 | Recomputed from Stage A's measured credits per request; may only decrease; never above 864 |
+
+- Together at most 3,600 requests: about 413 credits at v1's historical mean
+  (0.1147 per billed request), 900 at the conservative rate. Not a guaranteed
+  cash cap: the runtime per-session credit limit cannot be set below 30
+  credits, so it cannot enforce a tighter per-episode ceiling; study-level stop
+  rules are the control. Stop at 825 settled credits, any single call above 1
+  credit, or missing billing or a count mismatch (`ledger_stops`).
+- No automatic move from development to evaluation. Nothing is tagged or run
+  until the owner explicitly approves each stage.
+- Implemented and tested offline now: generator, 4 dev fixtures, validity
+  filter, scorer, decision rule, and ledger checks. Evaluation families are not
+  materialized: their seed derives from the tag commit (`eval_seed`) and they
+  are generated after tagging. The generator freezes at the tag.
+- Blocked before tagging: the episode runner, actor prompt, and tool schema;
+  whether Stage A may change the prompt (only before the tag, never from eval).
+- Secondary, no spend planned: a semantic-deletion probe (paraphrased facts
+  derived from a deleted source) would extend Study 3's literal-identifier check.
