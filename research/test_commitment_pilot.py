@@ -690,7 +690,14 @@ class EvaluationTests(unittest.TestCase):
             outcome = asyncio.run(run_jobs(self.eval_setup, Path(tmp), jobs, silent, [Path(tmp)],
                                            2816, 310.0, 2304, exclude_uncommitted=True))  # fmt: skip
             self.assertEqual(outcome["refused"], [])
+            self.assertEqual(
+                [r["family"] for r in final_reports(Path(tmp))], [family]
+            )  # E-family found
             self.assertEqual(frozen_inputs(Path(tmp), "cmp-eval-", exclude=True), {})
+            report = {"session": 1, "family": "E02", "arm": "S1", "commitment": True,
+                      "messages": [{"role": "user", "content": "agreed"}]}  # fmt: skip
+            Path(tmp, "E02-s1-S1-a1.json").write_text(json.dumps(report), encoding="utf-8")
+            self.assertEqual(list(frozen_inputs(Path(tmp), "cmp-eval-", exclude=True)), ["E02"])
             with self.assertRaises(FatalStop):
                 frozen_inputs(Path(tmp), "cmp-eval-", [family])
             shim_journal(Path(tmp), "honcho", 400, *[e for i in range(1, 21) for e in

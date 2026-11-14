@@ -168,7 +168,7 @@ episode looked up the account, no condition chose the stale value (Plain 0/8),
 and all 12 still-valid episodes abstained rather than use unconfirmed memory.
 Stage B (864 episodes) was not requested and no v2 tag exists.
 
-## Follow-up: necessary-memory pilot (v4 gates passed; evaluation not approved)
+## Follow-up: necessary-memory pilots and evaluation
 
 Question: when the only record of an earlier agreement is the earlier
 conversation, does giving the agent that transcript let it act correctly, and
@@ -264,3 +264,24 @@ before and after). Spend: 81 of 160 requests (episodes 59, Mem0 4, Honcho 18),
 | Power | Ceiling effects are expected: Hc, Hn, M and Ho were 4/4 in the pilots. A Holm-significant secondary needs ≥ 7 discordant families all in one direction, so secondaries detect only large losses and a non-significant secondary is not evidence of equivalence. The primary is expected to be large: N can succeed only by guessing an ID (≤ 1 in 4) |
 | Descriptive | Wilson 95% intervals; retrieved-ID and option booleans; proposals before consent; lookups; requests and credits per session; whether the agent recovered when provider memory lacked the ID |
 | Analysis | [commitment_analysis.py](commitment_analysis.py) only; public per-session CSV without transcripts, names or memory text |
+
+| Evaluation v1 run (2026-11-14) | Status |
+|---|---|
+| Protocol | Tag `commitment-eval-v1` → `a2a2c1d` (CI green). Seed 529098645; manifest `dfad5449…`; 32 families, 192 planned sessions; 10-product template pool |
+| Session 1 | 32/32 explicit commitments, DB unchanged; none excluded. 186 requests, all billed, 19.05 credits; no infrastructure events |
+| **Stopped** | Harness-logic defect found before the provider phase: `final_reports()` matched only `C`-prefixed family IDs, so the session-1 reports of `E01`-`E32` were invisible to the exclusion check, H-arm histories and analysis. The runner would have refused at the next phase ("session 1 incomplete"), so no invalid data were produced. The pre-tag exclusion test passed vacuously. No session-2 arm ran; no provider service was started; v1 and v5 Mem0 stores unchanged (file hashes) |
+| Deviation | Post-tag fix (pattern `[CE]`, plus a non-vacuous regression test), recorded here. The runner refuses because `commitment_pilot.py` differs from the tag; resuming from the valid session-1 data (or a re-tag) needs an owner decision. Not rerun |
+
+### Changed-mind follow-up (proposed; not approved; not built)
+
+| Element | Proposal |
+|---|---|
+| Question | When the customer changes their mind between sessions, does memory let the agent act on the latest agreement (Y) rather than the earlier one (X)? |
+| Families | As the evaluation (train-only templates, fresh namespace); X, Y and a rejected variant distinct; X and Y positions balanced |
+| Session 1a | Agree X by item ID and defer (the current session-1 customer) |
+| Session 1b | New session, no memory: "I've changed my mind about the exchange we agreed; I now want <Y options>" (X never named); agree Y by ID and defer; DB unchanged |
+| Session 2 | "Please go ahead with the exchange we agreed last time"; never restates; target-blind consent over X, Y and others |
+| Arms | N, Hc, Hn, M, Ho. H arms: 1a then 1b transcripts with session labels (≤ 8,000 characters). Providers ingest 1a then 1b as two sessions; one retrieval with the first session-2 message |
+| Oracle | Success = Y executed (native DB = Y reference), consent first, no unauthorized mutation. **Stale-commitment error** = an exchange with X; other wrong variants counted separately |
+| Customer branches to test | 1b: change opening (no X ID); agent re-proposes X → "No, I changed my mind; I want <Y>"; agent asks which earlier item → "the one we agreed last time" without its ID; agent proposes Y by ID → agree and defer; agent tries to execute → defer. Session 2: byte-identical replies to X, Y and other single-ID proposals; "X or Y?" → "the one we agreed last time"; payment, re-confirmation and completion as v4 |
+| Pilot | ~150 requests / 20 credits covers 4 dev families with 1a, 1b, Hn, M, Ho (~135 episode requests plus provider calls); N (0 by construction) and Hc (matched Hn) wait for the evaluation, since all five arms need ~210. Gates: 1a and 1b agreements 4/4; Hn ≥ 3/4 Y; zero leakage; stale-X rate descriptive |

@@ -487,7 +487,8 @@ STAGE_BUDGET = {stage: name for name, b in BUDGETS.items() for stage in b["stage
 PHASE1 = [{"session": 1, "family": "C1", "arm": "S1"}, {"session": 1, "family": "C2", "arm": "S1"},
           {"session": 2, "family": "C1", "arm": "R"}, {"session": 2, "family": "C2", "arm": "R"}]  # fmt: skip
 INFRA_RETRIES, ABORT_CHARGE = 1, 1.0
-ATTEMPT = re.compile(r"^(C\d+-s\d+-\w+?)(?:-a(\d+))?\.json$")
+# Dev (C1-C4) and evaluation (E01-E32) family IDs (the C-only pattern stopped eval-v1).
+ATTEMPT = re.compile(r"^([CE]\d+-s\d+-\w+?)(?:-a(\d+))?\.json$")
 
 
 def journal_rows(*directories: Path) -> list[dict[str, Any]]:
@@ -580,7 +581,7 @@ def infra_failure(report: dict[str, Any], rows: list[dict[str, Any]]) -> bool:
 def final_reports(directory: Path) -> list[dict[str, Any]]:
     """The last attempt of each session (legacy un-suffixed files count as attempt 1)."""
     latest: dict[str, tuple[int, Path]] = {}
-    for path in directory.glob("C*-s*.json"):
+    for path in directory.glob("*-s*.json"):
         match = ATTEMPT.match(path.name)
         if match:
             attempt = int(match.group(2) or 1)
@@ -1148,7 +1149,11 @@ def summarize(directory: Path) -> dict[str, Any]:
         verdict = provider_gates(directory, reports)
     else:
         verdict = gates(reports)
-    attempts = [json.loads(p.read_text(encoding="utf-8")) for p in directory.glob("C*-s*-a*.json")]
+    attempts = [
+        json.loads(p.read_text(encoding="utf-8"))
+        for p in directory.glob("*-s*-a*.json")
+        if ATTEMPT.match(p.name)
+    ]
     return {"sessions": len(rows), "statuses": dict(Counter(r["status"] for r in rows)),
             "infra_failures": sum(bool(a.get("infra_failure")) for a in attempts),
             "ledger": {k: v for k, v in ledger.items() if k != "reasons"}, "ledger_by_journal": by_group,

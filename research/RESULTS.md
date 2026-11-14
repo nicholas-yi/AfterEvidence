@@ -240,7 +240,9 @@ reporting. Open:
    approval; 155 requests, 17.50 credits) passed every gate on 4 dev families:
    Hn 4/4, Hc 4/4, R 4/4, N 0/4, zero leakage. v5 (Mem0 and Honcho given the
    same dialogue; 81 requests, 8.13 credits) passed its integration gate; both
-   completed 4/4. Feasibility pilots, not effect estimates; evaluation not approved ([design](DESIGN.md#follow-up-necessary-memory-pilot-v4-gates-passed-evaluation-not-approved)).
+   completed 4/4. Feasibility pilots, not effect estimates. The tagged evaluation
+   (`commitment-eval-v1`) stopped after session 1 (32/32 commitments; 186
+   requests, 19.05 credits) on a harness-logic defect; no arm comparison exists ([design](DESIGN.md#follow-up-necessary-memory-pilots-and-evaluation)).
 
 The software tests check memory mechanics, not that an agent learned useful
 lessons. No Google-style parameter expansion, Knowledge Seeding, or RL dreaming
