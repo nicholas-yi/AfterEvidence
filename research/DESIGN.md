@@ -207,7 +207,10 @@ Annotated carry the same records; only the metadata differs.
   credit, or missing billing or a count mismatch (`ledger_stops`).
 - Implemented and tested offline: generator, dev fixtures, tool environment,
   validity filter, scorer, decision rule, Stage A floor check, ledger checks,
-  and draft actor instructions and tool schema. Remaining pre-approval blocker:
-  the episode runner wiring them to the pinned Copilot actor.
+  actor instructions, tool schema, and the serial episode runner
+  ([staleness_runner.py](staleness_runner.py): dry run by default; one counted
+  re-ask per episode; refuses to start on any stop reason). Nothing blocks
+  Stage A except owner approval: `python -m research.staleness_runner --stage a
+  --approved-requests 144`.
 - Secondary, no spend planned: a semantic-deletion probe (paraphrased facts
   derived from a deleted source) would extend Study 3's literal-identifier check.

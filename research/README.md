@@ -69,6 +69,7 @@ agent-learning evidence.
 - [Zero-inference task/customer overlap and reference-ID audit](task_audit.py).
 - [Zero-inference simulator-calibration worksheets](simulator_review.py).
 - [Offline fixtures, tool environment, scorer and stop rules for the proposed staleness diagnostic](staleness.py)
+  and its [episode runner](staleness_runner.py) (dry run unless a stage cap is approved)
   (approval pending; see [design](DESIGN.md)).
 - Memory study: [protocol](PROTOCOL-MEMORY.md), [runbook](MEMORY-STUDY.md),
   [Copilot shim](copilot_shim.py), [provider gateway](memory_gateway.py),

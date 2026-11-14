@@ -121,7 +121,7 @@ From the repository root, after research environment setup:
 
 ```powershell
 .\research\.venv\Scripts\python.exe -m unittest discover -s tests -v
-.\research\.venv\Scripts\python.exe -m unittest research.test_memory_methods research.test_costing research.test_copilot_backend research.test_tau_action research.test_native_scoring research.test_task_audit research.test_simulator_review research.test_memory_study research.test_staleness -v
+.\research\.venv\Scripts\python.exe -m unittest research.test_memory_methods research.test_costing research.test_copilot_backend research.test_tau_action research.test_native_scoring research.test_task_audit research.test_simulator_review research.test_memory_study research.test_staleness research.test_staleness_runner -v
 .\research\.venv\Scripts\python.exe -m ruff check afterevidence tests research scripts
 .\research\.venv\Scripts\python.exe -m ruff format --check afterevidence tests research scripts
 .\research\.venv\Scripts\python.exe -m pyright --project research\pyrightconfig.json
