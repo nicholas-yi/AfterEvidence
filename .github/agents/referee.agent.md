@@ -20,7 +20,7 @@ Ask one focused question at a time when evidence is missing: what would falsify
 the claim, what does each denominator count, and which untested path could
 explain the outcome? Prefer find-the-flaw and counterexample questions.
 
-For each applicable threat in docs/PROTOCOL.md, require at least two executable
+For each applicable threat in the threat-check table of docs/LOCAL-APP.md, require at least two executable
 checks addressing distinct failure modes. Run the tests and replay rather than
 trusting a statement that they passed. Inspect source/result hashes, runtime,
 seed, controls, exclusions, and raw observations. Two LLM responses are not two

@@ -61,16 +61,18 @@ agent-learning evidence.
 
 - [Design and selection audit](DESIGN.md).
 - [Cost estimates and resource boundaries](COSTS.md).
-- [Actual feasibility outcomes and remaining gates](RESULTS.md).
+- [Actual outcomes and remaining gates](RESULTS.md).
+- [Public per-episode table for Studies 1 and 2](data/memory-study-v1-episodes.csv),
+  recomputed by `python -m research.memory_analysis --csv` and checked in CI.
 - [Benchmark and SDK pins](benchmark-lock.json).
 - [Non-editable dependency constraints](dependencies.lock.txt), combined with the source pins.
 - [Source-aware memory controls](memory_methods.py).
 - [Native scorer preflight and assessment](native_scoring.py).
 - [Zero-inference task/customer overlap and reference-ID audit](task_audit.py).
 - [Zero-inference simulator-calibration worksheets](simulator_review.py).
-- [Offline fixtures, tool environment, scorer and stop rules for the proposed staleness diagnostic](staleness.py)
-  and its [episode runner](staleness_runner.py) (dry run unless a stage cap is approved)
-  (approval pending; see [design](DESIGN.md)).
+- [Offline fixtures, tool environment, scorer and stop rules for the staleness
+  diagnostic](staleness.py) and its [episode runner](staleness_runner.py)
+  (dry run unless a stage cap is approved; Stage A run, see [design](DESIGN.md)).
 - Memory study: [protocol](PROTOCOL-MEMORY.md), [runbook](MEMORY-STUDY.md),
   [Copilot shim](copilot_shim.py), [provider gateway](memory_gateway.py),
   [memory builders](memory_bank.py), [retrievers](memory_retrievers.py),

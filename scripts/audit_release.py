@@ -37,6 +37,8 @@ def path_errors(name: str) -> list[str]:
         return []
     if not path.parts or path.parts[0] not in ROOT_DIRECTORIES:
         return ["not-in-public-allowlist"]
+    if path.parts[:2] == ("research", "data") and len(path.parts) == 3 and path.suffix == ".csv":
+        return []  # published aggregate tables; content is still scanned
     if any(part in PRIVATE_DIRECTORIES for part in path.parts) or path.name.startswith(".env"):
         return ["private-or-generated-path"]
     if path.suffix not in EXTENSIONS and not (

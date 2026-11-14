@@ -213,6 +213,8 @@ credits.
 
 - About **$14.25 in allowance value**, not a separate cash invoice; 117.9M input
   and 5.13M output tokens.
+- Ingestion alone (30 bank episodes plus one scratch smoke test): Mem0 4.4,
+  Honcho 12.9, Hindsight 30.4, Graphiti 53.1 credits.
 - 12,420 of 12,428 started requests have completed billing snapshots. Eight were
   aborted (credential timeouts or a crash): counted as started, cost unknown, so
   1,425.05 is the recorded total, not a complete one. Recounted from every

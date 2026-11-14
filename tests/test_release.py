@@ -38,6 +38,9 @@ class PublicationTests(unittest.TestCase):
 
     def test_only_static_figures_are_publishable_svg(self) -> None:
         self.assertEqual(path_errors("docs/figures/chart.svg"), [])
+        self.assertEqual(path_errors("research/data/episodes.csv"), [])
+        for private in ("research/data/sub/x.csv", "data/x.csv", "research/x.csv"):
+            self.assertTrue(path_errors(private), private)
         self.assertTrue(path_errors("research/chart.svg"))
         self.assertEqual(svg_errors("docs/figures/a.svg", "<svg><circle r='1'/></svg>"), [])
         for active in ("<svg><script>x()</script></svg>", '<svg onload="x()"></svg>'):
