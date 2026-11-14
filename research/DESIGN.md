@@ -194,6 +194,7 @@ approved. Code: [commitment_pilot.py](commitment_pilot.py), tests
 | Spend | 17 requests started and billed, 1.94 recorded credits (max call 0.17) |
 | Verdict | **KILL** (session-1 gate failed). Not rerun |
 | Cause | Harness defect, not agent behaviour: the agent confirmed the exact target by item ID, but its message also described the current item, so the scripted customer's option-value matcher also matched a rejected alternative and kept asking. Fixed offline (item IDs take precedence) with a regression test; the pilot outcome stands |
+| v2 replay gate (2026-11-14, zero calls) | Replaying the recorded C1/C2 session-1 dialogues through the fixed customer: both now agree on the target. The sweep of every agent message still found the rejected alternative matched by option values in all 5 C2 confirmations (masked only because they carried IDs), and a candidate specificity rule collapsed plain option lists. Pilot v2 was **not run**. Matching is now item-ID only (ID-less proposals get a request for the exact item ID; leakage checks still test option values); replay agrees for C1 and C2 with no false match |
 
 Any re-pilot needs new owner approval and a fresh run directory; the frozen
 `plan.json` source hashes no longer match the fixed code.

@@ -23,7 +23,7 @@ For an existing checkout, inspect local changes first and use
 | Memory study v1 | Tag `memory-study-v1`; Studies 1-3 complete; **null result** for task success, not equivalence ([results](../research/RESULTS.md#memory-study-v1)); test-split outcomes spent |
 | Public evidence | Per-episode [CSV](../research/data/memory-study-v1-episodes.csv) reproduces every Study 1/2 table; CI test `research.test_memory_csv` |
 | Staleness diagnostic | [Stage A](../research/DESIGN.md#follow-up-staleness-aware-memory-stage-a-run-stage-b-not-requested) run (36 dev episodes); floor check failed; Stage B not requested; no v2 tag |
-| Necessary-memory pilot | [Pilot](../research/DESIGN.md#follow-up-necessary-memory-pilot-pilot-run-2026-11-14-killed) killed at the session-1 gate by a scripted-customer defect (fixed offline, not rerun); evaluation not approved |
+| Necessary-memory pilot | [Pilot](../research/DESIGN.md#follow-up-necessary-memory-pilot-pilot-run-2026-11-14-killed) v1 killed at the session-1 gate by a scripted-customer defect; approved v2 stopped at its zero-cost replay gate (residual defect, fixed); no v2 calls; evaluation not approved |
 | Simulator review | No human review yet. Private worksheets and CSV indexes for all 602 memory-study episodes, with a proposed default sample, in `research/runs/memory-study/review/` |
 | Memory-study stack | Docker (Neo4j, Hindsight, Honcho), Ollama embeddings, provider venv, shims, and gateway on the devbox, stopped with data retained ([runbook](../research/MEMORY-STUDY.md)) |
 | Devbox environment | Exact 81-entry lock reproduced; offline checks pass |

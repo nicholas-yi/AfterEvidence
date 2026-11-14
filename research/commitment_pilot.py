@@ -30,7 +30,8 @@ from typing import Any
 from research.staleness import ledger_stops
 from research.tau_copilot import MEMORY_HEADER, WireCommand
 
-ROOT = Path(__file__).resolve().parent / "runs" / "commitment" / "pilot"
+RUNS = Path(__file__).resolve().parent / "runs" / "commitment"
+ROOT = RUNS / "pilot"  # v1, killed; kept unchanged
 NAMESPACE = "AE-COMMIT-DEV-20261114-v1"
 ARMS = ("N", "Hc", "Hn", "R")
 NEUTRAL_HEADER = "Previous-session transcript for this customer:\n"
@@ -151,16 +152,10 @@ def _norm(text: str) -> str:
 
 
 def identified(family: dict[str, Any], text: str) -> set[str]:
-    """Alternatives a message names. Item IDs are authoritative when present; option values
-    are a fallback only, because a message may also describe the current item's options."""
-    by_id = {v["item_id"] for v in family["alternatives"] if v["item_id"] in text}
-    if by_id:
-        return by_id
-    lowered = _norm(text)
-    return {
-        v["item_id"] for v in family["alternatives"]
-        if all(_norm(x) in lowered for x in v["options"].values())
-    }  # fmt: skip
+    """Alternatives a message names, by their unique 10-digit item IDs only. Option-value
+    matching was removed: a message describing the current item and a new one produced false
+    matches (pilot v1), and specificity rules collapsed plain option lists (v2 replay gate)."""
+    return {v["item_id"] for v in family["alternatives"] if v["item_id"] in text}
 
 
 def _option(family: dict[str, Any], item_id: str) -> str:
@@ -201,7 +196,7 @@ class ScriptedCustomer:
             if others and not target:
                 return f"No, not that one. I want the {_option(f, f['target_id'])}."
             return (
-                f"To be clear, I want the {_option(f, f['target_id'])}. Is that the exact option?"
+                f"To be clear, I want the {_option(f, f['target_id'])}. What is its exact item ID?"
             )
         lowered = agent_text.casefold()
         if self.confirmed:
@@ -222,7 +217,10 @@ class ScriptedCustomer:
             return f"Please use my {f['brand']} card ending {f['last_four']}."
         if self.arm == "R":
             return f"It's the {_option(f, f['target_id'])}."
-        return "We already agreed on it last time. Please go ahead with that one."
+        return (
+            "We already agreed on it last time. Please go ahead with that one "
+            "and tell me the exact item ID you will use."
+        )
 
     def _end(self, text: str) -> str:
         self.done = True
@@ -249,15 +247,22 @@ def session_system(policy: str, arm: str, history: str | None) -> str:
     return system + "\n\n" + header + history
 
 
+def _names_target(family: dict[str, Any], text: str) -> bool:
+    """Conservative leakage test: the target's item ID or all of its option values."""
+    target = next(v for v in family["alternatives"] if v["item_id"] == family["target_id"])
+    lowered = _norm(text)
+    return target["item_id"] in text or all(_norm(x) in lowered for x in target["options"].values())
+
+
 def leaks(
     family: dict[str, Any], arm: str, system: str, history: str | None, user_texts: list[str]
 ) -> list[str]:
     """Target identification outside the allowed channel (R's own restatement; H history)."""
     problems = []
     prefix = system.replace(history, "") if history else system
-    if identified(family, prefix) or family["target_id"] in prefix:
+    if _names_target(family, prefix):
         problems.append("target in system prompt outside history")
-    if arm != "R" and any(family["target_id"] in identified(family, t) for t in user_texts):
+    if arm != "R" and any(_names_target(family, t) for t in user_texts):
         problems.append("target in customer messages")
     return problems
 
@@ -294,7 +299,7 @@ def expected_name() -> str:
     return "exchange_delivered_order_items"
 
 
-def plan() -> dict[str, Any]:
+def plan(note: str | None = None) -> dict[str, Any]:
     jobs = [{"session": 1, "family": f"C{i + 1}", "arm": "S1"} for i in range(len(PRODUCTS))]
     second = [
         {"session": 2, "family": f"C{i + 1}", "arm": a} for i in range(len(PRODUCTS)) for a in ARMS
@@ -305,7 +310,7 @@ def plan() -> dict[str, Any]:
     return {"stage": "pilot", "namespace": NAMESPACE, "shuffle_seed": SHUFFLE_SEED,
             "request_cap": PILOT_REQUEST_CAP, "credit_stop": CREDIT_STOP, "call_max": CALL_MAX,
             "session_requests": SESSION_REQUESTS, "session_tools": SESSION_TOOLS,
-            "sources": sources, "jobs": jobs + second}  # fmt: skip
+            "note": note, "sources": sources, "jobs": jobs + second}  # fmt: skip
 
 
 def job_id(job: dict[str, Any]) -> str:
@@ -509,7 +514,9 @@ async def run_session(
         )
     return {**job, "status": status, "error": error, "termination": termination,
             "requests_started": backend.calls, "reasks": counters["reasks"], "tools": counters["tools"],
-            "history_chars": len(history or ""), "leakage": leakage, **result, "messages": messages}  # fmt: skip
+            "history_chars": len(history or ""), "leakage": leakage, "lookups": sum(
+                c["name"].startswith(("get_", "find_", "list_")) for m in messages
+                if m.get("role") == "assistant" for c in (m.get("tool_calls") or [])), **result, "messages": messages}  # fmt: skip
 
 
 async def live_run(directory: Path, model: str) -> dict[str, Any]:
@@ -592,7 +599,7 @@ def summarize(directory: Path) -> dict[str, Any]:
         json.loads(p.read_text(encoding="utf-8")) for p in sorted(directory.glob("C*-s*.json"))
     ]
     rows = [{k: r.get(k) for k in ("family", "session", "arm", "status", "success", "commitment",
-             "requests_started", "reasks", "tools", "wrong_variant_attempts", "unauthorized_attempts",
+             "requests_started", "reasks", "tools", "lookups", "wrong_variant_attempts", "unauthorized_attempts",
              "db_match", "agreed_variant_args", "confirmation_first", "termination")} for r in reports]  # fmt: skip
     started = sum(r.get("event") == "copilot-request-started" for r in journal_rows(directory))
     return {"sessions": len(rows), "statuses": dict(Counter(r["status"] for r in rows)),
@@ -601,8 +608,9 @@ def summarize(directory: Path) -> dict[str, Any]:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Necessary-memory pilot; dry run by default.")
-    parser.add_argument("--stage", choices=["pilot", "eval"], default="pilot")
+    parser.add_argument("--stage", choices=["pilot", "pilot-v2", "eval"], default="pilot-v2")
     parser.add_argument("--approved-requests", type=int)
+    parser.add_argument("--note", help="Provenance note recorded in the v2 plan (required to run).")
     parser.add_argument("--model", default="claude-haiku-5.5")
     parser.add_argument("--summarize", action="store_true")
     args = parser.parse_args()
@@ -610,11 +618,12 @@ def main() -> int:
         parser.error(
             "Evaluation is not approved: it needs a tagged protocol and separate owner approval."
         )
+    directory = RUNS / args.stage
     if args.summarize:
-        print(json.dumps(summarize(ROOT), indent=2))
+        print(json.dumps(summarize(directory), indent=2))
         return 0
     setup = prepare()
-    public = plan()
+    public = plan(args.note)
     if args.approved_requests is None:
         family = setup["families"]["C1"]
         customer = ScriptedCustomer(family, 2, "N")
@@ -623,16 +632,24 @@ def main() -> int:
         print("\n--- dry run, no model calls: session-2 N opening for C1 ---")
         print(customer.reply("Hi! How can I help you today?"))
         return 0
+    if args.stage == "pilot":
+        parser.error("Pilot v1 is closed (killed); run --stage pilot-v2 with its own approval.")
+    if not args.note:
+        parser.error(
+            "--note is required: record why this pilot exists and the harness fix it follows."
+        )
     if args.approved_requests != PILOT_REQUEST_CAP:
         parser.error(f"--approved-requests must equal the pilot cap {PILOT_REQUEST_CAP}.")
-    ROOT.mkdir(parents=True, exist_ok=True)
-    plan_path = ROOT / "plan.json"
+    if any(directory.glob("*.calls.jsonl")) and not (directory / "plan.json").exists():
+        parser.error("Run directory has journals but no plan; use a fresh directory.")
+    directory.mkdir(parents=True, exist_ok=True)
+    plan_path = directory / "plan.json"
     if plan_path.exists() and json.loads(plan_path.read_text(encoding="utf-8")) != public:
         parser.error("The pilot plan or frozen sources changed since the pilot started.")
     plan_path.write_text(json.dumps(public, indent=2) + "\n", encoding="utf-8")
-    outcome = asyncio.run(live_run(ROOT, args.model))
-    summary = summarize(ROOT)
-    (ROOT / "summary.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
+    outcome = asyncio.run(live_run(directory, args.model))
+    summary = summarize(directory)
+    (directory / "summary.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
     print(
         json.dumps(
             {"refused": outcome["refused"], **{k: v for k, v in summary.items() if k != "rows"}},

@@ -93,7 +93,7 @@ class CommitmentPilotTests(unittest.TestCase):
             customer = ScriptedCustomer(FAMILY, 2, arm)
             opening = customer.reply("Hi! How can I help you today?")
             clarify = customer.reply("Which option would you like?")
-            named = FAMILY["target_id"] in identified(FAMILY, opening + clarify)
+            named = bool(leaks(FAMILY, "N", "", None, [opening + clarify]))
             self.assertEqual(named, arm == "R", arm)
         customer = ScriptedCustomer(FAMILY, 2, "N")
         customer.reply("hello")
@@ -102,14 +102,29 @@ class CommitmentPilotTests(unittest.TestCase):
         self.assertIn(STOP, customer.reply("The exchange has been processed."))
 
     def test_confirmation_listing_the_current_item_is_not_ambiguous(self) -> None:
-        # Pilot C2 defect: describing the current item made another alternative match by values.
+        # Pilot v1 C2 defect: describing the current item made another alternative match by
+        # option values. Matching is now by item ID only; ID-less proposals get an ID request.
         current = ", ".join(FAMILY["current"]["options"].values())
         message = (f"Item to exchange: {current}. New item: "
                    f"{', '.join(TARGET['options'].values())} (item ID {TARGET['item_id']}). Proceed?")  # fmt: skip
         self.assertEqual(identified(FAMILY, message), {TARGET["item_id"]})
+        without_id = message.replace(f" (item ID {TARGET['item_id']})", "")
+        self.assertEqual(identified(FAMILY, without_id), set())
+        listing = " ".join(
+            f"{v['item_id']}: {', '.join(v['options'].values())}" for v in FAMILY["alternatives"]
+        )
+        self.assertEqual(
+            identified(FAMILY, listing), {v["item_id"] for v in FAMILY["alternatives"]}
+        )
+        asking = ScriptedCustomer(FAMILY, 2, "N")
+        asking.reply("hello")
+        reply = asking.reply(without_id)
+        self.assertIn("exact item ID", reply)
+        self.assertFalse(leaks(FAMILY, "N", "", None, [reply]))
         customer = ScriptedCustomer(FAMILY, 1)
         customer.reply("hello")
         customer.reply("options")
+        self.assertIn("exact item ID", customer.reply(without_id))
         customer.reply(message)
         self.assertTrue(customer.agreed)
 
