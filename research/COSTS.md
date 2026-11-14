@@ -240,3 +240,7 @@ credits.
   AI credits** recorded (one aborted request's cost unknown). Pilot v1 + v2: 27
   of 240 requests, 2.79 of 60 credits. Cumulative: **12,749 requests**, about
   **1,451.00 credits** recorded.
+- Necessary-memory pilot v3 (same approval; 2026-11-14; killed at its R/Hn
+  gates): **176 requests**, all billed, **21.32 AI credits**. Pilots v1-v3: 203
+  of 240 requests; 24.11 credits recorded, 25.11 charged with v2's abort at 1.0.
+  Cumulative: **12,925 requests**, about **1,472.32 credits** recorded.

@@ -208,8 +208,10 @@ them degrade gracefully when one source is withdrawn; lessons that depend on eve
   tell good caution from bad and was not scaled up.
 - **Tasks that require memory.** In this design a customer agrees on an exact exchange in one
   conversation and later says only "go ahead with what we agreed", so the agent cannot succeed
-  without remembering. Early pilot runs ended before the memory comparison (a simulated-customer bug,
-  then a service timeout), so there is no result yet.
+  without remembering. Pilot runs so far ended without a valid memory comparison because the
+  simulated customer mishandled confirmations, so there is no result yet. In the most recent run,
+  agents given the earlier transcript proposed exactly the agreed option in all 8 sessions, while
+  agents without it never did; that observation is descriptive, not a measured effect.
 
 Designs and outcomes: [research design](research/DESIGN.md).
 

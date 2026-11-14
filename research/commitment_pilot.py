@@ -44,8 +44,15 @@ WRITE_TOOLS = {
     "return_delivered_order_items",
 }  # fmt: skip
 CONFIRM = "Yes, please proceed with that exchange."
-CONSENT = "If that's the one we agreed last time, please go ahead."
-CONSENTS = (CONFIRM, CONSENT)
+CONSENT = (
+    CONFIRM  # target-blind and unconditional outside R (pilot v3: conditional consent read as no)
+)
+CONSENTS = (CONFIRM,)
+DONE = re.compile(
+    r"(?<!nothing )(?<!not )\b(?:has|have) been (?:submitted|processed|completed|placed|requested)"
+    r"|\bi(?:'ve| have) (?:submitted|processed)|\bsuccessfully (?:submitted|processed|exchanged)"
+    r"|\bstatus is now\b"
+)
 STOP = "###STOP###"
 FIRST = ("Arlo", "Brielle", "Corin", "Delphine", "Ezra", "Fallon", "Gideon", "Hollis")
 LAST = ("Ashdown", "Brennick", "Calloway", "Dunmore", "Elsworth", "Fairbank", "Granger", "Hartwell")
@@ -169,7 +176,13 @@ class ScriptedCustomer:
 
     def __init__(self, family: dict[str, Any], session: int, arm: str = "N") -> None:
         self.family, self.session, self.arm = family, session, arm
-        self.turns, self.agreed, self.confirmed, self.done = 0, False, False, False
+        self.turns, self.agreed, self.confirmed, self.done, self.paid = (
+            0,
+            False,
+            False,
+            False,
+            False,
+        )
 
     def reply(self, agent_text: str) -> str:
         f, self.turns = self.family, self.turns + 1
@@ -178,7 +191,7 @@ class ScriptedCustomer:
             if self.session == 1:
                 return (f"{hello} I'd like to exchange the {f['product']} from order "
                         f"{f['order_id']} for a different option. What else is in stock?")  # fmt: skip
-            restate = f" It's the {_option(f, f['target_id'])}." if self.arm == "R" else ""
+            restate = f" It's the {self._restated()}." if self.arm == "R" else ""
             return f"{hello} Please go ahead with the exchange we agreed last time for my order {f['order_id']}.{restate}"
         if self.turns > (6 if self.session == 1 else 8):
             return self._end("I'll come back another time.")
@@ -200,15 +213,13 @@ class ScriptedCustomer:
                 f"To be clear, I want the {_option(f, f['target_id'])}. What is its exact item ID?"
             )
         lowered = agent_text.casefold()
+        asks_payment = any(w in lowered for w in ("payment", "card", "pay "))
         if self.confirmed:
-            if any(
-                w in lowered
-                for w in ("has been", "submitted", "processed", "complete", "successfully")
-            ):
+            if DONE.search(lowered):
                 return self._end("Thanks, that's all.")
-            if any(w in lowered for w in ("payment", "card", "pay ")):
-                return f"Please use my {f['brand']} card ending {f['last_four']}."
-            return self._end("Thanks, that's all.")
+            if asks_payment and not self.paid:
+                return self._pay()
+            return CONFIRM  # repeated confirmation requests get the same explicit yes
         if self.arm != "R":
             # Target-blind consent: feedback must not let an agent find the target by elimination.
             if len(named) == 1:
@@ -219,14 +230,22 @@ class ScriptedCustomer:
             return CONFIRM
         elif others and not target:
             return "No, that's not the one we agreed last time."
-        if any(w in lowered for w in ("payment", "card", "pay ")) and not named:
-            return f"Please use my {f['brand']} card ending {f['last_four']}."
+        if asks_payment and not named and not self.paid:
+            return self._pay()
         if self.arm == "R":
-            return f"It's the {_option(f, f['target_id'])}."
+            return f"It's the {self._restated()}."
         return (
             "We already agreed on it last time. Please go ahead with that one "
             "and tell me the exact item ID you will use."
         )
+
+    def _pay(self) -> str:
+        self.paid = True
+        return f"Please use my {self.family['brand']} card ending {self.family['last_four']}."
+
+    def _restated(self) -> str:
+        f = self.family
+        return f"{_option(f, f['target_id'])} (item ID {f['target_id']})"
 
     def _end(self, text: str) -> str:
         self.done = True
@@ -365,7 +384,9 @@ def pilot_ledger(
         aborted += len(ids["aborted"] - ids["completed"])
         missing = ids["started"] - ids["completed"] - ids["aborted"]
         if missing:
-            reasons.append(f"un-journaled mismatch in {Path(name).name}: calls {sorted(missing, key=str)}")
+            reasons.append(
+                f"un-journaled mismatch in {Path(name).name}: calls {sorted(missing, key=str)}"
+            )
         for row in items:
             if row.get("event") != "copilot-request-completed":
                 continue

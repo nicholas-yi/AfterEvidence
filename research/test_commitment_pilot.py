@@ -127,6 +127,34 @@ class CommitmentPilotTests(unittest.TestCase):
                 self.assertEqual(single, {CONSENT}, (family["family"], arm))
                 self.assertEqual(len(multiple), 1, (family["family"], arm))
 
+    def test_session_two_reconfirmation_payment_and_completion(self) -> None:
+        # Pilot v3 defects: conditional consent, unanswered re-confirmation, payment loop,
+        # future-tense "submitted" read as done, and an R restatement without an item ID.
+        customer = ScriptedCustomer(FAMILY, 2, "Hn")
+        customer.reply("hello")
+        self.assertEqual(
+            customer.reply(f"Exchange for item {OTHER['item_id']}? Reply yes."), CONFIRM
+        )
+        self.assertIn("card ending", customer.reply("Which payment method should I use?"))
+        self.assertEqual(
+            customer.reply("Once submitted, the status changes. Please reply yes."), CONFIRM
+        )
+        self.assertEqual(
+            customer.reply(
+                "I still need an explicit yes; nothing has been submitted. Visa card noted."
+            ),
+            CONFIRM,
+        )
+        self.assertFalse(customer.done)
+        self.assertIn(STOP, customer.reply("Your exchange has been submitted."))
+        self.assertIn(TARGET["item_id"], ScriptedCustomer(FAMILY, 2, "R").reply("hello"))
+        lookup = act("find_user_id_by_email", email=FAMILY["email"])
+        flow = [lookup, proposal(TARGET), act(text="Which card should I use for the payment?"),
+                act(text=f"To confirm: item {TARGET['item_id']}, Visa card. Please reply yes."),
+                exchange(TARGET["item_id"]), act(text="Your exchange has been submitted.")]  # fmt: skip
+        report, _ = session("Hn", flow, history="Customer: earlier\nAgent: noted")
+        self.assertTrue(report["success"] and report["confirmation_first"])
+
     def test_confirmation_listing_the_current_item_is_not_ambiguous(self) -> None:
         # Pilot v1 C2 defect: describing the current item made another alternative match by
         # option values. Matching is now by item ID only; ID-less proposals get an ID request.

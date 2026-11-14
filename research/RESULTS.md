@@ -236,10 +236,11 @@ reporting. Open:
 5. Other actors or retrieval styles (per-turn or agentic retrieval) under a
    new tagged protocol.
 6. Necessary-memory pilot: v1 killed at its session-1 gate by a scripted-customer
-   matching defect (17 requests, 1.94 credits). After two further offline harness
-   fixes, v2 stopped at the same gate when one session-1 call hit the 150 s
-   service timeout (10 requests, 0.86 credits; one unbilled). No session-2
-   comparison has run; nothing was rerun ([design](DESIGN.md#follow-up-necessary-memory-pilot-pilot-run-2026-11-14-killed)).
+   matching defect (17 requests, 1.94 credits); v2 stopped by a 150 s service
+   timeout (10 requests, 0.86 credits; one unbilled). v3, with an infrastructure
+   retry policy, ran all 20 sessions (176 requests, 21.32 credits) and was killed
+   at the R and Hn gates by a scripted-customer confirmation defect, now fixed
+   offline; not rerun ([design](DESIGN.md#follow-up-necessary-memory-pilot-pilot-run-2026-11-14-killed)).
 
 The software tests check memory mechanics, not that an agent learned useful
 lessons. No Google-style parameter expansion, Knowledge Seeding, or RL dreaming
