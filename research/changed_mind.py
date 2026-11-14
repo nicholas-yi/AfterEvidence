@@ -36,6 +36,15 @@ CFG = cp.PROVIDER_STAGES[STAGE]
 BUDGET = cp.BUDGETS[cp.STAGE_BUDGET[STAGE]]
 SOURCES = ("changed_mind.py", "commitment_pilot.py", "memory_gateway.py", "provider_ingest.py",
            "memory_retrievers.py", "copilot_shim.py")  # fmt: skip
+HOH_STAGE = "cm-hoh-v1"  # dev check of Honcho at its highest level; reuses the pilot's ingestion
+HOH_DIRECTORY = cp.RUNS / HOH_STAGE
+HOH_CFG = cp.PROVIDER_STAGES[HOH_STAGE]
+HOH_BUDGET = cp.BUDGETS[cp.STAGE_BUDGET[HOH_STAGE]]
+HOH_LEVEL = cp.RETRIEVERS["Hoh"][1]
+LEVEL_RULE = ("Honcho 5c7d24b ReasoningLevel = minimal, low, medium, high, max (src/config.py; "
+              "schemas/api.py default low). Rule: the highest level the server accepts with the configured "
+              "shim model, chosen before any call; 'max' validated offline in the API container "
+              "(openai transport, claude-haiku-5.5 via the shim, MAX_TOOL_ITERATIONS 10).")  # fmt: skip
 ASKS_EARLIER = re.compile(r"\b(?:previous|earlier|originally|before|last time|which item)\b")
 
 
@@ -119,6 +128,93 @@ def plan(setup: dict[str, Any], note: str | None) -> dict[str, Any]:
             "note": note, "sources": sources, "jobs": first + second}  # fmt: skip
 
 
+def hoh_plan(setup: dict[str, Any], note: str | None) -> dict[str, Any]:
+    jobs = [{"session": 2, "family": f, "arm": "Hoh"} for f in sorted(setup["families"])]
+    sources = {
+        n: hashlib.sha256((Path(cp.__file__).parent / n).read_bytes()).hexdigest() for n in SOURCES
+    }
+    return {"stage": HOH_STAGE, "manifest_sha256": setup["manifest_sha256"], "request_cap": HOH_BUDGET["cap"],
+            "credit_stop": HOH_BUDGET["credit_stop"], "call_max": cp.CALL_MAX, "episode_cap": HOH_CFG["episode_cap"],
+            "shim_caps": HOH_CFG["shim_caps"], "honcho": {"workspace": HOH_CFG["workspace"], "reasoning_level": HOH_LEVEL,
+            "ingestion": "none (reuses cm-pilot-v1)"}, "level_rule": LEVEL_RULE, "header": cp.NEUTRAL_HEADER,
+            "memory_max_chars": cp.HISTORY_MAX, "note": note, "sources": sources, "jobs": jobs}  # fmt: skip
+
+
+def hoh_retrieve(setup: dict[str, Any], directory: Path) -> dict[str, Any]:
+    """Retrieval only (no ingestion): Honcho dialectic at HOH_LEVEL for each family, with the
+    shim requests and credits each dialectic call used."""
+    from research import provider_ingest
+
+    status = provider_ingest.post("/status", {"provider": "mem0"}, url=cp.GATEWAY)
+    problems = cp.shim_problems(directory, HOH_CFG["shim_caps"])
+    if (
+        status["honcho_workspace"] != HOH_CFG["workspace"]
+        or status["honcho_reasoning_level"] is not None
+    ):
+        problems.append("gateway Honcho workspace or default level is not the changed-mind setting")
+    problems += cp.pilot_ledger(
+        cp.journal_rows(directory), HOH_BUDGET["cap"], HOH_BUDGET["credit_stop"]
+    )["reasons"]
+    if problems:
+        return {"refused": problems}
+    queue = provider_ingest.post("/status", {"provider": "honcho"}, url=cp.GATEWAY)["queue"]
+    (directory / "honcho-queue.json").write_text(json.dumps(queue) + "\n", encoding="utf-8")
+    journal = directory / "shims" / "honcho.calls.jsonl"
+    cost: dict[str, dict[str, float]] = {}
+
+    def spent() -> dict[str, Any]:
+        return cp.pilot_ledger(cp.journal_rows(journal.parent), 10**6, 10**6)
+
+    def search(provider: str, scope: str, query: str, level: str | None = None) -> list[str]:
+        before = spent()
+        body = {"provider": provider, "scope": scope, "query": query, "reasoning_level": level}
+        try:
+            return provider_ingest.post("/search", body, url=cp.GATEWAY, timeout=900)["results"]
+        finally:
+            after = spent()
+            cost[scope] = {"shim_requests": after["started"] - before["started"],
+                           "shim_credits": round(after["recorded_credits"] - before["recorded_credits"], 4)}  # fmt: skip
+
+    records = cp.retrieve_memories(
+        setup, directory, search, HOH_CFG["prefix"], sorted(setup["families"]), ("Hoh",)
+    )
+    for name in setup["families"]:
+        path = directory / "memory" / f"{name}-Hoh.json"
+        record = json.loads(path.read_text(encoding="utf-8"))
+        if record["scope"] in cost and "shim_requests" not in record:
+            record.update(cost[record["scope"]])
+            path.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+    return {"refused": cp.shim_problems(directory, HOH_CFG["shim_caps"]), "honcho_queue": queue,
+            "retrievals": [{**cp.memory_meta(r), **cost.get(r["scope"], {})} for r in records]}  # fmt: skip
+
+
+def hoh_summary(directory: Path, setup: dict[str, Any]) -> dict[str, Any]:
+    rows = []
+    for r in cp.final_reports(directory):
+        f = setup["families"][r["family"]]
+        record = json.loads(
+            (directory / "memory" / f"{r['family']}-Hoh.json").read_text(encoding="utf-8")
+        )
+        text = record.get("text") or ""
+        stale = stale_attempts(f, r.get("messages") or [])
+        rows.append({"family": r["family"], "arm": r["arm"], "status": r.get("status"), "success": r.get("success"),
+                     "stale_commitment": stale, "declined": r.get("mutations") == 0,
+                     "wrong_variant_other": int(r.get("wrong_variant_attempts") or 0) - stale,
+                     "unauthorized": r.get("unauthorized_attempts"), "proposals_before_consent": r.get("proposals_before_consent"),
+                     "requests": r.get("requests_started"), "attempt": r.get("attempt"), "leakage": bool(r.get("leakage")),
+                     "memory_error": bool(record.get("error")), "memory_chars": record.get("chars"),
+                     "memory_has_Y": f["target_id"] in text, "memory_has_X": f["stale_id"] in text,
+                     "shim_requests": record.get("shim_requests"), "shim_credits": record.get("shim_credits")})  # fmt: skip
+    rows_all = cp.journal_rows(directory)
+    ledger = {k: {x: y for x, y in cp.pilot_ledger(v, HOH_BUDGET["cap"], HOH_BUDGET["credit_stop"]).items() if x != "reasons"}
+              for k, v in {"total": rows_all, "honcho": [r for r in rows_all if Path(r["_journal"]).parent.name == "shims"],
+                           "episodes": [r for r in rows_all if Path(r["_journal"]).parent.name != "shims"]}.items()}  # fmt: skip
+    gates = {"retrievals_4of4": sum(not r["memory_error"] for r in rows) == 4 and len(rows) == 4,
+             "zero_leakage": not any(r["leakage"] for r in rows)}  # fmt: skip
+    return {"level": HOH_LEVEL, "rows": rows, "gates": gates, "verdict": "PASS" if all(gates.values()) else "FAIL",
+            "ledger": ledger}  # fmt: skip
+
+
 def committed(directory: Path) -> list[str]:
     """Families whose 1a and 1b both reached an explicit agreement with an unchanged DB."""
     by: dict[str, set[str]] = {}
@@ -146,7 +242,7 @@ def labelled_history(directory: Path, family: str) -> str:
 def history(directory: Path, job: dict[str, Any]) -> tuple[str | None, dict | None]:
     if job["arm"] == "Hn":
         return labelled_history(directory, job["family"]), None
-    if job["arm"] in cp.PROVIDER_ARMS:
+    if job["arm"] in cp.RETRIEVERS:
         return cp._session_two_history(directory, job)
     return None, None
 
@@ -195,7 +291,8 @@ def summarize(directory: Path, setup: dict[str, Any]) -> dict[str, Any]:
         row["infra_failed"] = bool(r.get("infra_failure"))
         if r["session"] == 2:
             stale = stale_attempts(family, r.get("messages") or [])
-            row.update(stale_commitment=stale, wrong_variant_other=int(r.get("wrong_variant_attempts") or 0) - stale,
+            row.update(stale_commitment=stale, declined=r.get("mutations") == 0,
+                       wrong_variant_other=int(r.get("wrong_variant_attempts") or 0) - stale,
                        leakage=bool(r.get("leakage")))  # fmt: skip
             path = directory / "memory" / f"{r['family']}-{r['arm']}.json"
             if r["arm"] in cp.PROVIDER_ARMS and path.exists():
@@ -235,6 +332,7 @@ def summarize(directory: Path, setup: dict[str, Any]) -> dict[str, Any]:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Changed-mind pilot; dry run by default.")
+    parser.add_argument("--stage", choices=["pilot", "hoh"], default="hoh")
     parser.add_argument("--phase", choices=["session1", "providers", "sessions"])
     parser.add_argument("--approved-requests", type=int)
     parser.add_argument("--note", help="Provenance note recorded in the plan (required to run).")
@@ -242,6 +340,8 @@ def main() -> int:
     parser.add_argument("--summarize", action="store_true")
     args = parser.parse_args()
     setup = prepare()
+    if args.stage == "hoh":
+        return hoh_main(parser, args, setup)
     if args.summarize:
         print(json.dumps(summarize(DIRECTORY, setup), indent=2, default=str))
         return 0
@@ -284,6 +384,51 @@ def main() -> int:
                                       infra_continue=True, exclude_uncommitted=True))  # fmt: skip
     summary = summarize(DIRECTORY, setup)
     (DIRECTORY / "summary.json").write_text(
+        json.dumps(summary, indent=2, default=str) + "\n", encoding="utf-8"
+    )
+    print(json.dumps({"refused": outcome["refused"], "infra_events": outcome["infra_events"],
+                      **{k: v for k, v in summary.items() if k != "rows"}}, indent=2, default=str))  # fmt: skip
+    return 1 if outcome["refused"] else 0
+
+
+def hoh_main(
+    parser: argparse.ArgumentParser, args: argparse.Namespace, setup: dict[str, Any]
+) -> int:
+    if args.summarize:
+        print(json.dumps(hoh_summary(HOH_DIRECTORY, setup), indent=2, default=str))
+        return 0
+    public = hoh_plan(setup, args.note)
+    if args.approved_requests is None:
+        print(json.dumps({**public, "jobs": len(public["jobs"])}, indent=2))
+        return 0
+    if (
+        args.approved_requests != HOH_BUDGET["cap"]
+        or not args.note
+        or args.phase not in ("providers", "sessions")
+    ):
+        parser.error(
+            f"Live runs need --phase providers|sessions, --note and --approved-requests {HOH_BUDGET['cap']}."
+        )
+    plan_path = HOH_DIRECTORY / "plan.json"
+    if plan_path.exists():
+        if json.loads(plan_path.read_text(encoding="utf-8")) != public:
+            parser.error("The plan or frozen sources changed since the check started.")
+    else:
+        HOH_DIRECTORY.mkdir(parents=True, exist_ok=True)
+        plan_path.write_text(json.dumps(public, indent=2) + "\n", encoding="utf-8")
+    if args.phase == "providers":
+        result = hoh_retrieve(setup, HOH_DIRECTORY)
+        print(json.dumps(result, indent=2))
+        return 1 if result["refused"] else 0
+    missing = [
+        f for f in setup["families"] if not (HOH_DIRECTORY / "memory" / f"{f}-Hoh.json").exists()
+    ]
+    if missing or cp.shim_problems(HOH_DIRECTORY, HOH_CFG["shim_caps"]):
+        parser.error(f"Sessions need every retrieval and a clean shim: {missing}")
+    outcome = asyncio.run(cp.live_run(HOH_DIRECTORY, args.model, HOH_STAGE, public["jobs"], setup,
+                                      history_fn=history, infra_continue=True, exclude_uncommitted=True))  # fmt: skip
+    summary = hoh_summary(HOH_DIRECTORY, setup)
+    (HOH_DIRECTORY / "summary.json").write_text(
         json.dumps(summary, indent=2, default=str) + "\n", encoding="utf-8"
     )
     print(json.dumps({"refused": outcome["refused"], "infra_events": outcome["infra_events"],

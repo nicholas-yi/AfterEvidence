@@ -5,7 +5,8 @@ pipeline; only its LLM and embedding endpoints are redirected to its own metered
 Copilot shim (embeddings go to local nomic-embed-text). Operations:
 
 - POST /ingest {provider, scope, episode}: store one recorded episode.
-- POST /search {provider, scope, query}: return memory strings for one query.
+- POST /search {provider, scope, query[, reasoning_level]}: memory strings for one query
+  (reasoning_level: per-request Honcho dialectic level, overriding the config).
 - POST /delete {provider, scope, episode_id}: remove one source episode.
 - POST /dump {provider, scope}: list stored memory strings (lifecycle probes).
 - POST /status {provider}: isolation settings in force; for Honcho, waits for a drained
@@ -291,7 +292,7 @@ class HonchoStore:
         )
         return {"session": session.id, "queue": self.wait(honcho)}
 
-    def search(self, scope: str, query: str) -> list[str]:
+    def search(self, scope: str, query: str, level: str | None = None) -> list[str]:
         honcho = self.workspace(scope)
         if scope.startswith("customer:"):
             peer = honcho.peer(self.customer_id(scope, {}))
@@ -302,7 +303,7 @@ class HonchoStore:
                 "What has this support agent learned from past conversations that is relevant to "
                 f"handling this new customer request? Request: {query}"
             )
-        level = CONFIG.get("honcho_reasoning_level", "low")
+        level = level or CONFIG.get("honcho_reasoning_level", "low")
         answer = peer.chat(question, reasoning_level=level) if level else peer.chat(question)
         text = getattr(answer, "content", answer)
         return [str(text)] if text else []
@@ -363,7 +364,8 @@ async def ingest(request: Request):
 @app.post("/search")
 async def search(request: Request):
     body = await request.json()
-    return {"results": await call(body["provider"], "search", body["scope"], body["query"])}
+    level = (body["reasoning_level"],) if body.get("reasoning_level") else ()
+    return {"results": await call(body["provider"], "search", body["scope"], body["query"], *level)}
 
 
 @app.post("/delete")

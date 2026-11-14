@@ -43,6 +43,10 @@ SHUFFLE_SEED = 20261114
 # Pilot v5: provider memory (M = Mem0, Ho = Honcho) under the neutral header, ingesting the
 # frozen v4 session-1 dialogues into fresh scopes; one retrieval per session.
 PROVIDER_ARMS = {"M": "mem0", "Ho": "honcho"}
+# Retrieval arms: (provider, Honcho reasoning level or None for the server default). Hoh reuses
+# the Honcho ingestion of Ho at the highest level the pinned server accepts (changed-mind design).
+RETRIEVERS: dict[str, tuple[str, str | None]] = {"M": ("mem0", None), "Ho": ("honcho", None),
+                                                 "Hoh": ("honcho", "max")}  # fmt: skip
 SHIM_CAPS, EPISODE_CAP = {"mem0": 14, "honcho": 50}, 96
 HONCHO_WORKSPACE, GATEWAY = "commitment-pilot-v5", "http://127.0.0.1:8900"
 EVAL_STAGE, EVAL_TAG, EVAL_ARMS = "eval-v1", "commitment-eval-v1", ("N", "Hc", "Hn", "M", "Ho")
@@ -54,6 +58,8 @@ AMEND_HASHES = Path(__file__).resolve().parent / "commitment-eval-v1-amend1-hash
 PROVIDER_STAGES: dict[str, dict[str, Any]] = {
     "pilot-v5": {"prefix": "cmp-p5-", "workspace": HONCHO_WORKSPACE, "shim_caps": SHIM_CAPS,
                  "episode_cap": EPISODE_CAP, "stop_on_ingest_error": True},
+    "cm-hoh-v1": {"prefix": "cmp-cm-p1-", "workspace": "changed-mind-pilot-v1",
+                  "shim_caps": {"honcho": 52}, "episode_cap": 48, "stop_on_ingest_error": True},
     "cm-pilot-v1": {"prefix": "cmp-cm-p1-", "workspace": "changed-mind-pilot-v1",
                     "shim_caps": {"mem0": 12, "honcho": 40}, "episode_cap": 188,
                     "stop_on_ingest_error": True},
@@ -532,6 +538,8 @@ BUDGETS = {
     "eval": {"stages": (EVAL_STAGE,), "cap": 2816, "credit_stop": 310.0},
     # Changed-mind pilot: episodes <= 188, Mem0 shim <= 12, Honcho shim <= 40.
     "cm-pilot": {"stages": ("cm-pilot-v1",), "cap": 240, "credit_stop": 30.0},
+    # Hoh dev check: episodes <= 48 (4 sessions), Honcho shim <= 52; no ingestion.
+    "cm-hoh": {"stages": ("cm-hoh-v1",), "cap": 100, "credit_stop": 12.0},
 }
 STAGE_BUDGET = {stage: name for name, b in BUDGETS.items() for stage in b["stages"]}
 PHASE1 = [{"session": 1, "family": "C1", "arm": "S1"}, {"session": 1, "family": "C2", "arm": "S1"},
@@ -689,9 +697,9 @@ def target_mentions(family: dict[str, Any], text: str) -> dict[str, bool]:
 
 def retrieve_memories(
     setup: dict[str, Any], directory: Path, search: Any, prefix: str = "cmp-p5-",
-    families: list[str] | None = None,
+    families: list[str] | None = None, arms: tuple[str, ...] = tuple(PROVIDER_ARMS),
 ) -> list[dict[str, Any]]:  # fmt: skip
-    """One retrieval per (family, provider arm), never repeated; an error means no memory."""
+    """One retrieval per (family, retrieval arm), never repeated; an error means no memory."""
     from research.memory_retrievers import pack
 
     (directory / "memory").mkdir(parents=True, exist_ok=True)
@@ -699,12 +707,18 @@ def retrieve_memories(
     for name, family in sorted(setup["families"].items()):
         if families is not None and name not in families:
             continue
-        for arm, provider in PROVIDER_ARMS.items():
+        for arm in arms:
+            provider, level = RETRIEVERS[arm]
             path = directory / "memory" / f"{name}-{arm}.json"
             if not path.exists():
                 query, record = first_message(family, arm), {}
                 try:
-                    results = list(search(provider, provider_scope(name, prefix), query))
+                    scope = provider_scope(name, prefix)
+                    results = list(
+                        search(provider, scope, query, level)
+                        if level
+                        else search(provider, scope, query)
+                    )
                     text, ids = pack(
                         [(f"{provider}-{n}", t) for n, t in enumerate(results, 1)], HISTORY_MAX
                     )
@@ -716,7 +730,7 @@ def retrieve_memories(
                         "raw_count": 0,
                         "error": f"{type(error).__name__}: {error}"[:300],
                     }
-                record.update(provider=provider, scope=provider_scope(name, prefix), query=query,
+                record.update(provider=provider, reasoning_level=level, scope=provider_scope(name, prefix), query=query,
                               chars=len(record["text"]), **target_mentions(family, record["text"]))  # fmt: skip
                 path.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
             records.append(json.loads(path.read_text(encoding="utf-8")))
@@ -730,7 +744,7 @@ def memory_meta(record: dict[str, Any]) -> dict[str, Any]:
 
 
 def _session_two_history(directory: Path, job: dict[str, Any]) -> tuple[str | None, dict | None]:
-    if job["arm"] not in PROVIDER_ARMS:
+    if job["arm"] not in RETRIEVERS:
         return _session_one_history(directory, job["family"]), None
     path = directory / "memory" / f"{job['family']}-{job['arm']}.json"
     if not path.exists():

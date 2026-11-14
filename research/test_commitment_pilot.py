@@ -1051,5 +1051,91 @@ class ChangedMindTests(unittest.TestCase):
             self.assertEqual(len(summary["rows"]), 24)
 
 
+class HonchoHighTests(unittest.TestCase):
+    """Hoh dev check: Honcho at its highest level, retrieval only, per-call shim accounting."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        from research import changed_mind
+
+        cls.cm = changed_mind
+        cls.setup = changed_mind.prepare()
+
+    def test_gateway_uses_the_per_request_level(self) -> None:
+        from research import memory_gateway as gateway
+
+        asked: list[Any] = []
+
+        class Peer:
+            def chat(self, question: str, reasoning_level: str | None = None) -> str:
+                asked.append(reasoning_level)
+                return "memo"
+
+        class Workspace:
+            def peer(self, name: str) -> Peer:
+                return Peer()
+
+        honcho = object.__new__(gateway.HonchoStore)
+        honcho.clients, honcho.factory = {}, lambda workspace: Workspace()
+        saved = dict(gateway.CONFIG)
+        try:
+            gateway.CONFIG.clear()
+            gateway.CONFIG.update(honcho_workspace="w", honcho_reasoning_level=None)
+            honcho.search("customer:x", "q")
+            honcho.search("customer:x", "q", "max")
+        finally:
+            gateway.CONFIG.clear()
+            gateway.CONFIG.update(saved)
+        self.assertEqual(asked, [None, "max"])  # null config: level omitted, server default (low)
+
+    def test_retrieval_only_with_level_and_per_call_cost(self) -> None:
+        from unittest import mock
+
+        cm, setup = self.cm, self.setup
+        with tempfile.TemporaryDirectory() as tmp:
+            run = Path(tmp)
+            shim_journal(run, "honcho", 52)
+            journal = run / "shims" / "honcho.calls.jsonl"
+            posts: list[tuple[str, dict[str, Any]]] = []
+            calls = iter(range(1, 100))
+
+            def gateway(
+                path: str, body: dict[str, Any], url: str = "", timeout: int = 0
+            ) -> dict[str, Any]:
+                posts.append((path, body))
+                if path == "/status":
+                    return {"state": "x", "honcho_workspace": "changed-mind-pilot-v1", "honcho_reasoning_level": None,
+                            "queue": {"total": 42, "completed": 42, "pending": 0, "in_progress": 0}}  # fmt: skip
+                with journal.open("a", encoding="utf-8") as handle:
+                    for _ in range(3):
+                        i = next(calls)
+                        handle.write(
+                            json.dumps({"event": "copilot-request-started", "call_id": i}) + "\n"
+                        )
+                        handle.write(json.dumps(billed(i)) + "\n")
+                family = setup["families"][body["scope"].removeprefix("customer:cmp-cm-p1-")]
+                return {"results": [f"Latest agreement: item {family['target_id']}."]}
+
+            with mock.patch("research.provider_ingest.post", side_effect=gateway):
+                result = cm.hoh_retrieve(setup, run)
+            self.assertEqual(result["refused"], [])
+            searches = [b for path, b in posts if path == "/search"]
+            self.assertEqual(len(searches), 4)
+            self.assertFalse(any(path == "/ingest" for path, _ in posts))
+            self.assertTrue(
+                all(b["reasoning_level"] == "max" and b["provider"] == "honcho" for b in searches)
+            )
+            self.assertEqual(
+                {(r["shim_requests"], r["shim_credits"]) for r in result["retrievals"]}, {(3, 0.3)}
+            )
+            job = {"session": 2, "family": "D1", "arm": "Hoh"}
+            text, meta = cm.history(run, job)
+            self.assertIn(setup["families"]["D1"]["target_id"], text or "")
+            self.assertEqual((meta or {}).get("provider"), "honcho")
+            with mock.patch("research.provider_ingest.post", return_value={
+                    "state": "x", "honcho_workspace": "ae-customer", "honcho_reasoning_level": None}):  # fmt: skip
+                self.assertTrue(cm.hoh_retrieve(setup, run)["refused"])
+
+
 if __name__ == "__main__":
     unittest.main()

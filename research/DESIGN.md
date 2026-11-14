@@ -318,3 +318,12 @@ citing conflicting notes and the deferral (0 mutations). That deferral line is p
 defer); an evaluation should keep it fixed and report this mode. v1, v5 and eval-v1 stores
 unchanged (Honcho counts and Mem0 hashes before and after). Spend: 209 of 240 requests (episodes
 180, Mem0 8, Honcho 21), 23.07 of 30 credits (max call 0.20).
+
+Honcho reasoning-level check (Hoh; owner approval 2026-11-14 ~13:40 ET; ≤ 100 requests
+including the Honcho shim, 12-credit stop):
+
+| Element | Specification |
+|---|---|
+| Level choice (before any call) | Honcho `5c7d24b` levels: minimal, low, medium, high, max (server default low, used by Ho and every earlier Honcho arm). Rule: the highest level the server accepts with the configured shim model. `max` was validated offline in the API container (both chat schemas accept it; openai transport, `claude-haiku-5.5` via the shim, 10 tool iterations, no thinking budget), so **Hoh = `max`**. Levels are not tuned on outcomes |
+| Arm Hoh | Same customer peer and workspace `changed-mind-pilot-v1` as Ho (D1-D4 already ingested; no re-ingestion), same question template, reasoning level per request; neutral header, 8,000-character cap; one retrieval per family; shim requests and credits recorded per dialectic call |
+| Gate (integration) | 4/4 retrievals without error; zero leakage; no harness defect. Outcomes are results |
