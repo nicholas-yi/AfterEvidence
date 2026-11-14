@@ -51,10 +51,10 @@ tasks where the agent has to take the *right action*:
 Forget-Me-Not compares nine memory designs under identical conditions, on tasks scored by whether
 the store's database ends up exactly right, with the analysis fixed before any test episode ran.
 
-## Approach
+## How the experiment works
 
 ```mermaid
-flowchart LR
+flowchart TD
     H[("Past episodes")] --> M["Memory system<br/>none · transcripts · lessons<br/>Mem0 · Graphiti · Hindsight · Honcho"]
     M -->|"retrieved once,<br/>≤ 2,400 characters"| A["Agent<br/>Claude Haiku 5.5"]
     C["Simulated customer<br/>Claude Haiku 5.5"] <--> A
@@ -63,7 +63,7 @@ flowchart LR
     DB --> S{"Scorer:<br/>is the final database<br/>exactly right?"}
 ```
 
-### 1. A benchmark where actions have consequences
+### A benchmark where actions have consequences
 
 The study uses the retail domain of [τ²-bench](https://github.com/sierra-research/tau2-bench),
 pinned to an exact commit and run unmodified. A simulated customer asks for returns, exchanges,
@@ -71,13 +71,13 @@ cancellations and address changes. The agent works through 16 tools under a writ
 An episode counts as a success only if it ends normally and the final database matches the
 reference outcome.
 
-### 2. One model in every seat
+### The same model in every role
 
 The same model, Claude Haiku 5.5 (via GitHub Copilot), plays the agent, the simulated customer, and
 the internal LLM inside every memory system. Embeddings come from one local model. Differences
 between conditions therefore come from the memory, not from a different model.
 
-### 3. Nine memory designs, one budget
+### Nine memory designs on one budget
 
 Memory is built from 30 earlier episodes whose customers never appear in the test tasks. It is
 retrieved once from the customer's first message, capped at 2,400 characters for every condition,
@@ -96,7 +96,7 @@ The sleep-style condition borrows the memory-level idea of replay, reweighting a
 [Language Models Need Sleep](https://arxiv.org/abs/2606.03979). That paper also trains model
 weights, which a hosted model cannot do, so only the memory-level idea is tested.
 
-### 4. Three studies
+### Three studies
 
 | Study | Question | Design |
 |---|---|---|
@@ -104,7 +104,7 @@ weights, which a hosted model cannot do, so only the memory-level idea is tested
 | **2. Same customer** | Does memory of a customer's earlier sessions help their later ones? | 16 customers, 22 later sessions × 4 conditions; the database resets between sessions, so remembered facts can be stale |
 | **3. Deletion** | After deleting one conversation, is everything derived from it gone, and is everything else intact? | 3 conversations per system; delete one through the system's own API, then probe |
 
-### 5. Statistics fixed in advance
+### An analysis fixed before the data
 
 - The [analysis protocol](research/PROTOCOL-MEMORY.md) was committed and git-tagged
   (`memory-study-v1`) before any test episode; the runner refuses the test split without that tag.
@@ -189,7 +189,7 @@ exact identifiers only, not paraphrased or derived facts, so it shows deletion w
 surface, not that the information is fully erased. Lessons that track how many episodes support
 them degrade gracefully when one source is withdrawn; lessons that depend on every source collapse.
 
-### What we learned
+### Takeaways
 
 - **Measure memory on actions, not answers.** The revealing failures (wrong order, stale address)
   only appear when the agent has to act.
@@ -199,21 +199,6 @@ them degrade gracefully when one source is withdrawn; lessons that depend on eve
   can turn a correct agent into an incorrect one.
 - **Deletion needs provenance.** Systems can only forget cleanly if they record where each memory
   came from.
-
-## Follow-up experiments
-
-- **Teaching memory to doubt itself.** A controlled test planted deliberately stale facts with and
-  without timestamps and correction notes. The agent always checked the live account and never used
-  a stale value, but it also ignored *valid* memories it could not confirm, so the test could not
-  tell good caution from bad and was not scaled up.
-- **Tasks that require memory.** In this design a customer agrees on an exact exchange in one
-  conversation and later says only "go ahead with what we agreed", so the agent cannot succeed
-  without remembering. Pilot runs so far ended without a valid memory comparison because the
-  simulated customer mishandled confirmations, so there is no result yet. In the most recent run,
-  agents given the earlier transcript proposed exactly the agreed option in all 8 sessions, while
-  agents without it never did; that observation is descriptive, not a measured effect.
-
-Designs and outcomes: [research design](research/DESIGN.md).
 
 ## Verify the numbers
 
@@ -258,6 +243,16 @@ python -m afterevidence serve
 - **Simulated customers and narrow scoring.** The customer is an LLM whose fidelity has not been
   human-reviewed, and scoring checks the database, not conversational quality.
 
+## Open questions
+
+| Question | Status |
+|---|---|
+| Does labelling memories with when they were written, and whether they were later corrected, stop an agent from acting on stale ones? | A first small synthetic run could not separate the conditions: the agent checked the live account every time, ignoring stale and valid memories alike. No comparison result. |
+| When a task cannot be done without remembering an earlier agreement, does memory of that conversation let the agent finish it, and does a cautionary memory header hold it back? | Designed and implemented; no memory comparison has run yet. |
+| Do agents that query memory step by step, rather than once up front, benefit more? | Not yet tested. |
+
+Designs: [research design](research/DESIGN.md).
+
 ## Validate
 
 No model, credentials or benchmark download needed:
@@ -270,23 +265,20 @@ ruff check afterevidence tests research scripts
 pyright
 ```
 
-## Repository map
+## Code tour
 
-```text
-afterevidence/          local memory app: extraction, store, revision, web UI
-research/
-├── PROTOCOL-MEMORY.md  the analysis protocol (git tag memory-study-v1)
-├── RESULTS.md          full tables, failure causes, deviations
-├── DESIGN.md           benchmark choice and follow-up designs
-├── memory_bank.py      built-in memories (transcripts, lessons, sleep-style, workflows)
-├── memory_gateway.py   adapters for Mem0, Graphiti, Hindsight and Honcho
-├── tau_copilot.py      τ²-bench episode runner
-├── memory_analysis.py  statistics, including recomputation from the public CSV
-├── figures.py          README figures from the public CSV
-└── data/               the public per-episode CSV
-docs/                   figures and the local app guide
-tests/                  app, lifecycle and documentation tests
-```
+| Path | What it does |
+|---|---|
+| [`research/PROTOCOL-MEMORY.md`](research/PROTOCOL-MEMORY.md) | The analysis protocol, git-tagged `memory-study-v1` before any test episode |
+| [`research/RESULTS.md`](research/RESULTS.md) | Full tables, failure causes and deviations |
+| [`research/memory_bank.py`](research/memory_bank.py) | Builds the in-house memories: transcripts, lessons, sleep-style lessons, workflows |
+| [`research/memory_gateway.py`](research/memory_gateway.py) | Adapters for Mem0, Graphiti, Hindsight and Honcho |
+| [`research/tau_copilot.py`](research/tau_copilot.py) | Runs one τ²-bench episode with the agent, simulated customer and memory |
+| [`research/memory_analysis.py`](research/memory_analysis.py) | Statistics, including recomputation from the public CSV |
+| [`research/figures.py`](research/figures.py) | Draws the README figures from the public CSV |
+| [`research/data/`](research/data/memory-study-v1-episodes.csv) | The public per-episode table |
+| [`afterevidence/`](afterevidence/) | The local memory app: extraction, store, revision and web UI |
+| [`tests/`](tests/) | App, lifecycle and documentation tests |
 
 ## Related work
 
