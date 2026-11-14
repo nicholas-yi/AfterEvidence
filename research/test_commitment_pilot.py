@@ -1137,5 +1137,149 @@ class HonchoHighTests(unittest.TestCase):
                 self.assertTrue(cm.hoh_retrieve(setup, run)["refused"])
 
 
+class ChangedMindEvaluationTests(unittest.TestCase):
+    """Changed-mind evaluation (tag changed-mind-eval-v1): generation and a full dry pass."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        from research import changed_mind
+
+        cls.cm = changed_mind
+        cls.tag = {"tag": "changed-mind-eval-v1", "commit": "0" * 40, "seed": eval_seed("0" * 40)}
+        cls.setup = changed_mind.prepare(cls.tag["seed"])
+
+    def test_generation_and_tag_check(self) -> None:
+        self.assertIsNone(self.cm.eval_tag_state("no-such-tag-for-tests"))
+        families = list(self.setup["families"].values())
+        self.assertEqual(sorted(f["family"] for f in families), [f"F{i:02d}" for i in range(1, 33)])
+        self.assertEqual(Counter(f["target_position"] for f in families), {0: 8, 1: 8, 2: 8, 3: 8})
+        self.assertTrue(all((f["first"], f["last"]) in {(a, b) for a in self.cm.EVAL_FIRST for b in self.cm.EVAL_LAST}
+                            for f in families))  # fmt: skip
+        pilot = self.cm.prepare()["families"].values()
+        others = {
+            x for f in [*pilot, *SETUP["families"].values()] for x in (f["user_id"], f["order_id"])
+        }
+        self.assertFalse(others & {x for f in families for x in (f["user_id"], f["order_id"])})
+        self.assertTrue(
+            all(len({f["stale_id"], f["target_id"], f["rejected_id"]}) == 3 for f in families)
+        )
+
+    def test_end_to_end_dry_pass(self) -> None:
+        from unittest import mock
+
+        from research.changed_mind_analysis import analyse, read_csv, rows_from_runs, write_csv
+
+        cm, setup = self.cm, self.setup
+        families = setup["families"]
+        with tempfile.TemporaryDirectory() as tmp:
+            run = Path(tmp)
+            (run / "manifest.json").write_text(setup["manifest"] + "\n", encoding="utf-8")
+            public = cm.eval_plan(setup, "dry pass", self.tag)
+            seen: list[dict[str, Any]] = []
+
+            class Policy(FakeBackend):
+                def write(self, event: str, **fields: object) -> None:
+                    if event != "commitment-session-started":
+                        return
+                    job = {k: fields[k] for k in ("session", "family", "arm")}
+                    seen.append(job)
+                    f = families[str(job["family"])]
+                    x, y = f["stale_id"], f["target_id"]
+
+                    def execute(item: str) -> list[str]:
+                        return [act(text=f"I can exchange it for item {item}. Shall I proceed?"),
+                                act("exchange_delivered_order_items", order_id=f["order_id"],
+                                    item_ids=[f["current"]["item_id"]], new_item_ids=[item],
+                                    payment_method_id=f["payment_id"]),
+                                act(text="The exchange has been processed.")]  # fmt: skip
+
+                    decline = [act(text="I can't act on that without the exact item.")] * 12
+                    self.replies = {"S1a": [act(text="Options."), act(text=f"Item {x}: is that the one?")],
+                                    "S1b": [act(text=f"Item {y}: is that the one?")],
+                                    "Hn": execute(y), "Hoh": execute(y), "M": execute(x),
+                                    "Ho": decline, "N": decline}[str(job["arm"])]  # fmt: skip
+
+            def backend(_: Any) -> Policy:
+                return Policy([])
+
+            options = {
+                "exclude_uncommitted": True,
+                "history_fn": cm.history,
+                "infra_continue": True,
+            }
+            first = cm.select(public["jobs"], "session1", [])
+            outcome = asyncio.run(
+                run_jobs(setup, run, first, backend, [run], 3120, 360.0, 2688, **options)
+            )
+            self.assertEqual((outcome["refused"], len(first)), ([], 64))
+            included = cm.committed(run)
+            self.assertEqual(len(included), 32)
+
+            shim_journal(run, "mem0", 96)
+            shim_journal(run, "honcho", 336)
+            ingested: dict[tuple[str, str], list[str]] = {}
+            levels: dict[str, set[Any]] = {}
+
+            def gateway(
+                path: str, body: dict[str, Any], url: str = "", timeout: int = 0
+            ) -> dict[str, Any]:
+                if path == "/status":
+                    return {"state": str((run / "mem0").resolve()), "honcho_workspace": "changed-mind-eval-v1",
+                            "honcho_reasoning_level": None,
+                            "queue": {"total": 64, "completed": 64, "pending": 0, "in_progress": 0}}  # fmt: skip
+                if path == "/ingest":
+                    ingested.setdefault((body["provider"], body["scope"]), []).append(
+                        body["episode"]["id"]
+                    )
+                    return {"result": {}}
+                levels.setdefault(body["provider"], set()).add(body.get("reasoning_level"))
+                f = families[body["scope"].removeprefix("customer:cmp-cm-e1-")]
+                return {"results": [f"Item {f['stale_id']}, later item {f['target_id']}."]}
+
+            with mock.patch("research.provider_ingest.post", side_effect=gateway):
+                providers = provider_phase(setup, run, cm.provider_inputs(run, "cmp-cm-e1-"), "cm-eval-v1",
+                                           ("M", "Ho", "Hoh"))  # fmt: skip
+            self.assertEqual(providers["refused"], [])
+            self.assertEqual(len(ingested), 64)  # Hoh reuses Honcho's ingestion
+            self.assertTrue(
+                all(
+                    ids[0].endswith("-s1a") and ids[1].endswith("-s1b") for ids in ingested.values()
+                )
+            )
+            self.assertEqual(levels, {"mem0": {None}, "honcho": {None, "max"}})
+            self.assertEqual(len(providers["retrievals"]), 96)
+
+            second = cm.select(public["jobs"], "sessions", included)
+            self.assertEqual(len(second), 160)
+            seen.clear()
+            outcome = asyncio.run(
+                run_jobs(setup, run, second, backend, [run], 3120, 360.0, 2688, **options)
+            )
+            self.assertEqual(outcome["refused"], [])
+            self.assertEqual(seen, second)  # the plan's seeded order
+
+            rows = rows_from_runs(run)
+            result = analyse(rows)
+            self.assertEqual(
+                (result["included"], result["complete"], result["leakage_sessions"]), (32, True, 0)
+            )
+            arms = {
+                a: (v["successes"], v["n"], v["stale"], v["declined"])
+                for a, v in result["arms"].items()
+            }
+            self.assertEqual(arms, {"N": (0, 32, 0, 32), "Hn": (32, 32, 0, 0), "M": (0, 32, 32, 0),
+                                    "Ho": (0, 32, 0, 32), "Hoh": (32, 32, 0, 0)})  # fmt: skip
+            primary, secondary = result["primary_success"], result["secondary_stale"]
+            self.assertEqual(
+                (primary["M vs Hn"]["reference_only"], primary["Hoh vs Hn"]["p_holm"]), (32, 1.0)
+            )
+            self.assertEqual(secondary["M vs Hn"]["arm_only"], 32)
+            self.assertEqual(result["hoh_vs_ho_success"]["arm_only"], 32)
+            self.assertEqual(result["manipulation_hn_vs_n"]["arm_only"], 32)
+            self.assertEqual(result["provider_memory"]["Hoh"]["has_both"], 32)
+            write_csv(rows, run / "public.csv")
+            self.assertEqual(analyse(read_csv(run / "public.csv")), result)
+
+
 if __name__ == "__main__":
     unittest.main()

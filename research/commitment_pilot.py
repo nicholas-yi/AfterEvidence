@@ -58,6 +58,9 @@ AMEND_HASHES = Path(__file__).resolve().parent / "commitment-eval-v1-amend1-hash
 PROVIDER_STAGES: dict[str, dict[str, Any]] = {
     "pilot-v5": {"prefix": "cmp-p5-", "workspace": HONCHO_WORKSPACE, "shim_caps": SHIM_CAPS,
                  "episode_cap": EPISODE_CAP, "stop_on_ingest_error": True},
+    "cm-eval-v1": {"prefix": "cmp-cm-e1-", "workspace": "changed-mind-eval-v1",
+                   "shim_caps": {"mem0": 96, "honcho": 336}, "episode_cap": 2688,
+                   "stop_on_ingest_error": False},
     "cm-hoh-v1": {"prefix": "cmp-cm-p1-", "workspace": "changed-mind-pilot-v1",
                   "shim_caps": {"honcho": 52}, "episode_cap": 48, "stop_on_ingest_error": True},
     "cm-pilot-v1": {"prefix": "cmp-cm-p1-", "workspace": "changed-mind-pilot-v1",
@@ -172,6 +175,7 @@ def eval_seed(tag_commit: str) -> int:
 def build_eval_families(
     db: dict[str, Any], seed: int, pool: list[str], count: int = 32, prefix: str = "E",
     width: int = 2, namespace: str | None = None, avoid: list[dict[str, Any]] | None = None,
+    names: list[tuple[str, str]] | None = None,
 ) -> list[dict[str, Any]]:  # fmt: skip
     """Fresh sealed families: seeded products from the pool, target position 0-3 balanced,
     new names and IDs (new namespace), disjoint from the pinned DB, the dev families C1-C4,
@@ -184,7 +188,7 @@ def build_eval_families(
     dev = build_families(db) + list(avoid or [])
     taken_names = {(u["name"]["first_name"], u["name"]["last_name"]) for u in db["users"].values()}
     taken_names |= {(f["first"], f["last"]) for f in dev}
-    names = [(a, b) for a in FIRST for b in LAST if (a, b) not in taken_names]
+    names = [n for n in (names or [(a, b) for a in FIRST for b in LAST]) if n not in taken_names]
     rng.shuffle(names)
     families = []
     for index, (product_id, position) in enumerate(zip(products, positions), 1):
@@ -540,13 +544,15 @@ BUDGETS = {
     "cm-pilot": {"stages": ("cm-pilot-v1",), "cap": 240, "credit_stop": 30.0},
     # Hoh dev check: episodes <= 48 (4 sessions), Honcho shim <= 52; no ingestion.
     "cm-hoh": {"stages": ("cm-hoh-v1",), "cap": 100, "credit_stop": 12.0},
+    # Changed-mind evaluation: episodes <= 2,688 (224 x 12), Mem0 shim <= 96, Honcho shim <= 336.
+    "cm-eval": {"stages": ("cm-eval-v1",), "cap": 3120, "credit_stop": 360.0},
 }
 STAGE_BUDGET = {stage: name for name, b in BUDGETS.items() for stage in b["stages"]}
 PHASE1 = [{"session": 1, "family": "C1", "arm": "S1"}, {"session": 1, "family": "C2", "arm": "S1"},
           {"session": 2, "family": "C1", "arm": "R"}, {"session": 2, "family": "C2", "arm": "R"}]  # fmt: skip
 INFRA_RETRIES, ABORT_CHARGE = 1, 1.0
 # Dev (C1-C4) and evaluation (E01-E32) family IDs (the C-only pattern stopped eval-v1).
-ATTEMPT = re.compile(r"^([CDE]\d+-s\d+-\w+?)(?:-a(\d+))?\.json$")
+ATTEMPT = re.compile(r"^([CDEF]\d+-s\d+-\w+?)(?:-a(\d+))?\.json$")
 
 
 def journal_rows(*directories: Path) -> list[dict[str, Any]]:
@@ -1117,8 +1123,9 @@ def shim_problems(directory: Path, caps: dict[str, int] | None = None) -> list[s
 
 
 def provider_phase(
-    setup: dict[str, Any], directory: Path, inputs: dict[str, Any], stage: str = "pilot-v5"
-) -> dict[str, Any]:
+    setup: dict[str, Any], directory: Path, inputs: dict[str, Any], stage: str = "pilot-v5",
+    arms: tuple[str, ...] = tuple(PROVIDER_ARMS),
+) -> dict[str, Any]:  # fmt: skip
     """Ingest session-1 dialogues into fresh scopes, wait for Honcho, then retrieve once."""
     from research import provider_ingest
 
@@ -1156,11 +1163,13 @@ def provider_phase(
     queue = provider_ingest.post("/status", {"provider": "honcho"}, url=GATEWAY)["queue"]
     (directory / "honcho-queue.json").write_text(json.dumps(queue) + "\n", encoding="utf-8")
 
-    def search(provider: str, scope: str, query: str) -> list[str]:
+    def search(provider: str, scope: str, query: str, level: str | None = None) -> list[str]:
         body = {"provider": provider, "scope": scope, "query": query}
-        return provider_ingest.post("/search", body, url=GATEWAY, timeout=600)["results"]
+        if level:
+            body["reasoning_level"] = level
+        return provider_ingest.post("/search", body, url=GATEWAY, timeout=900)["results"]
 
-    records = retrieve_memories(setup, directory, search, cfg["prefix"], sorted(inputs))
+    records = retrieve_memories(setup, directory, search, cfg["prefix"], sorted(inputs), arms)
     return {"refused": shim_problems(directory, cfg["shim_caps"]), "ingestion_errors": errors,
             "honcho_queue": queue, "retrievals": [memory_meta(r) for r in records]}  # fmt: skip
 

@@ -45,6 +45,24 @@ LEVEL_RULE = ("Honcho 5c7d24b ReasoningLevel = minimal, low, medium, high, max (
               "schemas/api.py default low). Rule: the highest level the server accepts with the configured "
               "shim model, chosen before any call; 'max' validated offline in the API container "
               "(openai transport, claude-haiku-5.5 via the shim, MAX_TOOL_ITERATIONS 10).")  # fmt: skip
+EVAL_STAGE, EVAL_TAG = "cm-eval-v1", "changed-mind-eval-v1"
+EVAL_DIRECTORY = cp.RUNS / EVAL_STAGE
+EVAL_CFG = cp.PROVIDER_STAGES[EVAL_STAGE]
+EVAL_BUDGET = cp.BUDGETS[cp.STAGE_BUDGET[EVAL_STAGE]]
+EVAL_ARMS = ("N", "Hn", "M", "Ho", "Hoh")
+EVAL_SOURCES = (*SOURCES, "changed_mind_analysis.py")
+# A fresh name pool: the shared one has too few unused combinations after C, D and E families.
+EVAL_FIRST = ("Imogen", "Jasper", "Kiran", "Linnea", "Marlo", "Nadia", "Orrin", "Petra")
+EVAL_LAST = (
+    "Iverson",
+    "Jessup",
+    "Kingsley",
+    "Lockhart",
+    "Merriweather",
+    "Norcross",
+    "Oakley",
+    "Pendleton",
+)
 ASKS_EARLIER = re.compile(r"\b(?:previous|earlier|originally|before|last time|which item)\b")
 
 
@@ -59,9 +77,24 @@ def build(base: dict[str, Any], pool: list[str]) -> list[dict[str, Any]]:
     return families
 
 
-def prepare() -> dict[str, Any]:
-    """Families, isolated DB, validated Y references and X (stale) exchanges; zero inference."""
-    setup = cp.prepare(builder=build)
+def build_eval(base: dict[str, Any], pool: list[str], seed: int) -> list[dict[str, Any]]:
+    """32 F families from the tag-derived seed, disjoint from the C, D and E families."""
+    avoid = cp.build_eval_families(base, EVAL_SEED, pool) + build(base, pool)
+    families = cp.build_eval_families(base, seed, pool, count=32, prefix="F", width=2,
+                                      namespace=f"AE-CHANGED-MIND-EVAL-v1-{seed}", avoid=avoid,
+                                      names=[(a, b) for a in EVAL_FIRST for b in EVAL_LAST])  # fmt: skip
+    for f in families:
+        alternatives = f["alternatives"]
+        f["stale_id"] = alternatives[(f["target_position"] + 2) % len(alternatives)]["item_id"]
+    return families
+
+
+def prepare(seed: int | None = None) -> dict[str, Any]:
+    """Families (pilot D1-D4, or the 32 evaluation families for a seed), isolated DB, validated Y
+    references and X (stale) exchanges; zero inference."""
+    setup = cp.prepare(
+        builder=build if seed is None else (lambda base, pool: build_eval(base, pool, seed))
+    )
     for f in setup["families"].values():
         if len({f["stale_id"], f["target_id"], f["rejected_id"]}) != 3:
             raise cp.FatalStop(f"{f['family']}: X, Y and the rejected variant must differ.")
@@ -247,12 +280,12 @@ def history(directory: Path, job: dict[str, Any]) -> tuple[str | None, dict | No
     return None, None
 
 
-def provider_inputs(directory: Path) -> dict[str, dict[str, Any]]:
+def provider_inputs(directory: Path, prefix: str = CFG["prefix"]) -> dict[str, dict[str, Any]]:
     """Both sessions per committed family, in order (1a then 1b), as separate episodes."""
     inputs = {}
     for family in committed(directory):
         a, b = _first_sessions(directory, family)
-        inputs[family] = {"episodes": [{"id": f"{CFG['prefix']}{family}-s1{x}", "lines": cp.dialogue(r["messages"])}
+        inputs[family] = {"episodes": [{"id": f"{prefix}{family}-s1{x}", "lines": cp.dialogue(r["messages"])}
                                        for x, r in (("a", a), ("b", b))]}  # fmt: skip
     return inputs
 
@@ -332,13 +365,15 @@ def summarize(directory: Path, setup: dict[str, Any]) -> dict[str, Any]:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Changed-mind pilot; dry run by default.")
-    parser.add_argument("--stage", choices=["pilot", "hoh"], default="hoh")
+    parser.add_argument("--stage", choices=["pilot", "hoh", "eval"], default="eval")
     parser.add_argument("--phase", choices=["session1", "providers", "sessions"])
     parser.add_argument("--approved-requests", type=int)
     parser.add_argument("--note", help="Provenance note recorded in the plan (required to run).")
     parser.add_argument("--model", default="claude-haiku-5.5")
     parser.add_argument("--summarize", action="store_true")
     args = parser.parse_args()
+    if args.stage == "eval":
+        return eval_main(parser, args)
     setup = prepare()
     if args.stage == "hoh":
         return hoh_main(parser, args, setup)
@@ -433,6 +468,121 @@ def hoh_main(
     )
     print(json.dumps({"refused": outcome["refused"], "infra_events": outcome["infra_events"],
                       **{k: v for k, v in summary.items() if k != "rows"}}, indent=2, default=str))  # fmt: skip
+    return 1 if outcome["refused"] else 0
+
+
+def eval_tag_state(tag: str = EVAL_TAG) -> dict[str, Any] | None:
+    """The protocol tag's commit, the derived seed, and frozen sources changed since the tag."""
+    import subprocess
+
+    root = Path(cp.__file__).resolve().parent.parent
+
+    def git(*args: str) -> bytes:
+        return subprocess.run(["git", *args], cwd=root, capture_output=True, check=True).stdout
+
+    try:
+        commit = git("rev-parse", f"{tag}^{{commit}}").decode().strip()
+    except subprocess.CalledProcessError:
+        return None
+    changed = [n for n in EVAL_SOURCES
+               if git("show", f"{commit}:research/{n}") != (Path(cp.__file__).parent / n).read_bytes()]  # fmt: skip
+    return {"tag": tag, "commit": commit, "seed": cp.eval_seed(commit), "changed": changed}
+
+
+def eval_plan(setup: dict[str, Any], note: str | None, tag: dict[str, Any]) -> dict[str, Any]:
+    names = sorted(setup["families"])
+    first = [{"session": 1, "family": f, "arm": a} for f in names for a in ("S1a", "S1b")]
+    second = [{"session": 2, "family": f, "arm": a} for f in names for a in EVAL_ARMS]
+    random.Random(tag["seed"]).shuffle(second)
+    sources = {
+        n: hashlib.sha256((Path(cp.__file__).parent / n).read_bytes()).hexdigest()
+        for n in EVAL_SOURCES
+    }
+    return {"stage": EVAL_STAGE, "tag": tag["tag"], "tag_commit": tag["commit"], "seed": tag["seed"],
+            "seed_rule": "int(first 8 hex of SHA-256(tag commit SHA))", "namespace": f"AE-CHANGED-MIND-EVAL-v1-{tag['seed']}",
+            "manifest_sha256": setup["manifest_sha256"], "template_pool": setup["pool"],
+            "request_cap": EVAL_BUDGET["cap"], "credit_stop": EVAL_BUDGET["credit_stop"], "call_max": cp.CALL_MAX,
+            "episode_cap": EVAL_CFG["episode_cap"], "shim_caps": EVAL_CFG["shim_caps"],
+            "session_requests": cp.SESSION_REQUESTS, "session_tools": cp.SESSION_TOOLS,
+            "mem0": {"scope": f"user_id {EVAL_CFG['prefix']}<family>, run_id per session", "search": "library default"},
+            "honcho": {"workspace": EVAL_CFG["workspace"], "Ho": "server default (low)", "Hoh": HOH_LEVEL},
+            "header": cp.NEUTRAL_HEADER, "memory_max_chars": cp.HISTORY_MAX,
+            "exclusion": "no explicit 1a or 1b agreement: excluded from every arm, reported, not replaced",
+            "infra_rule": "second infrastructure failure: that session failed (infra); the run continues",
+            "analysis": "research/changed_mind_analysis.py", "note": note, "sources": sources,
+            "jobs": first + second}  # fmt: skip
+
+
+def eval_main(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
+    tag = eval_tag_state()
+    if tag is None:
+        if args.approved_requests is None:
+            print(
+                f"Dry run: tag {EVAL_TAG} not found; evaluation families are generated only after it."
+            )
+            return 0
+        parser.error(f"The evaluation needs the annotated protocol tag {EVAL_TAG}.")
+    if tag["changed"]:
+        parser.error(
+            f"Frozen sources differ from {EVAL_TAG}: {tag['changed']} (a deviation; not run)."
+        )
+    setup = prepare(tag["seed"])
+    if args.summarize:
+        from research.changed_mind_analysis import analyse, rows_from_runs
+
+        print(json.dumps(analyse(rows_from_runs(EVAL_DIRECTORY)), indent=2))
+        return 0
+    public = eval_plan(setup, args.note, tag)
+    if args.approved_requests is None:
+        print(
+            json.dumps(
+                {
+                    **public,
+                    "jobs": len(public["jobs"]),
+                    "references_validated": len(setup["tasks"]),
+                },
+                indent=2,
+            )
+        )
+        return 0
+    if args.approved_requests != EVAL_BUDGET["cap"] or not args.note or not args.phase:
+        parser.error(
+            f"Live runs need --phase, --note and --approved-requests {EVAL_BUDGET['cap']}."
+        )
+    plan_path = EVAL_DIRECTORY / "plan.json"
+    if plan_path.exists():
+        if json.loads(plan_path.read_text(encoding="utf-8")) != public:
+            parser.error("The plan or frozen sources changed since the run started.")
+    elif any(EVAL_DIRECTORY.glob("*.calls.jsonl")):
+        parser.error("Run directory has journals but no plan; use a fresh directory.")
+    else:
+        EVAL_DIRECTORY.mkdir(parents=True, exist_ok=True)
+        plan_path.write_text(json.dumps(public, indent=2) + "\n", encoding="utf-8")
+    if args.phase in ("providers", "sessions"):
+        done = {r["family"] for r in cp.final_reports(EVAL_DIRECTORY) if r.get("session") == 1}
+        if done != set(setup["families"]):
+            parser.error(f"Session 1 is incomplete: {sorted(set(setup['families']) - done)}")
+    included = committed(EVAL_DIRECTORY)
+    if args.phase == "providers":
+        excluded = sorted(set(setup["families"]) - set(included))
+        (EVAL_DIRECTORY / "exclusions.json").write_text(
+            json.dumps({"included": included, "excluded": excluded}, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        result = cp.provider_phase(setup, EVAL_DIRECTORY, provider_inputs(EVAL_DIRECTORY, EVAL_CFG["prefix"]),
+                                   EVAL_STAGE, ("M", "Ho", "Hoh"))  # fmt: skip
+        print(json.dumps(result, indent=2))
+        return 1 if result["refused"] else 0
+    jobs = select(public["jobs"], args.phase, included)
+    if args.phase == "sessions":
+        missing = [cp.job_id(j) for j in jobs if j["arm"] in cp.RETRIEVERS
+                   and not (EVAL_DIRECTORY / "memory" / f"{j['family']}-{j['arm']}.json").exists()]  # fmt: skip
+        if missing or cp.shim_problems(EVAL_DIRECTORY, EVAL_CFG["shim_caps"]):
+            parser.error(f"Sessions need every retrieval and clean shims: {missing}")
+    outcome = asyncio.run(cp.live_run(EVAL_DIRECTORY, args.model, EVAL_STAGE, jobs, setup, history_fn=history,
+                                      infra_continue=True, exclude_uncommitted=True))  # fmt: skip
+    print(json.dumps({"refused": outcome["refused"], "infra_events": outcome["infra_events"],
+                      "sessions_run": len(outcome["results"])}, indent=2))  # fmt: skip
     return 1 if outcome["refused"] else 0
 
 
