@@ -235,3 +235,8 @@ credits.
   2026-11-14; killed at the session-1 gate): **17 requests** started, all
   billed, **1.94 AI credits** (max single call 0.17). Cumulative: **12,739
   requests**, about **1,450.14 credits**.
+- Necessary-memory pilot v2 (same approval; 2026-11-14; stopped at the
+  session-1 gate by a call timeout): **10 requests** started, 9 billed, **0.86
+  AI credits** recorded (one aborted request's cost unknown). Pilot v1 + v2: 27
+  of 240 requests, 2.79 of 60 credits. Cumulative: **12,749 requests**, about
+  **1,451.00 credits** recorded.

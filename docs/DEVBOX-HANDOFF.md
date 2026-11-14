@@ -23,7 +23,7 @@ For an existing checkout, inspect local changes first and use
 | Memory study v1 | Tag `memory-study-v1`; Studies 1-3 complete; **null result** for task success, not equivalence ([results](../research/RESULTS.md#memory-study-v1)); test-split outcomes spent |
 | Public evidence | Per-episode [CSV](../research/data/memory-study-v1-episodes.csv) reproduces every Study 1/2 table; CI test `research.test_memory_csv` |
 | Staleness diagnostic | [Stage A](../research/DESIGN.md#follow-up-staleness-aware-memory-stage-a-run-stage-b-not-requested) run (36 dev episodes); floor check failed; Stage B not requested; no v2 tag |
-| Necessary-memory pilot | [Pilot](../research/DESIGN.md#follow-up-necessary-memory-pilot-pilot-run-2026-11-14-killed) v1 killed at the session-1 gate by a scripted-customer defect; approved v2 stopped at its zero-cost replay gate (residual defect, fixed); no v2 calls; evaluation not approved |
+| Necessary-memory pilot | [Pilot](../research/DESIGN.md#follow-up-necessary-memory-pilot-pilot-run-2026-11-14-killed) v1 killed at the session-1 gate by a scripted-customer defect; v2 (after fixes) stopped at the same gate by a 150 s call timeout; no session-2 runs; evaluation not approved |
 | Simulator review | No human review yet. Private worksheets and CSV indexes for all 602 memory-study episodes, with a proposed default sample, in `research/runs/memory-study/review/` |
 | Memory-study stack | Docker (Neo4j, Hindsight, Honcho), Ollama embeddings, provider venv, shims, and gateway on the devbox, stopped with data retained ([runbook](../research/MEMORY-STUDY.md)) |
 | Devbox environment | Exact 81-entry lock reproduced; offline checks pass |
@@ -31,9 +31,9 @@ For an existing checkout, inspect local changes first and use
 
 Usage: devbox cohort 162 of 360 approved requests / 16.05978 credits; memory
 study 12,428 of 16,000 started / 1,425.05 recorded credits (8 aborted requests
-unbilled); staleness Stage A 74 of 144 / 1.07 credits; necessary-memory pilot
-17 of 240 / 1.94 credits. Cumulative about **12,739 requests / 1,450.14
-credits** (about $14.50), allowance measurements,
+unbilled); staleness Stage A 74 of 144 / 1.07 credits; necessary-memory pilots
+27 of 240 / 2.79 credits (one unbilled). Cumulative about **12,749 requests /
+1,451.00 credits** (about $14.51), allowance measurements,
 not invoices. Unused allowance never authorizes new inference.
 
 ## Rebuild, do not copy the environment
@@ -142,7 +142,7 @@ environments, caches, runtimes, and account state. The devbox keeps the
 `cohort-20261113b-*` files, everything under `research/runs/memory-study/`
 (bank, memory artifacts, study reports and journals, shim journals, `review/`
 packet, provider Docker volumes), `research/runs/staleness/stage-a/`, and
-`research/runs/commitment/pilot/`.
+`research/runs/commitment/pilot/` and `pilot-v2/`.
 Provider secrets live in git-ignored `research/providers/`. The source laptop
 keeps the `research/runs/baseline-20261113-*` plan, amendments, task reports
 and journals, summary, and earlier pilot evidence.
