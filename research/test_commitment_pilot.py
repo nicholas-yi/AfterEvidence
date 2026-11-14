@@ -8,6 +8,9 @@ from pathlib import Path
 from typing import Any
 
 from research.commitment_pilot import (
+    BUDGETS,
+    PHASE1,
+    STAGE_BUDGET,
     CONFIRM,
     CONSENT,
     HISTORY_MAX,
@@ -20,10 +23,12 @@ from research.commitment_pilot import (
     leaks,
     oracle,
     pilot_ledger,
+    plan,
     prepare,
     run_jobs,
     run_session,
     session_system,
+    smoke_passed,
     start_refusals,
     transcript,
 )
@@ -155,6 +160,47 @@ class CommitmentPilotTests(unittest.TestCase):
         report, _ = session("Hn", flow, history="Customer: earlier\nAgent: noted")
         self.assertTrue(report["success"] and report["confirmation_first"])
 
+    def test_robustness_sweep_of_agent_confirmation_styles(self) -> None:
+        def styles(family: dict, item: str) -> list[list[str]]:
+            alt = next(v for v in family["alternatives"] if v["item_id"] == item)
+            options = ", ".join(alt["options"].values())
+            listing = " ".join(
+                f"{v['item_id']}: {', '.join(v['options'].values())}"
+                for v in family["alternatives"]
+            )
+            done = "Your exchange has been submitted."
+            return [
+                [f"I can exchange it for item {item}. Please reply yes to confirm.", done],
+                [f"Item {item}. Reply yes?", f"I still need an explicit yes for item {item}.",
+                 "The exchange has been processed."],
+                [f"Item {item}. Which card should I use for the payment?",
+                 f"Final check: item {item} on your Visa card. Please reply yes.", done],
+                [f"Before I submit the exchange to item {item}, please confirm; once submitted it is final.",
+                 "I have submitted the exchange."],
+                [f"Summary: the {options} option. Shall I proceed?", f"That is item {item}. Reply yes.", done],
+                [f"Which would you like? {listing}", f"Proceeding with item {item}? Reply yes.", done],
+            ]  # fmt: skip
+
+        for family in SETUP["families"].values():
+            ids = [v["item_id"] for v in family["alternatives"]]
+            for arm in ("N", "Hc", "Hn", "R"):
+                for index in range(6):
+                    runs = {}
+                    for item in ids:
+                        customer = ScriptedCustomer(family, 2, arm)
+                        customer.reply("hello")
+                        replies = [
+                            customer.reply(t)
+                            for t in styles(family, item)[index]
+                            if not customer.done
+                        ]
+                        runs[item] = (replies, customer.confirmed, customer.done)
+                    key = (family["family"], arm, index)
+                    replies, confirmed, done = runs[family["target_id"]]
+                    self.assertTrue(confirmed and done and STOP in replies[-1], key)
+                    if arm != "R":
+                        self.assertEqual(len({json.dumps(r) for r in runs.values()}), 1, key)
+
     def test_confirmation_listing_the_current_item_is_not_ambiguous(self) -> None:
         # Pilot v1 C2 defect: describing the current item made another alternative match by
         # option values. Matching is now by item ID only; ID-less proposals get an ID request.
@@ -255,6 +301,25 @@ class CommitmentPilotTests(unittest.TestCase):
                 '{"event": "copilot-request-started", "call_id": 1}\n', encoding="utf-8"
             )
             self.assertTrue(any(r.startswith("un-journaled") for r in start_refusals([Path(tmp)])))
+
+    def test_v4_budget_is_separate_and_phase_two_needs_smoke(self) -> None:
+        self.assertEqual(BUDGETS[STAGE_BUDGET["pilot-v4"]]["stages"], ("pilot-v4",))
+        self.assertEqual(plan("n", "pilot-v4")["request_cap"], 264)
+        self.assertEqual(plan("n", "pilot-v4")["credit_stop"], 40.0)
+        self.assertEqual({(j["family"], j["arm"]) for j in PHASE1},
+                         {("C1", "S1"), ("C2", "S1"), ("C1", "R"), ("C2", "R")})  # fmt: skip
+        with tempfile.TemporaryDirectory() as tmp:
+            for family, ok in (("C1", True), ("C2", False)):
+                report = {"session": 2, "family": family, "arm": "R", "success": ok, "attempt": 1}
+                Path(tmp, f"{family}-s2-R-a1.json").write_text(json.dumps(report), encoding="utf-8")
+            self.assertFalse(smoke_passed(Path(tmp)))
+            Path(tmp, "C2-s2-R-a1.json").write_text(
+                json.dumps(
+                    {"session": 2, "family": "C2", "arm": "R", "success": True, "attempt": 1}
+                ),
+                encoding="utf-8",
+            )
+            self.assertTrue(smoke_passed(Path(tmp)))
 
 
 def billed(call_id: int) -> dict[str, Any]:

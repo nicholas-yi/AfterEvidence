@@ -329,7 +329,7 @@ def expected_name() -> str:
     return "exchange_delivered_order_items"
 
 
-def plan(note: str | None = None) -> dict[str, Any]:
+def plan(note: str | None = None, stage: str = "pilot-v4") -> dict[str, Any]:
     jobs = [{"session": 1, "family": f"C{i + 1}", "arm": "S1"} for i in range(len(PRODUCTS))]
     second = [
         {"session": 2, "family": f"C{i + 1}", "arm": a} for i in range(len(PRODUCTS)) for a in ARMS
@@ -337,8 +337,9 @@ def plan(note: str | None = None) -> dict[str, Any]:
     random.Random(SHUFFLE_SEED).shuffle(second)
     sources = {n: hashlib.sha256((Path(__file__).parent / n).read_bytes()).hexdigest()
                for n in ("commitment_pilot.py", "tau_copilot.py", "staleness.py")}  # fmt: skip
-    return {"stage": "pilot", "namespace": NAMESPACE, "shuffle_seed": SHUFFLE_SEED,
-            "request_cap": PILOT_REQUEST_CAP, "credit_stop": CREDIT_STOP, "call_max": CALL_MAX,
+    budget = BUDGETS[STAGE_BUDGET[stage]]
+    return {"stage": stage, "namespace": NAMESPACE, "shuffle_seed": SHUFFLE_SEED,
+            "request_cap": budget["cap"], "credit_stop": budget["credit_stop"], "call_max": CALL_MAX,
             "session_requests": SESSION_REQUESTS, "session_tools": SESSION_TOOLS,
             "note": note, "sources": sources, "jobs": jobs + second}  # fmt: skip
 
@@ -347,8 +348,16 @@ def job_id(job: dict[str, Any]) -> str:
     return f"{job['family']}-s{job['session']}-{job['arm']}"
 
 
-STAGES = ("pilot", "pilot-v2", "pilot-v3")
-ACTIVE_STAGE = "pilot-v3"
+STAGES = ("pilot", "pilot-v2", "pilot-v3", "pilot-v4")
+ACTIVE_STAGE = "pilot-v4"
+# Each owner approval has its own ledger: v1-v3 shared 240 requests; v4 has a fresh 264.
+BUDGETS = {
+    "v1-v3": {"stages": ("pilot", "pilot-v2", "pilot-v3"), "cap": 240, "credit_stop": 50.0},
+    "v4": {"stages": ("pilot-v4",), "cap": 264, "credit_stop": 40.0},
+}
+STAGE_BUDGET = {stage: name for name, b in BUDGETS.items() for stage in b["stages"]}
+PHASE1 = [{"session": 1, "family": "C1", "arm": "S1"}, {"session": 1, "family": "C2", "arm": "S1"},
+          {"session": 2, "family": "C1", "arm": "R"}, {"session": 2, "family": "C2", "arm": "R"}]  # fmt: skip
 INFRA_RETRIES, ABORT_CHARGE = 1, 1.0
 ATTEMPT = re.compile(r"^(C\d+-s\d+-\w+?)(?:-a(\d+))?\.json$")
 
@@ -408,10 +417,12 @@ def pilot_ledger(
             "reasons": reasons}  # fmt: skip
 
 
-def start_refusals(directories: list[Path]) -> list[str]:
-    ledger = pilot_ledger(journal_rows(*directories))
+def start_refusals(
+    directories: list[Path], cap: int = PILOT_REQUEST_CAP, credit_stop: float = CREDIT_STOP
+) -> list[str]:
+    ledger = pilot_ledger(journal_rows(*directories), cap, credit_stop)
     reasons = list(ledger["reasons"])
-    if ledger["started"] + SESSION_REQUESTS > PILOT_REQUEST_CAP:
+    if ledger["started"] + SESSION_REQUESTS > cap:
         reasons.append(
             f"next session could exceed the cap: {ledger['started']} + {SESSION_REQUESTS}"
         )
@@ -453,7 +464,7 @@ def _session_one_history(directory: Path, family: str) -> str:
 
 async def run_jobs(
     setup: dict[str, Any], directory: Path, jobs: list[dict[str, Any]], make_backend: Any,
-    ledger_dirs: list[Path],
+    ledger_dirs: list[Path], cap: int = PILOT_REQUEST_CAP, credit_stop: float = CREDIT_STOP,
 ) -> dict[str, Any]:  # fmt: skip
     """Serial sessions; one fresh re-attempt after an infrastructure failure, none otherwise."""
     results: list[dict[str, Any]] = []
@@ -475,7 +486,7 @@ async def run_jobs(
                         if job["session"] == 2
                         else None
                     )
-                    refusals = start_refusals(ledger_dirs)
+                    refusals = start_refusals(ledger_dirs, cap, credit_stop)
                     if refusals:
                         return {"refused": refusals, "results": results, "infra_events": infra}
                     with journal_path.open("x", encoding="utf-8", newline="\n") as journal:
@@ -524,7 +535,9 @@ async def run_jobs(
     return {"refused": [], "results": results, "infra_events": infra}
 
 
-async def live_run(directory: Path, model: str, note: str | None) -> dict[str, Any]:
+async def live_run(
+    directory: Path, model: str, stage: str, jobs: list[dict[str, Any]]
+) -> dict[str, Any]:
     from research.copilot_backend import CopilotBackend, isolated_client, quota_snapshot
 
     setup = prepare()
@@ -545,8 +558,9 @@ async def live_run(directory: Path, model: str, note: str | None) -> dict[str, A
                 client, model, directory / "isolated-copilot", journal, SESSION_REQUESTS
             )
 
-        return await run_jobs(setup, directory, plan(note)["jobs"], make_backend,
-                              [RUNS / s for s in STAGES])  # fmt: skip
+        budget = BUDGETS[STAGE_BUDGET[stage]]
+        return await run_jobs(setup, directory, jobs, make_backend,
+                              [RUNS / s for s in budget["stages"]], budget["cap"], budget["credit_stop"])  # fmt: skip
     finally:
         await client.stop()
 
@@ -755,13 +769,24 @@ def gates(reports: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+def smoke_passed(directory: Path) -> bool:
+    """Phase 1 passes iff both C1 and C2 R sessions succeed under the oracle."""
+    r = {
+        x["family"]: x
+        for x in final_reports(directory)
+        if x.get("session") == 2 and x.get("arm") == "R"
+    }
+    return all(bool(r.get(f, {}).get("success")) for f in ("C1", "C2"))
+
+
 def summarize(directory: Path) -> dict[str, Any]:
     reports = final_reports(directory)
     rows = [{k: r.get(k) for k in ("family", "session", "arm", "status", "success", "commitment",
              "attempt", "requests_started", "reasks", "tools", "lookups", "proposals_before_consent",
              "wrong_variant_attempts", "unauthorized_attempts",
              "db_match", "agreed_variant_args", "confirmation_first", "termination")} for r in reports]  # fmt: skip
-    ledger = pilot_ledger(journal_rows(directory))
+    budget = BUDGETS[STAGE_BUDGET.get(directory.name, "v4")]
+    ledger = pilot_ledger(journal_rows(directory), budget["cap"], budget["credit_stop"])
     attempts = [json.loads(p.read_text(encoding="utf-8")) for p in directory.glob("C*-s*-a*.json")]
     return {"sessions": len(rows), "statuses": dict(Counter(r["status"] for r in rows)),
             "infra_failures": sum(bool(a.get("infra_failure")) for a in attempts),
@@ -776,6 +801,9 @@ def main() -> int:
     parser.add_argument("--note", help="Provenance note recorded in the plan (required to run).")
     parser.add_argument("--model", default="claude-haiku-5.5")
     parser.add_argument("--summarize", action="store_true")
+    parser.add_argument(
+        "--phase", type=int, choices=[1, 2], help="v4: 1 = smoke (C1/C2 S1 + R), 2 = rest."
+    )
     args = parser.parse_args()
     if args.stage == "eval":
         parser.error(
@@ -786,7 +814,7 @@ def main() -> int:
         print(json.dumps(summarize(directory), indent=2))
         return 0
     setup = prepare()
-    public = plan(args.note)
+    public = plan(args.note, args.stage)
     if args.approved_requests is None:
         family = setup["families"]["C1"]
         customer = ScriptedCustomer(family, 2, "N")
@@ -803,8 +831,15 @@ def main() -> int:
         parser.error(
             "--note is required: record why this pilot exists and the harness fix it follows."
         )
-    if args.approved_requests != PILOT_REQUEST_CAP:
-        parser.error(f"--approved-requests must equal the pilot cap {PILOT_REQUEST_CAP}.")
+    if args.approved_requests != public["request_cap"]:
+        parser.error(f"--approved-requests must equal the stage cap {public['request_cap']}.")
+    if args.phase is None:
+        parser.error(
+            "--phase 1 (smoke) or --phase 2 (rest, only after a passing smoke) is required."
+        )
+    if args.phase == 2 and not smoke_passed(directory):
+        parser.error("Phase 2 needs both phase-1 R sessions to succeed under the oracle.")
+    jobs = PHASE1 if args.phase == 1 else public["jobs"]
     if any(directory.glob("*.calls.jsonl")) and not (directory / "plan.json").exists():
         parser.error("Run directory has journals but no plan; use a fresh directory.")
     directory.mkdir(parents=True, exist_ok=True)
@@ -812,7 +847,7 @@ def main() -> int:
     if plan_path.exists() and json.loads(plan_path.read_text(encoding="utf-8")) != public:
         parser.error("The pilot plan or frozen sources changed since the pilot started.")
     plan_path.write_text(json.dumps(public, indent=2) + "\n", encoding="utf-8")
-    outcome = asyncio.run(live_run(directory, args.model, args.note))
+    outcome = asyncio.run(live_run(directory, args.model, args.stage, jobs))
     summary = summarize(directory)
     (directory / "summary.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
     print(
@@ -820,6 +855,7 @@ def main() -> int:
             {
                 "refused": outcome["refused"],
                 "infra_events": outcome["infra_events"],
+                "smoke_passed": smoke_passed(directory),
                 **{k: v for k, v in summary.items() if k != "rows"},
             },
             indent=2,
