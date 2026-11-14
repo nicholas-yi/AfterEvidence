@@ -37,7 +37,9 @@ any test episode ran.
 A follow-up [staleness diagnostic](research/DESIGN.md#follow-up-staleness-aware-memory-stage-a-run-stage-b-not-requested)
 ran its approved 36-episode Stage A and failed its pre-specified floor: the
 agent always checked the live account, never chose the stale value, and also
-declined valid memory it could not confirm. It was not scaled up.
+declined valid memory it could not confirm. It was not scaled up. A follow-up
+pilot on memory the agent strictly needs was stopped at its first gate by a
+scripted-customer defect before any memory comparison ran.
 
 Full tables, failure causes, deviations, and limitations:
 [research results](research/RESULTS.md). Usage: [costs](research/COSTS.md)

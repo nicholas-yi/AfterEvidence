@@ -73,6 +73,8 @@ agent-learning evidence.
 - [Offline fixtures, tool environment, scorer and stop rules for the staleness
   diagnostic](staleness.py) and its [episode runner](staleness_runner.py)
   (dry run unless a stage cap is approved; Stage A run, see [design](DESIGN.md)).
+- [Necessary-memory pilot](commitment_pilot.py): synthetic two-session exchange
+  families, scripted customer, oracle, and capped runner (pilot killed; see design).
 - Memory study: [protocol](PROTOCOL-MEMORY.md), [runbook](MEMORY-STUDY.md),
   [Copilot shim](copilot_shim.py), [provider gateway](memory_gateway.py),
   [memory builders](memory_bank.py), [retrievers](memory_retrievers.py),

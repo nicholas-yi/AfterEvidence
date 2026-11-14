@@ -140,7 +140,10 @@ Failure counts use the CSV's `failure_class`.
 Every interval includes zero, and the bootstrap standard errors (Study 1
 5.4-7.1 pp, Study 2 6.1-10.0 pp) mean the design could reliably detect (80%
 power, two-sided 5%) only differences of roughly 15-20 points in Study 1 and
-17-28 points in Study 2. Honcho's Study 2 deficit includes two early
+17-28 points in Study 2. Bootstrap intervals are unreliable when only a few
+clusters are discordant (Study 2: 2-5 families); for example, Mem0's upper
+bound of 0.0 reflects 0 wins in 2 discordant families, not evidence that Mem0
+cannot help. Use the sign-flip p and discordant counts there. Honcho's Study 2 deficit includes two early
 action-contract failures (tasks 87 and 104, within three requests), a harness
 and format outcome rather than a memory-content one; on wrong final databases
 it had 2 against none's 1.
@@ -232,6 +235,9 @@ reporting. Open:
    valid unconfirmed memory. Stage B is not requested as designed.
 5. Other actors or retrieval styles (per-turn or agentic retrieval) under a
    new tagged protocol.
+6. Necessary-memory pilot: killed at its session-1 gate by a scripted-customer
+   matching defect (17 requests, 1.94 credits; fixed offline, not rerun); any
+   re-pilot needs new approval ([design](DESIGN.md#follow-up-necessary-memory-pilot-pilot-run-2026-11-14-killed)).
 
 The software tests check memory mechanics, not that an agent learned useful
 lessons. No Google-style parameter expansion, Knowledge Seeding, or RL dreaming

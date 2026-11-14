@@ -23,6 +23,7 @@ For an existing checkout, inspect local changes first and use
 | Memory study v1 | Tag `memory-study-v1`; Studies 1-3 complete; **null result** for task success, not equivalence ([results](../research/RESULTS.md#memory-study-v1)); test-split outcomes spent |
 | Public evidence | Per-episode [CSV](../research/data/memory-study-v1-episodes.csv) reproduces every Study 1/2 table; CI test `research.test_memory_csv` |
 | Staleness diagnostic | [Stage A](../research/DESIGN.md#follow-up-staleness-aware-memory-stage-a-run-stage-b-not-requested) run (36 dev episodes); floor check failed; Stage B not requested; no v2 tag |
+| Necessary-memory pilot | [Pilot](../research/DESIGN.md#follow-up-necessary-memory-pilot-pilot-run-2026-11-14-killed) killed at the session-1 gate by a scripted-customer defect (fixed offline, not rerun); evaluation not approved |
 | Simulator review | No human review yet. Private worksheets and CSV indexes for all 602 memory-study episodes, with a proposed default sample, in `research/runs/memory-study/review/` |
 | Memory-study stack | Docker (Neo4j, Hindsight, Honcho), Ollama embeddings, provider venv, shims, and gateway on the devbox, stopped with data retained ([runbook](../research/MEMORY-STUDY.md)) |
 | Devbox environment | Exact 81-entry lock reproduced; offline checks pass |
@@ -30,8 +31,9 @@ For an existing checkout, inspect local changes first and use
 
 Usage: devbox cohort 162 of 360 approved requests / 16.05978 credits; memory
 study 12,428 of 16,000 started / 1,425.05 recorded credits (8 aborted requests
-unbilled); staleness Stage A 74 of 144 / 1.07 credits. Cumulative about
-**12,722 requests / 1,448.21 credits** (about $14.48), allowance measurements,
+unbilled); staleness Stage A 74 of 144 / 1.07 credits; necessary-memory pilot
+17 of 240 / 1.94 credits. Cumulative about **12,739 requests / 1,450.14
+credits** (about $14.50), allowance measurements,
 not invoices. Unused allowance never authorizes new inference.
 
 ## Rebuild, do not copy the environment
@@ -98,7 +100,7 @@ From the repository root, after research environment setup:
 
 ```powershell
 .\research\.venv\Scripts\python.exe -m unittest discover -s tests -v
-.\research\.venv\Scripts\python.exe -m unittest research.test_memory_methods research.test_costing research.test_copilot_backend research.test_tau_action research.test_native_scoring research.test_task_audit research.test_simulator_review research.test_memory_study research.test_memory_csv research.test_staleness research.test_staleness_runner -v
+.\research\.venv\Scripts\python.exe -m unittest research.test_memory_methods research.test_costing research.test_copilot_backend research.test_tau_action research.test_native_scoring research.test_task_audit research.test_simulator_review research.test_memory_study research.test_memory_csv research.test_staleness research.test_staleness_runner research.test_commitment_pilot -v
 .\research\.venv\Scripts\python.exe -m ruff check afterevidence tests research scripts
 .\research\.venv\Scripts\python.exe -m ruff format --check afterevidence tests research scripts
 .\research\.venv\Scripts\python.exe -m pyright --project research\pyrightconfig.json
@@ -139,7 +141,8 @@ Git excludes `research/runs/`, `data/`, `results/`, vendor checkouts, virtual
 environments, caches, runtimes, and account state. The devbox keeps the
 `cohort-20261113b-*` files, everything under `research/runs/memory-study/`
 (bank, memory artifacts, study reports and journals, shim journals, `review/`
-packet, provider Docker volumes), and `research/runs/staleness/stage-a/`.
+packet, provider Docker volumes), `research/runs/staleness/stage-a/`, and
+`research/runs/commitment/pilot/`.
 Provider secrets live in git-ignored `research/providers/`. The source laptop
 keeps the `research/runs/baseline-20261113-*` plan, amendments, task reports
 and journals, summary, and earlier pilot evidence.

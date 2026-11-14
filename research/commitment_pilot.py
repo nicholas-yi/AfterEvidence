@@ -151,11 +151,15 @@ def _norm(text: str) -> str:
 
 
 def identified(family: dict[str, Any], text: str) -> set[str]:
-    """Alternatives named by item ID or by all of their option values."""
+    """Alternatives a message names. Item IDs are authoritative when present; option values
+    are a fallback only, because a message may also describe the current item's options."""
+    by_id = {v["item_id"] for v in family["alternatives"] if v["item_id"] in text}
+    if by_id:
+        return by_id
     lowered = _norm(text)
     return {
         v["item_id"] for v in family["alternatives"]
-        if v["item_id"] in text or all(_norm(x) in lowered for x in v["options"].values())
+        if all(_norm(x) in lowered for x in v["options"].values())
     }  # fmt: skip
 
 

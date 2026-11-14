@@ -159,70 +159,41 @@ would require an appropriate training setup and its own controlled protocol.
 
 ## Follow-up: staleness-aware memory (Stage A run; Stage B not requested)
 
-Controlled synthetic diagnostic of stale-memory handling. Not a tau2 score, not
-memory distilled from agent experience, does not re-test v1. Memory records are
-seeded fixtures from [staleness.py](staleness.py). Motivation: Study 2 task 110,
-where the agent trusted a remembered change instead of the live account, while
-the stale target was still a valid option.
+A controlled synthetic diagnostic ([staleness.py](staleness.py),
+[runner](staleness_runner.py)) asked whether provenance and validity metadata
+stop an actor acting on seeded stale memory (None / Plain / Annotated; reset,
+corrected, and still-valid regimes). Its owner-approved Stage A (36 dev
+episodes, 74 requests, 1.07 credits) failed the pre-specified floor: every
+episode looked up the account, no condition chose the stale value (Plain 0/8),
+and all 12 still-valid episodes abstained rather than use unconfirmed memory.
+Stage B (864 episodes) was not requested and no v2 tag exists.
 
-**Question:** does visible provenance and validity metadata stop the actor from
-acting on stale memory? Nothing makes the answer true by construction: Plain and
-Annotated carry the same records; only the metadata differs.
+## Follow-up: necessary-memory pilot (pilot run 2026-11-14; killed)
+
+Question: when the only record of an earlier agreement is the earlier
+conversation, does giving the agent that transcript let it act correctly, and
+does the v1 caution header suppress it? Owner approved the offline build and
+one pilot (at most 240 requests, conservative 60 credits); evaluation is not
+approved. Code: [commitment_pilot.py](commitment_pilot.py), tests
+[test_commitment_pilot.py](test_commitment_pilot.py).
 
 | Element | Specification |
 |---|---|
-| Family | One synthetic customer and attribute (shipping address or payment card) with 4 distinct values on file in seeded order (old, new, 2 decoys); eval families disjoint from dev |
-| Episode | Request "use my default …" plus memory. The account is visible only through `lookup_account`; the actor ends with `submit_target` or `abstain`. At most 4 requests including one counted re-ask; lookup-before-submit is recorded. No user simulator |
-| `current` | Store note (restored to epoch 2 at epoch 4) plus a valid post-restore record (epoch 5): the customer asked for new as default, not yet saved. No default on file; correct = new. Memory necessary (chance ≤ 0.25); Annotated can over-distrust valid memory |
-| `reset` | Restore note; record m1 (epoch 3): default changed old → new, rolled back by the restore. Live default old; new still on file. Correct = old, obsolete = new |
-| `corrected` | m1 superseded by m2 (epoch 4): default is old. Live default old; new on file. Correct = old, obsolete = new |
-| Paid conditions | None / Plain (record text only, as v1 memory was) / Annotated (same records with id, session, epoch, supersession, and the restore note) |
-| Filtered (offline control, no spend) | Annotated minus invalid records: superseded, or written in the rolled-back window `restored_to < epoch <= at_epoch`. Retrieval-time metadata only; unit-tested, including a valid post-restore record |
-| Scorer | Deterministic normalized match: correct, obsolete, other, abstain; no terminal action = failed. Hidden labels never reach the actor |
+| Family | New synthetic customer with one delivered order of a train-only product (Gaming Mouse, Electric Toothbrush, Garden Hose, Pet Bed) that has ≥ 4 in-stock alternatives; added to an isolated copy of the pinned DB; target position among alternatives 0, 1, 2, 3; sealed manifest |
+| Session 1 (no memory) | Scripted customer asks for alternatives, rejects one, names the target, and agrees only when the agent confirms that exact variant, deferring execution. Must change no DB |
+| Session 2 | "Please go ahead with the exchange we agreed last time." Tools show variants, not the agreed one; the customer never restates it (refuses wrong proposals; answers clarifications with "we already agreed") |
+| Arms | N: no history. Hc: session-1 dialogue under the exact v1 `MEMORY_HEADER`. Hn: same under "Previous-session transcript for this customer:". R: N plus the target restated (pilot-only feasibility control) |
+| History | Session-1 customer/agent text only, no tool payloads, ≤ 8,000 characters, never truncated |
+| Oracle | Success = normal completion + native DB equals the reference exchange + exchange arguments use the agreed variant + explicit confirmation before any mutation. Wrong-variant and unauthorized attempts counted |
+| Caps and stops | ≤ 12 actor requests (1 counted re-ask) and ≤ 12 tools per session; pilot cap 240; stop at 50 settled credits, any call > 1 credit, or billing mismatch; fatal stop on missing session-1 commitment, target leakage, invalid reference, or header mismatch; no retries |
+| Gates | Session-1 agreement 4/4; R 4/4; Hn ≥ 3/4; N ≤ 1/4; zero leakage; Hc descriptive. Any failure kills the line |
 
-| Decision (48 eval families are the unit) | Rule |
+| Pilot result | Value |
 |---|---|
-| Primary (the only test) | Family-mean (Plain − Annotated) obsolete rate over `reset` + `corrected` × 2 replicates ≥ 0.20 **and** one-sided 95% family bootstrap lower bound > 0 (10,000 resamples, seed 0) |
-| Gate: positive control | `current`: family-mean correct rate Annotated − None ≥ 0.50 |
-| Gate: non-harm | `current`: one-sided 95% lower bound of (Annotated − Plain) correct rate ≥ −0.10 |
-| Descriptive only | Lookup-before-submit and abstention per condition; Plain and None obsolete rates; failures (not correct, not obsolete) |
+| Sessions run | C1 session 1: commitment (7 requests, 1 re-ask). C2 session 1: no commitment (10 requests); fatal stop; 0 of 16 session-2 runs |
+| Spend | 17 requests started and billed, 1.94 recorded credits (max call 0.17) |
+| Verdict | **KILL** (session-1 gate failed). Not rerun |
+| Cause | Harness defect, not agent behaviour: the agent confirmed the exact target by item ID, but its message also described the current item, so the scripted customer's option-value matcher also matched a rejected alternative and kept asking. Fixed offline (item IDs take precedence) with a regression test; the pilot outcome stands |
 
-| Stage (separate owner approvals) | Design | Episodes | Hard request cap | Credits |
-|---|---|---:|---:|---|
-| A: feasibility | 4 dev families × 3 regimes × 3 paid conditions × 1 | 36 | 144 | ≤ 36 at a conservative 0.25 per request |
-| B: evaluation | 48 families × 3 × 3 × 2 replicates | 864 | 3,456 | Recomputed downward from Stage A's measured credits per request; never above 864 |
-
-- Stage A is a pre-specified feasibility check, reported either way. If Plain
-  chooses the obsolete value in 0 of its 8 `reset`/`corrected` episodes, Stage B
-  is not requested as designed and the floor is reported. Stage A may fix only
-  contract, parsing, or tool-mechanics bugs, never tune for effect; every change
-  is logged. Then freeze, tag protocol v2, derive the eval seed from the tag
-  commit (`eval_seed`; eval families do not exist before it), and only then
-  request Stage B.
-- Together at most 3,600 requests: about 413 credits at v1's historical mean
-  (0.1147 per billed request), 900 at the conservative rate. Not a guaranteed
-  cash cap: the runtime per-session credit limit cannot be set below 30
-  credits, so it cannot enforce a tighter per-episode ceiling; study-level stop
-  rules are the control. Stop at 825 settled credits, any single call above 1
-  credit, or missing billing or a count mismatch (`ledger_stops`).
-- Implemented and tested offline: generator, dev fixtures, tool environment,
-  validity filter, scorer, decision rule, Stage A floor check, ledger checks,
-  actor instructions, tool schema, and the serial episode runner
-  ([staleness_runner.py](staleness_runner.py): dry run by default; one counted
-  re-ask per episode; refuses to start on any stop reason). Nothing blocks
-  Stage A except owner approval: `python -m research.staleness_runner --stage a
-  --approved-requests 144`.
-- Secondary, no spend planned: a semantic-deletion probe (paraphrased facts
-  derived from a deleted source) would extend Study 3's literal-identifier check.
-
-**Stage A result (owner-approved, run 2026-11-13; dev families, descriptive
-only).** 36/36 episodes completed with no stop reason: 74 requests started and
-billed, 1.07 recorded credits, 2 counted re-asks (malformed output correctly
-rejected; no mechanics fix needed). Every episode looked up the account before
-submitting. `reset` and `corrected`: 12/12 correct for each condition, so Plain
-chose the obsolete value in **0 of 8**: the pre-specified floor check failed.
-`current`: all 12 abstained, including Plain and Annotated, stating that the
-remembered preference was not confirmed by the account, so the positive control
-would also fail. Under these instructions this actor did not act on unconfirmed
-memory at all. Stage B is not requested as designed and v2 is not tagged;
-any redesign would be a new proposal informed by these dev episodes.
+Any re-pilot needs new owner approval and a fresh run directory; the frozen
+`plan.json` source hashes no longer match the fixed code.

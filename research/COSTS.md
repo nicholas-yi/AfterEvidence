@@ -231,3 +231,7 @@ credits.
 - Staleness Stage A (owner-approved cap 144 requests / 36 credits, 2026-11-13):
   **74 requests** started, all billed, **1.07 AI credits** recorded (max single
   call 0.026). Cumulative: **12,722 requests**, about **1,448.21 credits**.
+- Necessary-memory pilot (owner-approved cap 240 requests / 60 credits,
+  2026-11-14; killed at the session-1 gate): **17 requests** started, all
+  billed, **1.94 AI credits** (max single call 0.17). Cumulative: **12,739
+  requests**, about **1,450.14 credits**.

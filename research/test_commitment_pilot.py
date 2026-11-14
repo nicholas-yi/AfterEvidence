@@ -101,6 +101,18 @@ class CommitmentPilotTests(unittest.TestCase):
         self.assertEqual(customer.reply(f"Item {TARGET['item_id']}, proceed?"), CONFIRM)
         self.assertIn(STOP, customer.reply("The exchange has been processed."))
 
+    def test_confirmation_listing_the_current_item_is_not_ambiguous(self) -> None:
+        # Pilot C2 defect: describing the current item made another alternative match by values.
+        current = ", ".join(FAMILY["current"]["options"].values())
+        message = (f"Item to exchange: {current}. New item: "
+                   f"{', '.join(TARGET['options'].values())} (item ID {TARGET['item_id']}). Proceed?")  # fmt: skip
+        self.assertEqual(identified(FAMILY, message), {TARGET["item_id"]})
+        customer = ScriptedCustomer(FAMILY, 1)
+        customer.reply("hello")
+        customer.reply("options")
+        customer.reply(message)
+        self.assertTrue(customer.agreed)
+
     def test_session_one_agreement_and_refusal_branches(self) -> None:
         customer = ScriptedCustomer(FAMILY, 1)
         self.assertIn(FAMILY["order_id"], customer.reply("hello"))
