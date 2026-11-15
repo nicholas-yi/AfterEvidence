@@ -23,7 +23,7 @@ jobs:
           node-version: "22"
       - run: python -m pip install ".[dev]"
       - run: python -m unittest discover -s tests -v
-      - run: python -m unittest research.test_memory_methods research.test_costing research.test_task_audit research.test_simulator_review research.test_memory_study research.test_staleness research.test_memory_csv research.test_commitment_csv research.test_run_status -v
+      - run: python -m unittest research.test_memory_methods research.test_costing research.test_task_audit research.test_simulator_review research.test_memory_study research.test_staleness research.test_memory_csv research.test_commitment_csv research.test_changed_mind_csv research.test_run_status -v
       - run: ruff check afterevidence tests research scripts
       - run: ruff format --check afterevidence tests research scripts
       - run: pyright

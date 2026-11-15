@@ -344,3 +344,12 @@ including the Honcho shim, 12-credit stop):
 | Power | Only large differences are detectable: a Holm-significant comparison needs ≥ 7 discordant families in one direction. Non-significance is not equivalence. Pilot reference: Hn 4/4, M 1/4 (3 stale), Ho 0/4 and Hoh 0/4 (declined) |
 | Descriptive | Wilson 95% intervals; declined-to-act; retrieved Y/X ID booleans; proposals before consent; requests and credits per session |
 | Analysis | [changed_mind_analysis.py](changed_mind_analysis.py) only; per-session CSV without transcripts, names or memory text |
+
+| Changed-mind evaluation run (2026-11-14) | Record |
+|---|---|
+| Protocol | Tag `changed-mind-eval-v1` → `46b4565` (CI green). Seed 1549545006; manifest `06d39de9…`; 32 references validated; 224 planned sessions |
+| Session 1 | 1b 32/32, 1a 31/32 (F02-1a: a malformed tool call), so F02 is excluded; 31 included |
+| Providers | Ingestion 62/62 per provider (1a then 1b); Honcho queue 322/322; retrieval 93/93 without error (M, Ho, Hoh 31 each). 8 Honcho shim 502s, all retried by Honcho's client |
+| Session 2 | 155/155 in plan order; one infrastructure re-attempt succeeded; no stops. Results: [RESULTS](RESULTS.md#changed-mind-evaluation) |
+| Isolation | Only the Honcho services; prior Honcho workspaces (v1, v5, eval-v1, changed-mind pilot) and all Mem0 stores unchanged (counts and hashes before and after); everything stopped afterwards |
+| Spend | 2,118 of 3,120 requests (episodes 1,835 of 2,688; Mem0 shim 62 of 96; Honcho shim 221 of 336); 239.15 credits recorded, 240.15 charged (1 abort) of 360; max call 0.22 |

@@ -13,6 +13,44 @@ account data, and provider state. Earlier feasibility work is under
 [Development history](#development-history). Environment: unmodified
 MIT-licensed tau2-bench retail at `c06b07dd7c4d4ec61ba6ff9bcdf0b15dd7ef36d4`.
 
+## Changed-mind evaluation
+
+Protocol: [design](DESIGN.md#changed-mind-evaluation-pre-specified-before-tag-changed-mind-eval-v1),
+tag `changed-mind-eval-v1` (`46b4565`). 32 fresh synthetic customers agreed an exchange item X in one
+conversation, then in a second said they had changed their mind and agreed Y; in a third they asked
+the agent to "go ahead with the exchange we agreed last time" without naming either. One family (F02)
+had no 1a agreement (a malformed tool call) and is excluded; 31 families, all 155 sessions ran.
+
+| Arm | Successes / n | Wilson 95% | Stale (X executed) | Declined to act | vs Hn: success wins / losses, Holm p | vs Hn: stale, Holm p | Credits / session |
+|---|---|---|---|---|---|---|---|
+| N: no memory | 0 / 31 | 0.00-0.11 | 0 | 31 | — | — | 1.34 |
+| Hn: both transcripts, labelled | 30 / 31 | 0.84-0.99 | 0 | 0 | reference | reference | 0.90 |
+| M: Mem0 | 13 / 31 | 0.26-0.59 | 13 | 5 | 0 / 17, 1.5 × 10⁻⁵ | 13 / 0, 7.3 × 10⁻⁴ | 0.93 |
+| Ho: Honcho, default (low) | 3 / 31 | 0.03-0.25 | 0 | 28 | 1 / 28, 2.2 × 10⁻⁷ | 0 / 0, 1.0 | 1.43 |
+| Hoh: Honcho, max | 2 / 31 | 0.02-0.21 | 0 | 29 | 0 / 28, 2.2 × 10⁻⁸ | 0 / 0, 1.0 | 1.39 |
+
+Exact family-paired McNemar, Holm across the three pairs for each endpoint. Credits per session are
+actor episodes only; ingestion and retrieval added 4.26 (Mem0) and 15.60 (Honcho) credits.
+
+- Given both conversations word for word, the agent acted on the latest agreement in 30 of 31
+  families (the miss hit the 12-request cap) and never on the superseded one. With no memory it never
+  acted (Hn vs N 30-0).
+- Mem0's memory held both items in 29 of 31 retrievals, usually with wording that signals the change
+  (20 of 31), yet the agent executed the superseded X in 13 families: significantly more stale
+  commitments than with the transcript.
+- With Honcho's memory, the agent mostly declined to act (28 and 29 of 31) and never executed X.
+  Every refusal cited the earlier sessions' deferral ("not today"); about half also cited conflicting
+  notes (14 and 9). Raising Honcho's reasoning level from the default to `max` changed nothing
+  measurable (Hoh vs Ho 1/2, p 1.0); in the 4-family check at `max` the dialectic made no tool calls,
+  so its larger tool budget went unused.
+- Scope: one model (Copilot Claude Haiku 5.5) as actor and as every provider's substituted LLM, each
+  provider's default pipeline, one synthetic retail task, and the deferral wording ("please don't make
+  the exchange today") fixed in the design before any provider ran. These describe this setup, not
+  product quality.
+- Data: [per-session CSV](data/changed-mind-eval-v1-episodes.csv) (no transcripts, names or memory
+  text); `python -m research.changed_mind_analysis --csv research/data/changed-mind-eval-v1-episodes.csv`;
+  CI test `research.test_changed_mind_csv`.
+
 ## Necessary-memory evaluation
 
 Protocol: [design](DESIGN.md#necessary-memory-evaluation-v1-pre-specified-before-tag-commitment-eval-v1),
@@ -283,8 +321,8 @@ reporting. Open:
 7. Changed-mind pilot (4 dev families; 209 requests, 23.07 credits): integration
    gates passed. Agents given both conversations as labelled transcripts acted on
    the latest agreement 4/4; with Mem0's memory they executed the superseded item
-   3/4; with Honcho's they declined to act 4/4. Descriptive only; evaluation not
-   approved ([design](DESIGN.md#changed-mind-pilot)).
+   3/4; with Honcho's they declined to act 4/4. The tagged 32-family evaluation
+   then ran: see [Changed-mind evaluation](#changed-mind-evaluation) ([design](DESIGN.md#changed-mind-pilot)).
 
 The software tests check memory mechanics, not that an agent learned useful
 lessons. No Google-style parameter expansion, Knowledge Seeding, or RL dreaming

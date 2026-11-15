@@ -264,3 +264,9 @@ credits.
   30-credit stop; 2026-11-14; integration gates passed): **209 requests** (episodes
   180, Mem0 shim 8, Honcho shim 21), all billed, **23.07 AI credits** (max single
   call 0.20). Cumulative: **14,735 requests**, about **1,674.01 credits** recorded.
+- Honcho `max` check (owner approval: 100 requests / 12-credit stop): **53 requests**
+  (episodes 46, Honcho shim 7), **6.53 AI credits**.
+- Changed-mind evaluation (owner approval: 3,120 requests / 360-credit stop; tag
+  `changed-mind-eval-v1`): **2,118 requests** (episodes 1,835, Mem0 shim 62, Honcho
+  shim 221), **239.15 AI credits** recorded, 240.15 charged with 1 abort at 1.0 (max
+  single call 0.22). Cumulative: **16,906 requests**, about **1,919.69 credits** recorded.

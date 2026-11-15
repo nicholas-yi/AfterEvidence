@@ -23,7 +23,7 @@ For an existing checkout, inspect local changes first and use
 | Memory study v1 | Tag `memory-study-v1`; Studies 1-3 complete; **null result** for task success, not equivalence ([results](../research/RESULTS.md#memory-study-v1)); test-split outcomes spent |
 | Public evidence | Per-episode [CSV](../research/data/memory-study-v1-episodes.csv) reproduces every Study 1/2 table; CI test `research.test_memory_csv` |
 | Staleness diagnostic | [Stage A](../research/DESIGN.md#follow-up-staleness-aware-memory-stage-a-run-stage-b-not-requested) run (36 dev episodes); floor check failed; Stage B not requested; no v2 tag |
-| Necessary-memory pilot | [Pilot v4](../research/DESIGN.md#follow-up-necessary-memory-pilots-and-evaluation) passed all gates (Hn 4/4, Hc 4/4, R 4/4, N 0/4) after v1-v3 stopped on harness defects or a timeout; v5 (Mem0, Honcho) passed its integration gate (4/4 each). [Evaluation](../research/RESULTS.md#necessary-memory-evaluation) `commitment-eval-v1` (+ `-amend1`) ran partially (125 of 160 session-2 sessions; stopped by a second timeout): Hn 26/26 vs N 0/28; M 24/24, Ho 19/23, Hc 23/24. [Changed-mind pilot](../research/DESIGN.md#changed-mind-pilot) passed its integration gates (Hn 4/4; M 1/4 with 3 stale; Ho 0/4); evaluation not approved |
+| Necessary-memory pilot | [Pilot v4](../research/DESIGN.md#follow-up-necessary-memory-pilots-and-evaluation) passed all gates (Hn 4/4, Hc 4/4, R 4/4, N 0/4) after v1-v3 stopped on harness defects or a timeout; v5 (Mem0, Honcho) passed its integration gate (4/4 each). [Evaluation](../research/RESULTS.md#necessary-memory-evaluation) `commitment-eval-v1` (+ `-amend1`) ran partially (125 of 160 session-2 sessions; stopped by a second timeout): Hn 26/26 vs N 0/28; M 24/24, Ho 19/23, Hc 23/24. [Changed-mind evaluation](../research/RESULTS.md#changed-mind-evaluation) (tag `changed-mind-eval-v1`, 31 families): Hn 30/31; M 13/31 with 13 stale; Ho 3/31 and Hoh (`max`) 2/31, mostly declining |
 | Simulator review | No human review yet. Private worksheets and CSV indexes for all 602 memory-study episodes, with a proposed default sample, in `research/runs/memory-study/review/` |
 | Memory-study stack | Docker (Neo4j, Hindsight, Honcho), Ollama embeddings, provider venv, shims, and gateway on the devbox, stopped with data retained ([runbook](../research/MEMORY-STUDY.md)) |
 | Devbox environment | Exact 81-entry lock reproduced; offline checks pass |
@@ -32,8 +32,8 @@ For an existing checkout, inspect local changes first and use
 Usage: devbox cohort 162 of 360 approved requests / 16.05978 credits; memory
 study 12,428 of 16,000 started / 1,425.05 recorded credits (8 aborted requests
 unbilled); staleness Stage A 74 of 144 / 1.07 credits; necessary-memory pilots
-v1-v3 203 of 240 / 24.11 credits (one unbilled), v4 155 of 264 / 17.50 credits; v5 81 of 160 / 8.13 credits (incl. provider shims); evaluation 1,365 of 2,816 / 152.99 (155.99 charged); changed-mind pilot 209 of 240 / 23.07.
-Cumulative about **14,735 requests / 1,674.01 credits** (about $16.74),
+v1-v3 203 of 240 / 24.11 credits (one unbilled), v4 155 of 264 / 17.50 credits; v5 81 of 160 / 8.13 credits (incl. provider shims); evaluation 1,365 of 2,816 / 152.99 (155.99 charged); changed-mind pilot 209 of 240 / 23.07; Honcho `max` check 53 of 100 / 6.53; changed-mind evaluation 2,118 of 3,120 / 239.15.
+Cumulative about **16,906 requests / 1,919.69 credits** (about $19.20),
 allowance measurements,
 not invoices. Unused allowance never authorizes new inference.
 
@@ -143,7 +143,7 @@ environments, caches, runtimes, and account state. The devbox keeps the
 `cohort-20261113b-*` files, everything under `research/runs/memory-study/`
 (bank, memory artifacts, study reports and journals, shim journals, `review/`
 packet, provider Docker volumes), `research/runs/staleness/stage-a/`, and
-`research/runs/commitment/pilot/`, `pilot-v2/`, `pilot-v3/`, `pilot-v4/`, `eval-v1/`, `cm-pilot-v1/` and `pilot-v5/` (its own Mem0 store and gateway config; Honcho workspace `commitment-pilot-v5` in the stopped Honcho volume).
+`research/runs/commitment/pilot/`, `pilot-v2/`, `pilot-v3/`, `pilot-v4/`, `eval-v1/`, `cm-pilot-v1/`, `cm-hoh-v1/`, `cm-eval-v1/` and `pilot-v5/` (its own Mem0 store and gateway config; Honcho workspace `commitment-pilot-v5` in the stopped Honcho volume).
 Provider secrets live in git-ignored `research/providers/`. The source laptop
 keeps the `research/runs/baseline-20261113-*` plan, amendments, task reports
 and journals, summary, and earlier pilot evidence.
