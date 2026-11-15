@@ -15,7 +15,8 @@ Copilot shim (embeddings go to local nomic-embed-text). Operations:
 Optional config keys isolate later pilots from the memory-study stores: "state" (Mem0
 directory), "honcho_workspace" (workspace for "customer:" scopes) and
 "honcho_reasoning_level" (null = the server default). Absent keys keep v1 behaviour.
-Episodes without an "outcome" get no outcome line.
+Episodes without an "outcome" get no outcome line. Optional "times" (ISO strings, one per line)
+become Honcho message created_at values; Mem0 has no equivalent in its open-source release.
 
 Scopes starting with "customer:" are per-customer (same-customer study); any other
 scope is a shared agent-level store (cross-customer study).
@@ -287,9 +288,12 @@ class HonchoStore:
         agent, customer = honcho.peer("agent"), honcho.peer(self.customer_id(scope, episode))
         session = honcho.session(safe(episode["id"]), peers=[agent, customer])
         speakers = {"customer": customer, "agent": agent, "tool": agent}
-        session.add_messages(
-            [speakers[s].message(("[tool] " if s == "tool" else "") + t) for s, t in turns(episode)]
-        )
+        times = episode.get("times") or []
+        session.add_messages([
+            speakers[s].message(("[tool] " if s == "tool" else "") + t,
+                                **({"created_at": times[i]} if i < len(times) else {}))
+            for i, (s, t) in enumerate(turns(episode))
+        ])  # fmt: skip
         return {"session": session.id, "queue": self.wait(honcho)}
 
     def search(self, scope: str, query: str, level: str | None = None) -> list[str]:

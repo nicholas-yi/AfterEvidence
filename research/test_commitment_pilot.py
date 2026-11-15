@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from research.commitment_pilot import (
+    ACTOR_SYSTEM,
     AMEND_HASHES,
     RUNS,
     artifact_problems,
@@ -1279,6 +1280,196 @@ class ChangedMindEvaluationTests(unittest.TestCase):
             self.assertEqual(result["provider_memory"]["Hoh"]["has_both"], 32)
             write_csv(rows, run / "public.csv")
             self.assertEqual(analyse(read_csv(run / "public.csv")), result)
+
+
+class DatedCheckTests(unittest.TestCase):
+    """Dated dev check: backdated sessions, identical date labels and "Today is" sentence."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        import datetime as dt
+
+        from research import changed_mind
+
+        cls.cm, cls.today = changed_mind, dt.date(2026, 11, 15)
+        cls.setup = changed_mind.prepare()
+
+    def source(self, root: Path) -> Path:
+        for name, f in self.setup["families"].items():
+            for arm, item in (("S1a", f["stale_id"]), ("S1b", f["target_id"])):
+                messages = [{"role": "assistant", "content": OPENING},
+                            {"role": "user", "content": "Please don't make the exchange today."},
+                            {"role": "assistant", "content": f"Agreed item {item}."}]  # fmt: skip
+                report = {
+                    "session": 1,
+                    "family": name,
+                    "arm": arm,
+                    "commitment": True,
+                    "messages": messages,
+                }
+                (root / f"{name}-s1-{arm}-a1.json").write_text(json.dumps(report), encoding="utf-8")
+        return root
+
+    def test_dates_inputs_and_gateway_created_at(self) -> None:
+        from research import memory_gateway as gateway
+
+        cm, today = self.cm, self.today
+        self.assertEqual(
+            cm.session_label(today, "a"),
+            "Earlier session (1 of 2), Thursday 12 November 2026, 14:20 UTC:",
+        )
+        self.assertEqual(cm.today_sentence(today), "Today is Sunday 15 November 2026 (UTC).")
+        with tempfile.TemporaryDirectory() as tmp:
+            source = self.source(Path(tmp))
+            inputs = cm.dated_inputs(source, today)["D1"]
+            history = cm.dated_history_text(source, "D1", today)
+            for order, mem0, honcho in zip(
+                "ab", inputs["episodes_mem0"], inputs["episodes_honcho"]
+            ):
+                label = cm.session_label(today, order)
+                self.assertTrue(mem0["lines"][0][1].startswith(label + "\n"))  # Mem0 in-band header
+                self.assertIn(label + "\n", history)  # identical label in Hn
+                self.assertNotIn(
+                    "session (", json.dumps(honcho["lines"])
+                )  # Honcho: dates via created_at only
+                self.assertEqual(honcho["times"][0], cm.session_start(today, order).isoformat())
+                self.assertEqual(len(honcho["times"]), len(honcho["lines"]))
+            self.assertEqual(inputs["episodes_honcho"][0]["times"][0][:10], "2026-11-12")
+            self.assertEqual(inputs["episodes_honcho"][1]["times"][0][:10], "2026-11-14")
+        sent: list[Any] = []
+
+        class Peer:
+            def message(self, content: str, **kwargs: Any) -> dict[str, Any]:
+                sent.append(kwargs.get("created_at"))
+                return {}
+
+        class Session:
+            id = "s"
+
+            def add_messages(self, messages: list[Any]) -> None:
+                pass
+
+        class Workspace:
+            def peer(self, name: str) -> Peer:
+                return Peer()
+
+            def session(self, name: str, peers: list[Any]) -> Session:
+                return Session()
+
+        honcho = object.__new__(gateway.HonchoStore)
+        honcho.clients, honcho.factory = {}, lambda workspace: Workspace()
+        honcho.wait = lambda honcho, limit=900: {}
+        honcho.ingest(
+            "customer:x",
+            {"id": "e", "lines": [("customer", "a"), ("agent", "b")], "times": ["t1", "t2"]},
+        )
+        honcho.ingest("customer:x", {"id": "f", "lines": [("customer", "a")]})
+        self.assertEqual(sent, ["t1", "t2", None])
+
+    def test_dry_pass_today_sentence_summary_and_gates(self) -> None:
+        from unittest import mock
+
+        cm, today = self.cm, self.today
+        setup = {**self.setup, "today": cm.today_sentence(today)}
+        families = setup["families"]
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / "src").mkdir()
+            source, run = self.source(Path(tmp) / "src"), Path(tmp) / "run"
+            run.mkdir()
+            shim_journal(run, "mem0", 12)
+            shim_journal(run, "honcho", 45)
+            ingested: dict[tuple[str, str], list[dict[str, Any]]] = {}
+
+            def gateway(
+                path: str, body: dict[str, Any], url: str = "", timeout: int = 0
+            ) -> dict[str, Any]:
+                if path == "/status":
+                    return {"state": str((run / "mem0").resolve()), "honcho_workspace": "changed-mind-dated-v1",
+                            "honcho_reasoning_level": None,
+                            "queue": {"total": 8, "completed": 8, "pending": 0, "in_progress": 0}}  # fmt: skip
+                if path == "/ingest":
+                    ingested.setdefault((body["provider"], body["scope"]), []).append(
+                        body["episode"]
+                    )
+                    return {"result": {}}
+                f = families[body["scope"].removeprefix("customer:cmp-cm-t1-")]
+                if body["provider"] == "mem0" and f["family"] == "D4":
+                    raise TimeoutError("down")
+                return {
+                    "results": [
+                        f"On 2026-11-12 item {f['stale_id']}; on 2026-11-14 changed to item {f['target_id']}."
+                    ]
+                }
+
+            with mock.patch("research.provider_ingest.post", side_effect=gateway):
+                providers = provider_phase(
+                    setup, run, cm.dated_inputs(source, today), "cm-dated-v1"
+                )
+            self.assertEqual(providers["refused"], [])
+            self.assertTrue(
+                all("times" in e for (p, _), eps in ingested.items() if p == "honcho" for e in eps)
+            )
+            self.assertFalse(
+                any("times" in e for (p, _), eps in ingested.items() if p == "mem0" for e in eps)
+            )
+            public = cm.dated_plan(setup, "dry", today, source)
+            self.assertEqual(len(public["jobs"]), 12)
+            systems: dict[str, str] = {}
+
+            class Policy(FakeBackend):
+                def write(self, event: str, **fields: object) -> None:
+                    if event != "commitment-session-started":
+                        return
+                    f = families[str(fields["family"])]
+                    arm = str(fields["arm"])
+                    self.key = f"{fields['family']}-{arm}"
+                    item = {"Hn": f["target_id"], "M": f["stale_id"]}.get(arm)
+                    self.replies = [act(text="I can't act on that.")] * 12 if item is None else [
+                        act(text=f"I can exchange it for item {item}. Shall I proceed?"),
+                        act("exchange_delivered_order_items", order_id=f["order_id"], item_ids=[f["current"]["item_id"]],
+                            new_item_ids=[item], payment_method_id=f["payment_id"]),
+                        act(text="The exchange has been processed.")]  # fmt: skip
+
+                async def complete(
+                    self, system: str, prompt: str, response_schema: Any = None
+                ) -> str:
+                    systems.setdefault(self.key, system)
+                    return await super().complete(system, prompt, response_schema)
+
+            outcome = asyncio.run(run_jobs(setup, run, public["jobs"], lambda _: Policy([]), [run], 200, 25.0, 144,
+                                           exclude_uncommitted=True, history_fn=cm.dated_history(today, source),
+                                           infra_continue=True))  # fmt: skip
+            self.assertEqual(outcome["refused"], [])
+            policy_today = setup["policy"] + "\n\n" + cm.today_sentence(today)
+            self.assertEqual(len(systems), 12)
+            for key, system in systems.items():
+                self.assertTrue(
+                    system.startswith(ACTOR_SYSTEM + policy_today), key
+                )  # same sentence, same place
+                self.assertEqual(system.count("Today is"), 1, key)
+            self.assertNotIn(
+                NEUTRAL_HEADER, systems["D4-M"]
+            )  # retrieval error: no memory, still dated
+            summary = cm.dated_summary(run, setup, today, source)
+            rows = {(r["family"], r["arm"]): r for r in summary["rows"]}
+            self.assertEqual(len(rows), 12)
+            self.assertTrue(
+                all(
+                    rows[(f, "Hn")]["success"] and rows[(f, "Hn")]["date_correct"] for f in families
+                )
+            )
+            self.assertEqual(
+                sum(rows[(f, "M")]["stale_commitment"] > 0 for f in families), 4
+            )  # policy ignores memory
+            self.assertTrue(
+                all(
+                    rows[(f, "Ho")]["declined"] and rows[(f, "Ho")]["shows_backdated_date"]
+                    for f in families
+                )
+            )
+            self.assertTrue(rows[("D1", "Ho")]["date_correct"] and rows[("D1", "Ho")]["has_X"])
+            self.assertEqual(summary["verdict"], "PASS")
+            self.assertEqual(summary["retrievals_ok"], {"mem0": 3, "honcho": 4})
 
 
 if __name__ == "__main__":

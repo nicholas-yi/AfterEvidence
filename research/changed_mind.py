@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import datetime as dt
 import hashlib
 import json
 import random
@@ -63,6 +64,24 @@ EVAL_LAST = (
     "Oakley",
     "Pendleton",
 )
+DATED_STAGE = "cm-dated-v1"  # dev check with backdated sessions; reuses the pilot's D1-D4 dialogues
+DATED_DIRECTORY = cp.RUNS / DATED_STAGE
+DATED_CFG = cp.PROVIDER_STAGES[DATED_STAGE]
+DATED_BUDGET = cp.BUDGETS[cp.STAGE_BUDGET[DATED_STAGE]]
+DATED_ARMS = ("Hn", "M", "Ho")  # Hn-dated, M-inband, Ho-dated
+DATED_SESSIONS = {
+    "a": (3, 14, 20, "Earlier session (1 of 2)"),
+    "b": (1, 16, 5, "Most recent session (2 of 2)"),
+}
+MESSAGE_GAP_SECONDS = 40
+# Batch O heuristic: a deferral sentence without any past-session marker reads as current.
+DEFER = re.compile(r"today|next time|not (yet )?to (make|process|submit|proceed)|don'?t (make|process|submit)|"
+                   r"do not (make|process|submit)|hold off|defer|postpone|later date|until (they|the customer|she|he)\b.*confirm|"
+                   r"confirm (it )?(later|next)|"
+                   r"not be (made|processed|submitted)")  # fmt: skip
+PAST = re.compile(r"\b(previous|previously|earlier|prior|last (session|conversation|time)|first (session|conversation)|"
+                  r"second (session|conversation)|at (that|the) time|that day|in (session|conversation) \d|"
+                  r"had (asked|said|requested|wanted)|asked|said|requested|stated|indicated|mentioned|wanted)\b")  # fmt: skip
 ASKS_EARLIER = re.compile(r"\b(?:previous|earlier|originally|before|last time|which item)\b")
 
 
@@ -248,6 +267,156 @@ def hoh_summary(directory: Path, setup: dict[str, Any]) -> dict[str, Any]:
             "ledger": ledger}  # fmt: skip
 
 
+def session_start(today: dt.date, order: str) -> dt.datetime:
+    days, hour, minute, _ = DATED_SESSIONS[order]
+    return dt.datetime.combine(
+        today - dt.timedelta(days=days), dt.time(hour, minute), tzinfo=dt.timezone.utc
+    )
+
+
+def session_label(today: dt.date, order: str) -> str:
+    """One label format for Hn-dated and the Mem0 in-band header."""
+    when = session_start(today, order)
+    return f"{DATED_SESSIONS[order][3]}, {when:%A %d %B %Y}, {when:%H:%M} UTC:"
+
+
+def today_sentence(today: dt.date) -> str:
+    return f"Today is {today:%A %d %B %Y} (UTC)."
+
+
+def dated_history_text(source: Path, family: str, today: dt.date) -> str:
+    a, b = _first_sessions(source, family)
+    return (f"{session_label(today, 'a')}\n{cp.transcript(a['messages'])}\n\n"
+            f"{session_label(today, 'b')}\n{cp.transcript(b['messages'])}")  # fmt: skip
+
+
+def dated_inputs(
+    source: Path, today: dt.date, prefix: str = DATED_CFG["prefix"]
+) -> dict[str, dict[str, Any]]:
+    """Mem0 gets the dated label as an in-band first line; Honcho gets backdated created_at per message."""
+    inputs = {}
+    for family in committed(source):
+        a, b = _first_sessions(source, family)
+        mem0, honcho = [], []
+        for order, report in (("a", a), ("b", b)):
+            lines = cp.dialogue(report["messages"])
+            start, ident = session_start(today, order), f"{prefix}{family}-s1{order}"
+            times = [
+                (start + dt.timedelta(seconds=MESSAGE_GAP_SECONDS * i)).isoformat()
+                for i in range(len(lines))
+            ]
+            honcho.append({"id": ident, "lines": lines, "times": times})
+            first = (lines[0][0], f"{session_label(today, order)}\n{lines[0][1]}")
+            mem0.append({"id": ident, "lines": [first, *lines[1:]]})
+        inputs[family] = {"episodes_mem0": mem0, "episodes_honcho": honcho}
+    return inputs
+
+
+def dated_history(today: dt.date, source: Path = DIRECTORY) -> Any:
+    def load(directory: Path, job: dict[str, Any]) -> tuple[str | None, dict | None]:
+        if job["arm"] == "Hn":
+            return dated_history_text(source, job["family"], today), None
+        return cp._session_two_history(directory, job)
+
+    return load
+
+
+def date_mentions(text: str, day: dt.date) -> bool:
+    lowered = text.casefold()
+    forms = (day.isoformat(), f"{day:%B} {day.day}", f"{day.day} {day:%B}", f"{day:%b} {day.day}")
+    return any(form.casefold() in lowered for form in forms)
+
+
+def deferral_present(text: str) -> bool:
+    sentences = [x for x in re.split(r"(?<=[.!?])\s+|\n+", text) if x.strip()]
+    return any(DEFER.search(x.casefold()) and not PAST.search(x.casefold()) for x in sentences)
+
+
+def dated_plan(
+    setup: dict[str, Any], note: str | None, today: dt.date, source: Path = DIRECTORY
+) -> dict[str, Any]:
+    names = sorted(setup["families"])
+    jobs = [{"session": 2, "family": f, "arm": a} for f in names for a in DATED_ARMS]
+    random.Random(SEED).shuffle(jobs)
+    inputs = {}
+    for f in names:
+        a, b = _first_sessions(source, f)
+        inputs[f] = {
+            x: hashlib.sha256(cp.transcript(r["messages"]).encode()).hexdigest()
+            for x, r in (("1a", a), ("1b", b))
+        }
+    sources = {
+        n: hashlib.sha256((Path(cp.__file__).parent / n).read_bytes()).hexdigest() for n in SOURCES
+    }
+    return {"stage": DATED_STAGE, "today_utc": today.isoformat(), "today_sentence": today_sentence(today),
+            "sessions": {o: {"start_utc": session_start(today, o).isoformat(), "label": session_label(today, o)}
+                         for o in DATED_SESSIONS}, "message_gap_seconds": MESSAGE_GAP_SECONDS,
+            "arms": {"Hn": "Hn-dated (dated labels)", "M": "M-inband (dated first line; Mem0 created_at is now())",
+                     "Ho": "Ho-dated (backdated created_at; default level)"},
+            "source_stage": "cm-pilot-v1", "inputs": inputs, "manifest_sha256": setup["manifest_sha256"],
+            "request_cap": DATED_BUDGET["cap"], "credit_stop": DATED_BUDGET["credit_stop"], "call_max": cp.CALL_MAX,
+            "episode_cap": DATED_CFG["episode_cap"], "shim_caps": DATED_CFG["shim_caps"],
+            "honcho": {"workspace": DATED_CFG["workspace"], "reasoning_level": "server default"},
+            "header": cp.NEUTRAL_HEADER, "memory_max_chars": cp.HISTORY_MAX, "note": note, "sources": sources,
+            "jobs": jobs}  # fmt: skip
+
+
+def dated_summary(
+    directory: Path, setup: dict[str, Any], today: dt.date, source: Path = DIRECTORY
+) -> dict[str, Any]:
+    """Per family x arm (booleans only), integration gates and ledger."""
+    from research.provider_ingest import done
+
+    backdated = (today - dt.timedelta(days=3), today - dt.timedelta(days=1))
+    rows = []
+    for r in cp.final_reports(directory):
+        f = setup["families"][r["family"]]
+        if r["arm"] == "Hn":
+            text, error = dated_history_text(source, r["family"], today), False
+        else:
+            record = json.loads(
+                (directory / "memory" / f"{r['family']}-{r['arm']}.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            text, error = record.get("text") or "", bool(record.get("error"))
+        stale = stale_attempts(f, r.get("messages") or [])
+        shows = any(date_mentions(text, d) for d in backdated)
+        rows.append({"family": r["family"], "arm": r["arm"], "status": r.get("status"), "success": bool(r.get("success")),
+                     "stale_commitment": stale, "declined": r.get("mutations") == 0,
+                     "wrong_variant_other": int(r.get("wrong_variant_attempts") or 0) - stale,
+                     "has_Y": f["target_id"] in text, "has_X": f["stale_id"] in text, "memory_error": error,
+                     "shows_backdated_date": shows, "date_correct": shows and not date_mentions(text, today),
+                     "deferral_present_tense": None if r["arm"] == "Hn" else deferral_present(text),
+                     "proposals_before_consent": r.get("proposals_before_consent"), "requests": r.get("requests_started"),
+                     "attempt": r.get("attempt"), "leakage": bool(r.get("leakage"))})  # fmt: skip
+    ingested = done(directory / "ingest.jsonl")
+    prefix = DATED_CFG["prefix"]
+    ingest_ok = {p: sum(all((p, cp.provider_scope(f, prefix), f"{prefix}{f}-s1{x}") in ingested for x in "ab")
+                        for f in setup["families"]) for p in ("mem0", "honcho")}  # fmt: skip
+    arm_of = {"mem0": "M", "honcho": "Ho"}
+    retrieved = {
+        p: sum(r["arm"] == arm_of[p] and not r["memory_error"] for r in rows) for p in arm_of
+    }
+    gates = {**{f"{p}_ingested_retrieved_3of4": ingest_ok[p] >= 3 and retrieved[p] >= 3 for p in arm_of},
+             "Ho_shows_backdated_dates_3of4": sum(r["arm"] == "Ho" and r["shows_backdated_date"] for r in rows) >= 3,
+             "zero_leakage": not any(r["leakage"] for r in rows)}  # fmt: skip
+    rows_all = cp.journal_rows(directory)
+    groups = {
+        "total": rows_all,
+        "episodes": [r for r in rows_all if Path(r["_journal"]).parent.name != "shims"],
+        **{
+            lb: [r for r in rows_all if Path(r["_journal"]).name == f"{lb}.calls.jsonl"]
+            for lb in DATED_CFG["shim_caps"]
+        },
+    }
+    ledger = {k: {x: y for x, y in cp.pilot_ledger(v, DATED_BUDGET["cap"], DATED_BUDGET["credit_stop"]).items()
+                  if x != "reasons"} for k, v in groups.items()}  # fmt: skip
+    return {"today_utc": today.isoformat(), "rows": sorted(rows, key=lambda r: (r["family"], r["arm"])),
+            "ingested_families": ingest_ok, "retrievals_ok": retrieved, "gates": gates,
+            "verdict": "PASS" if all(gates.values()) else "FAIL", "ledger": ledger}  # fmt: skip
+
+
 def committed(directory: Path) -> list[str]:
     """Families whose 1a and 1b both reached an explicit agreement with an unchanged DB."""
     by: dict[str, set[str]] = {}
@@ -365,7 +534,7 @@ def summarize(directory: Path, setup: dict[str, Any]) -> dict[str, Any]:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Changed-mind pilot; dry run by default.")
-    parser.add_argument("--stage", choices=["pilot", "hoh", "eval"], default="eval")
+    parser.add_argument("--stage", choices=["pilot", "hoh", "eval", "dated"], default="dated")
     parser.add_argument("--phase", choices=["session1", "providers", "sessions"])
     parser.add_argument("--approved-requests", type=int)
     parser.add_argument("--note", help="Provenance note recorded in the plan (required to run).")
@@ -374,6 +543,8 @@ def main() -> int:
     args = parser.parse_args()
     if args.stage == "eval":
         return eval_main(parser, args)
+    if args.stage == "dated":
+        return dated_main(parser, args)
     setup = prepare()
     if args.stage == "hoh":
         return hoh_main(parser, args, setup)
@@ -583,6 +754,59 @@ def eval_main(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
                                       infra_continue=True, exclude_uncommitted=True))  # fmt: skip
     print(json.dumps({"refused": outcome["refused"], "infra_events": outcome["infra_events"],
                       "sessions_run": len(outcome["results"])}, indent=2))  # fmt: skip
+    return 1 if outcome["refused"] else 0
+
+
+def dated_main(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
+    setup = prepare()
+    plan_path = DATED_DIRECTORY / "plan.json"
+    stored = json.loads(plan_path.read_text(encoding="utf-8")) if plan_path.exists() else None
+    # T is the run's UTC date, fixed when the plan is first written.
+    today = (
+        dt.date.fromisoformat(stored["today_utc"])
+        if stored
+        else dt.datetime.now(dt.timezone.utc).date()
+    )
+    setup["today"] = today_sentence(today)
+    if args.summarize:
+        print(json.dumps(dated_summary(DATED_DIRECTORY, setup, today), indent=2, default=str))
+        return 0
+    public = dated_plan(setup, args.note, today)
+    if args.approved_requests is None:
+        print(json.dumps({**public, "jobs": len(public["jobs"])}, indent=2))
+        return 0
+    if (
+        args.approved_requests != DATED_BUDGET["cap"]
+        or not args.note
+        or args.phase not in ("providers", "sessions")
+    ):
+        parser.error(
+            f"Live runs need --phase providers|sessions, --note and --approved-requests {DATED_BUDGET['cap']}."
+        )
+    if stored is not None and stored != public:
+        parser.error("The plan or frozen sources changed since the check started.")
+    if stored is None:
+        DATED_DIRECTORY.mkdir(parents=True, exist_ok=True)
+        plan_path.write_text(json.dumps(public, indent=2) + "\n", encoding="utf-8")
+    if args.phase == "providers":
+        result = cp.provider_phase(
+            setup, DATED_DIRECTORY, dated_inputs(DIRECTORY, today), DATED_STAGE
+        )
+        print(json.dumps(result, indent=2))
+        return 1 if result["refused"] else 0
+    missing = [cp.job_id(j) for j in public["jobs"] if j["arm"] in cp.RETRIEVERS
+               and not (DATED_DIRECTORY / "memory" / f"{j['family']}-{j['arm']}.json").exists()]  # fmt: skip
+    if missing or cp.shim_problems(DATED_DIRECTORY, DATED_CFG["shim_caps"]):
+        parser.error(f"Sessions need every retrieval and clean shims: {missing}")
+    outcome = asyncio.run(cp.live_run(DATED_DIRECTORY, args.model, DATED_STAGE, public["jobs"], setup,
+                                      history_fn=dated_history(today), infra_continue=True,
+                                      exclude_uncommitted=True))  # fmt: skip
+    summary = dated_summary(DATED_DIRECTORY, setup, today)
+    (DATED_DIRECTORY / "summary.json").write_text(
+        json.dumps(summary, indent=2, default=str) + "\n", encoding="utf-8"
+    )
+    print(json.dumps({"refused": outcome["refused"], "infra_events": outcome["infra_events"],
+                      **{k: v for k, v in summary.items() if k != "rows"}}, indent=2, default=str))  # fmt: skip
     return 1 if outcome["refused"] else 0
 
 

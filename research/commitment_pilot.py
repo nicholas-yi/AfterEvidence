@@ -58,6 +58,9 @@ AMEND_HASHES = Path(__file__).resolve().parent / "commitment-eval-v1-amend1-hash
 PROVIDER_STAGES: dict[str, dict[str, Any]] = {
     "pilot-v5": {"prefix": "cmp-p5-", "workspace": HONCHO_WORKSPACE, "shim_caps": SHIM_CAPS,
                  "episode_cap": EPISODE_CAP, "stop_on_ingest_error": True},
+    "cm-dated-v1": {"prefix": "cmp-cm-t1-", "workspace": "changed-mind-dated-v1",
+                    "shim_caps": {"mem0": 12, "honcho": 45}, "episode_cap": 144,
+                    "stop_on_ingest_error": True},
     "cm-eval-v1": {"prefix": "cmp-cm-e1-", "workspace": "changed-mind-eval-v1",
                    "shim_caps": {"mem0": 96, "honcho": 336}, "episode_cap": 2688,
                    "stop_on_ingest_error": False},
@@ -546,6 +549,8 @@ BUDGETS = {
     "cm-hoh": {"stages": ("cm-hoh-v1",), "cap": 100, "credit_stop": 12.0},
     # Changed-mind evaluation: episodes <= 2,688 (224 x 12), Mem0 shim <= 96, Honcho shim <= 336.
     "cm-eval": {"stages": ("cm-eval-v1",), "cap": 3120, "credit_stop": 360.0},
+    # Dated dev check: episodes <= 144 (12 x 12), Mem0 shim <= 12, Honcho shim <= 45.
+    "cm-dated": {"stages": ("cm-dated-v1",), "cap": 200, "credit_stop": 25.0},
 }
 STAGE_BUDGET = {stage: name for name, b in BUDGETS.items() for stage in b["stages"]}
 PHASE1 = [{"session": 1, "family": "C1", "arm": "S1"}, {"session": 1, "family": "C2", "arm": "S1"},
@@ -960,7 +965,11 @@ async def run_session(
 
     family = setup["families"][job["family"]]
     arm = "N" if job["session"] == 1 else job["arm"]
-    system = session_system(setup["policy"], arm, history)
+    # Dated stages only: one identical "Today is <T>." sentence after the policy, before any memory.
+    policy = setup["policy"] + (
+        f"\n\n{setup['today']}" if setup.get("today") and job["session"] == 2 else ""
+    )
+    system = session_system(policy, arm, history)
     env = setup["constructor"]()
     schemas = [tool.openai_schema for tool in env.get_tools()]
     names = {tool.name for tool in env.get_tools()}
@@ -1151,7 +1160,9 @@ def provider_phase(
             rows = provider_ingest.ingest_provider(
                 provider,
                 provider_scope(name, cfg["prefix"]),
-                inputs[name].get("episodes") or [inputs[name]["episode"]],  # in session order
+                inputs[name].get(f"episodes_{provider}")
+                or inputs[name].get("episodes")
+                or [inputs[name]["episode"]],  # in session order; per-provider when they differ
                 ledger,
                 GATEWAY,
             )
