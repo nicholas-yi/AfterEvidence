@@ -45,6 +45,9 @@ actor episodes only; ingestion and retrieval added 4.26 (Mem0) and 15.60 (Honcho
   memories dated the "not today" deferral to the same day (2026-11-14); Hn's labels gave order but no
   dates. This may contribute to the refusals and to Mem0's ordering; the necessary-memory evaluation
   had the same compression with only 2 of 23 Honcho declines, so it is at most a partial factor.
+- Dev check with dated sessions (4 families; 1a and 1b backdated 3 and 1 days; "Today is" stated;
+  descriptive): Hn-dated 4/4; M-inband 3/4 with 1 stale (undated pilot: 1/4, 3 stale); Ho-dated 0/4,
+  all declined, though its answers dated both sessions correctly; they omitted Y's ID in 3 of 4.
 - Scope: one model (Copilot Claude Haiku 5.5) as actor and as every provider's substituted LLM, each
   provider's default pipeline, one synthetic retail task, and the deferral wording ("please don't make
   the exchange today") fixed in the design before any provider ran. These describe this setup, not

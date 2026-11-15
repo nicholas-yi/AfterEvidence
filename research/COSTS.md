@@ -270,3 +270,6 @@ credits.
   `changed-mind-eval-v1`): **2,118 requests** (episodes 1,835, Mem0 shim 62, Honcho
   shim 221), **239.15 AI credits** recorded, 240.15 charged with 1 abort at 1.0 (max
   single call 0.22). Cumulative: **16,906 requests**, about **1,919.69 credits** recorded.
+- Dated changed-mind dev check (owner approval: 200 requests / 25-credit stop): **132
+  requests** (episodes 101, Mem0 shim 8, Honcho shim 23), **15.09 AI credits**.
+  Cumulative: **17,038 requests**, about **1,934.78 credits** recorded.
