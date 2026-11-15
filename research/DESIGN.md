@@ -353,3 +353,15 @@ including the Honcho shim, 12-credit stop):
 | Session 2 | 155/155 in plan order; one infrastructure re-attempt succeeded; no stops. Results: [RESULTS](RESULTS.md#changed-mind-evaluation) |
 | Isolation | Only the Honcho services; prior Honcho workspaces (v1, v5, eval-v1, changed-mind pilot) and all Mem0 stores unchanged (counts and hashes before and after); everything stopped afterwards |
 | Spend | 2,118 of 3,120 requests (episodes 1,835 of 2,688; Mem0 shim 62 of 96; Honcho shim 221 of 336); 239.15 credits recorded, 240.15 charged (1 abort) of 360; max call 0.22 |
+| Memory text (counts only) | Deferral mentioned: M 30, Ho 30, Hoh 29 of 31; stated with no past-session marker (heuristic, sentence level): M 4, Ho 6, Hoh 6. Every M and Ho answer and 30 Hoh answers carry the session date (2026-11-14 / "November 14"), the same day as session 2. Session-ordering wording: M 23, Ho 31, Hoh 30 |
+
+### Proposed: timestamped changed-mind (not approved)
+
+| Element | Proposal |
+|---|---|
+| Question | With real elapsed time (1a at T−3 days, 1b at T−1 day, session 2 at T = run date), does provider memory still revive X or defer on "not today"? |
+| Feasibility | Honcho `5c7d24b`: **yes, natively**. `MessageCreate.created_at` (SDK `peer.message(..., created_at=)`) is stored and rendered with each message by the deriver and the dialectic; neither injects a current date. Mem0 2.2.1 OSS: **no**. `add(timestamp=)` and `search(reference_date=)` raise "Platform-only ... Not supported in OSS"; `created_at` and the extraction prompt's observation and current dates are always the wall clock. Hn: yes (dated labels) |
+| Arms | Hn-dated; Ho-dated (default level, backdated `created_at`); M-inband (dates only in message text on the default pipeline, which still anchors "today" to ingestion, so it tests in-band dates, not timestamps). Every arm's session-2 system prompt states "Today is T" |
+| Dev check | D1-D4: the frozen cm-pilot-v1 session-1 dialogues (no new session-1 runs) ingested into fresh scopes (`cmp-cm-t1-`, workspace `changed-mind-dated-v1`); one retrieval per provider arm; 12 sessions |
+| Caps (measured costs) | Episodes ≤ 144 (12 × 12; ~105 expected); Mem0 shim ≤ 12 (8 ingestions); Honcho shim ≤ 45 (~28 expected); hard cap 200; ~15 credits expected, ~22 at all caps, so a settled-credit stop of 25 |
+| Gates (integration) | Ingestion and retrieval OK ≥ 3/4 per provider; Ho answers carry the backdated dates (≥ 3/4); zero leakage; outcomes descriptive |

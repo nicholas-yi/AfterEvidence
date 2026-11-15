@@ -38,11 +38,13 @@ actor episodes only; ingestion and retrieval added 4.26 (Mem0) and 15.60 (Honcho
 - Mem0's memory held both items in 29 of 31 retrievals, usually with wording that signals the change
   (20 of 31), yet the agent executed the superseded X in 13 families: significantly more stale
   commitments than with the transcript.
-- With Honcho's memory, the agent mostly declined to act (28 and 29 of 31) and never executed X.
-  Every refusal cited the earlier sessions' deferral ("not today"); about half also cited conflicting
-  notes (14 and 9). Raising Honcho's reasoning level from the default to `max` changed nothing
-  measurable (Hoh vs Ho 1/2, p 1.0); in the 4-family check at `max` the dialectic made no tool calls,
-  so its larger tool budget went unused.
+- With Honcho's memory, the agent mostly declined (28 and 29 of 31) and never executed X; every
+  refusal cited the earlier "not today", about half also conflicting notes (14 and 9). `max` instead
+  of the default level changed nothing measurable (Hoh vs Ho 1/2, p 1.0; no tool calls at `max`).
+- Untested caveat: both earlier sessions reached the providers seconds before session 2, so their
+  memories dated the "not today" deferral to the same day (2026-11-14); Hn's labels gave order but no
+  dates. This may contribute to the refusals and to Mem0's ordering; the necessary-memory evaluation
+  had the same compression with only 2 of 23 Honcho declines, so it is at most a partial factor.
 - Scope: one model (Copilot Claude Haiku 5.5) as actor and as every provider's substituted LLM, each
   provider's default pipeline, one synthetic retail task, and the deferral wording ("please don't make
   the exchange today") fixed in the design before any provider ran. These describe this setup, not
