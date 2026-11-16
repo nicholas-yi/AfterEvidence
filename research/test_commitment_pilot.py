@@ -1706,5 +1706,389 @@ class DatedEvaluationTests(unittest.TestCase):
             self.assertEqual(analyse(read_csv(run / "public.csv")), result)
 
 
+def _first_session_source(root: Path, families: dict[str, Any]) -> Path:
+    """Synthetic frozen 1a/1b reports (agreements on X then Y) for dry passes."""
+    for name, f in families.items():
+        for arm, item in (("S1a", f["stale_id"]), ("S1b", f["target_id"])):
+            messages = [{"role": "assistant", "content": OPENING},
+                        {"role": "user", "content": "Please don't make the exchange today."},
+                        {"role": "assistant", "content": f"Agreed item {item}."}]  # fmt: skip
+            report = {
+                "session": 1,
+                "family": name,
+                "arm": arm,
+                "commitment": True,
+                "messages": messages,
+            }
+            (root / f"{name}-s1-{arm}-a1.json").write_text(json.dumps(report), encoding="utf-8")
+    return root
+
+
+def _features_policy(families: dict[str, Any], seen: list[dict[str, Any]], systems: dict[str, str],
+                     plan_for: dict[str, str]) -> Any:  # fmt: skip
+    """Actor per arm: 'Y' executes Y, 'X' executes X, 'ask' asks which item then executes Y,
+    'decline' never acts."""
+
+    class Policy(FakeBackend):
+        def write(self, event: str, **fields: object) -> None:
+            if event != "commitment-session-started":
+                return
+            job = {k: fields[k] for k in ("session", "family", "arm")}
+            seen.append(job)
+            self.key = f"{job['family']}-{job['arm']}"
+            f = families[str(job["family"])]
+            x, y = f["stale_id"], f["target_id"]
+
+            def execute(item: str) -> list[str]:
+                return [act(text=f"I can exchange it for item {item}. Shall I proceed?"),
+                        act("exchange_delivered_order_items", order_id=f["order_id"],
+                            item_ids=[f["current"]["item_id"]], new_item_ids=[item], payment_method_id=f["payment_id"]),
+                        act(text="The exchange has been processed.")]  # fmt: skip
+
+            if job["session"] == 1:
+                self.replies = ([act(text="Options."), act(text=f"Item {x}: is that the one?")] if job["arm"] == "S1a"
+                                else [act(text=f"Item {y}: is that the one?")])  # fmt: skip
+                return
+            kind = plan_for[str(job["arm"])]
+            self.replies = {"Y": execute(y), "X": execute(x),
+                            "ask": [act(text="Which item did we agree on last time?"), *execute(y)],
+                            "decline": [act(text="I can't act on that without the exact item.")] * 12}[kind]  # fmt: skip
+
+        async def complete(self, system: str, prompt: str, response_schema: Any = None) -> str:
+            systems.setdefault(getattr(self, "key", ""), system)
+            return await super().complete(system, prompt, response_schema)
+
+    return Policy
+
+
+class HonchoFeaturesTests(unittest.TestCase):
+    """Honcho features (staged_auto): restating customer, message search, schedule, dry passes."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        import datetime as dt
+
+        from research import honcho_features
+
+        cls.hf, cls.today = honcho_features, dt.date(2026, 11, 16)
+        cls.dev = honcho_features.prepare()
+
+    def test_restating_branch_names_y_only_after_a_which_item_question(self) -> None:
+        from research.commitment_pilot import RESTATEMENT
+
+        hf = self.hf
+        f = self.dev["families"]["D1"]
+        x, y = f["stale_id"], f["target_id"]
+        prompts = ["Which item did we agree on last time?", "Could you confirm which option you chose?",
+                   "What variant would you like?", "Can you tell me the item you agreed?"]  # fmt: skip
+        for prompt in prompts:
+            customer = hf.RestatingCustomer(f, 2, "Nr")
+            opening = customer.reply(OPENING)
+            self.assertFalse(identified(f, opening))  # never unprompted
+            reply = customer.reply(prompt)
+            self.assertTrue(reply.startswith(RESTATEMENT), prompt)
+            self.assertIn(y, reply)
+            self.assertNotIn(x, reply)  # never X
+            self.assertEqual(identified(f, reply), {y})
+        for arm in ("Nr", "Hnr", "Hodr", "Mir"):
+            customer = hf.RestatingCustomer(f, 2, arm)
+            customer.reply(OPENING)
+            self.assertEqual(
+                customer.reply("Let me look up your order."), hf.ASK_ITEM
+            )  # no question
+            self.assertEqual(customer.reply("I'll process it now."), hf.ASK_ITEM)
+            self.assertEqual(customer.reply(f"Item {x}: shall I proceed?"), CONSENT)  # target-blind
+        for arm in ("Hod", "Hs", "Hn"):  # other arms keep the base script
+            customer = hf.RestatingCustomer(f, 2, arm)
+            customer.reply(OPENING)
+            self.assertEqual(customer.reply("Which item did we agree on last time?"), hf.ASK_ITEM)
+        base = hf.cm.ChangedMindCustomer(f, 2, "Hod")
+        base.reply(OPENING)
+        self.assertEqual(
+            base.reply("Which item?"), hf.ASK_ITEM
+        )  # the constant is the base script's reply
+
+    def test_leak_check_allows_only_the_restatement(self) -> None:
+        from research.commitment_pilot import RESTATEMENT
+
+        f = self.dev["families"]["D1"]
+        restatement = f"{RESTATEMENT}the item {f['target_id']}."
+        self.assertEqual(leaks(f, "Nr", "system", None, ["Hi.", restatement]), [])
+        self.assertTrue(
+            leaks(f, "Hod", "system", None, ["Hi.", restatement])
+        )  # not a restating arm
+        self.assertTrue(leaks(f, "Nr", "system", None, [restatement]))  # never in the opening
+        self.assertTrue(leaks(f, "Nr", "system", None, ["Hi.", f"It's item {f['target_id']}."]))
+        self.assertTrue(
+            leaks(f, "Nr", "system", None, ["Hi.", f"{RESTATEMENT}item {f['stale_id']}."])
+        )
+
+    def test_message_search_rendering_and_scope(self) -> None:
+        import datetime as dt
+        from types import SimpleNamespace
+
+        from research import memory_gateway as gateway
+
+        calls: list[Any] = []
+        when = dt.datetime(2026, 11, 13, 14, 20, tzinfo=dt.timezone.utc)
+
+        class Workspace:
+            def peer(self, name: str) -> Any:
+                return SimpleNamespace(
+                    sessions=lambda: [SimpleNamespace(id="s1a"), SimpleNamespace(id="s1b")]
+                )
+
+            def search(self, query: str, filters: Any = None, limit: int = 10) -> list[Any]:
+                calls.append((query, filters, limit))
+                return [SimpleNamespace(created_at=when, peer_id="agent", content="Item 123: is that the one?"),
+                        SimpleNamespace(created_at=when, peer_id="cmp-x-D1", content="Yes, that's the one.")]  # fmt: skip
+
+        store = object.__new__(gateway.HonchoStore)
+        store.clients, store.factory = {}, lambda workspace: Workspace()
+        lines = store.messages("customer:cmp-x-D1", "go ahead")
+        self.assertEqual(lines, ["[2026-11-13 14:20 UTC] Agent: Item 123: is that the one?",
+                                 "[2026-11-13 14:20 UTC] Customer: Yes, that's the one."])  # fmt: skip
+        self.assertEqual(calls, [("go ahead", {"session_id": {"in": ["s1a", "s1b"]}}, 10)])
+
+    def test_schedule_caps_and_eval_generation(self) -> None:
+        hf = self.hf
+        jobs = hf.schedule([f"K{i:02d}" for i in range(1, 33)], hf.EVAL_ARMS, 7)
+        blocks = [jobs[i * 32 : (i + 1) * 32] for i in range(len(hf.EVAL_ARMS))]
+        self.assertEqual([b[0]["arm"] for b in blocks], list(hf.EVAL_ARMS))  # priority order
+        self.assertTrue(
+            all(
+                len({j["family"] for j in b}) == 32 and len({j["arm"] for j in b}) == 1
+                for b in blocks
+            )
+        )
+        for stage, (cap, stop) in ((hf.DEV_STAGE, (350, 40.0)), (hf.EVAL_STAGE, (3000, 400.0))):
+            budget = hf.caps(stage)
+            self.assertEqual((budget["hard_cap"], budget["credit_stop"]), (cap, stop))
+            self.assertLessEqual(sum(budget["caps"].values()), cap)
+            self.assertLessEqual(budget["conservative_at_caps"], stop)
+        self.assertIsNone(hf.tag_state("no-such-tag-for-tests"))
+        setup = hf.prepare(eval_seed("2" * 40))
+        families = list(setup["families"].values())
+        self.assertEqual(sorted(f["family"] for f in families), [f"K{i:02d}" for i in range(1, 33)])
+        self.assertEqual(Counter(f["target_position"] for f in families), {0: 8, 1: 8, 2: 8, 3: 8})
+        cm = hf.cm
+        others = [*SETUP["families"].values(), *cm.prepare()["families"].values(),
+                  *cm.prepare(cm.CM_EVAL_SEED)["families"].values(),
+                  *cm.prepare(hf.DE_SEED, dated=True)["families"].values()]  # fmt: skip
+        keys = {x for f in others for x in (f["user_id"], f["order_id"], (f["first"], f["last"]))}
+        self.assertFalse(
+            keys
+            & {x for f in families for x in (f["user_id"], f["order_id"], (f["first"], f["last"]))}
+        )
+
+    def _gateway(self, run: Path, families: dict[str, Any], workspace: str, prefix: str,
+                 searched: list[dict[str, Any]], ingested: dict[Any, list[Any]]) -> Any:  # fmt: skip
+        def gateway(
+            path: str, body: dict[str, Any], url: str = "", timeout: int = 0
+        ) -> dict[str, Any]:
+            if path == "/status":
+                return {"state": str((run / "mem0").resolve()), "honcho_workspace": workspace,
+                        "honcho_workspace_by_prefix": {}, "honcho_reasoning_level": None,
+                        "queue": {"total": 8, "completed": 8, "pending": 0, "in_progress": 0}}  # fmt: skip
+            if path == "/ingest":
+                ingested.setdefault((body["provider"], body["scope"]), []).append(body["episode"])
+                return {"result": {}}
+            searched.append(body)
+            name = body["scope"].removeprefix(f"customer:{prefix}")
+            f = families[name]
+            if body["provider"] == "mem0" and name in ("D4", "K32"):
+                raise TimeoutError("down")
+            if body.get("mode") == "messages":
+                return {
+                    "results": [
+                        f"[2026-11-15 16:05 UTC] Agent: Item {f['target_id']}: is that the one?"
+                    ]
+                }
+            return {"results": [f"Agreed {f['stale_id']}, then changed to {f['target_id']}."]}
+
+        return gateway
+
+    def test_dev_dry_pass(self) -> None:
+        from unittest import mock
+
+        hf, today = self.hf, self.today
+        setup = {**self.dev, "today": hf.cm.today_sentence(today)}
+        families = setup["families"]
+        cfg = PROVIDER_STAGES[hf.DEV_STAGE]
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / "src").mkdir()
+            source, run = _first_session_source(Path(tmp) / "src", families), Path(tmp) / "run"
+            run.mkdir()
+            shim_journal(run, "mem0", 12)
+            shim_journal(run, "honcho", 40)
+            searched: list[dict[str, Any]] = []
+            ingested: dict[Any, list[Any]] = {}
+            gateway = self._gateway(
+                run, families, cfg["workspace"], cfg["prefix"], searched, ingested
+            )
+            with mock.patch("research.provider_ingest.post", side_effect=gateway):
+                result = hf.providers(setup, run, source, today, hf.DEV_STAGE)
+            self.assertEqual((result["refused"], result["ingestion_errors"]), ([], []))
+            self.assertEqual(len(ingested), 8)
+            self.assertTrue(
+                all("times" in e for (p, _), eps in ingested.items() if p == "honcho" for e in eps)
+            )
+            self.assertEqual(Counter((b["provider"], b.get("mode")) for b in searched),
+                             {("honcho", None): 4, ("honcho", "messages"): 4, ("mem0", None): 4})  # fmt: skip
+            query = first_message(families["D1"], "Hod")
+            self.assertTrue(
+                all(b["query"] == first_message(families[b["scope"][-2:]], "Hod") for b in searched)
+            )
+            self.assertIn("go ahead", query.casefold())
+            for f in families:  # Hodr is Hod's retrieval, identical text
+                hod, hodr = (
+                    json.loads((run / "memory" / f"{f}-{a}.json").read_text(encoding="utf-8"))
+                    for a in ("Hod", "Hodr")
+                )
+                self.assertEqual((hodr["text"], hodr["shared_from"]), (hod["text"], "Hod"))
+            public = hf.dev_plan(setup, "dry", today, source)
+            self.assertEqual(
+                [j["arm"] for j in public["jobs"]], [a for a in hf.DEV_ARMS for _ in range(4)]
+            )
+            seen: list[dict[str, Any]] = []
+            systems: dict[str, str] = {}
+            plan_for = {"Hs": "Y", "Nr": "ask", "Hnr": "Y", "Hodr": "ask", "Mir": "X"}
+            Policy = _features_policy(families, seen, systems, plan_for)
+            outcome = asyncio.run(run_jobs(setup, run, public["jobs"], lambda _: Policy([]), [run], 350, 40.0, 240,
+                                           exclude_uncommitted=True, history_fn=hf.history(today, source),
+                                           infra_continue=True))  # fmt: skip
+            self.assertEqual(outcome["refused"], [])
+            self.assertEqual(seen, public["jobs"])
+            today_line = setup["policy"] + "\n\n" + hf.cm.today_sentence(today)
+            for key, system in systems.items():
+                self.assertTrue(system.startswith(ACTOR_SYSTEM + today_line), key)
+            self.assertNotIn(NEUTRAL_HEADER, systems["D1-Nr"])
+            self.assertNotIn(NEUTRAL_HEADER, systems["D4-Mir"])  # retrieval error: no memory block
+            self.assertIn(hf.cm.session_label(today, "b"), systems["D1-Hnr"])
+            self.assertIn("UTC] Agent:", systems["D1-Hs"])
+            summary = hf.dev_summary(run, setup, outcome)
+            rows = {(r["family"], r["arm"]): r for r in summary["rows"]}
+            self.assertEqual(len(rows), 20)
+            self.assertTrue(
+                all(
+                    rows[(f, "Nr")]["success"] and rows[(f, "Nr")]["restated"] == 1
+                    for f in families
+                )
+            )
+            self.assertTrue(all(rows[(f, "Hodr")]["restated"] == 1 for f in families))
+            self.assertTrue(
+                all(
+                    rows[(f, "Hnr")]["restated"] == 0 and rows[(f, "Hs")]["success"]
+                    for f in families
+                )
+            )
+            self.assertTrue(all(rows[(f, "Mir")]["stale_commitment"] == 1 for f in families))
+            self.assertEqual(summary["retrievals_ok"], {"Hod": 4, "Hs": 4, "Mir": 3})
+            self.assertEqual(summary["verdict"], "PASS")
+
+    def test_eval_dry_pass_and_incomplete_arms(self) -> None:
+        from unittest import mock
+
+        from research.honcho_features_analysis import analyse, read_csv, rows_from_runs, write_csv
+
+        hf, today = self.hf, self.today
+        tag = {
+            "tag": hf.TAG,
+            "commit": "2" * 40,
+            "seed": eval_seed("2" * 40),
+            "dev_check": "0" * 64,
+        }
+        setup = {**hf.prepare(tag["seed"]), "today": hf.cm.today_sentence(today)}
+        families = setup["families"]
+        cfg = PROVIDER_STAGES[hf.EVAL_STAGE]
+        with tempfile.TemporaryDirectory() as tmp:
+            run = Path(tmp)
+            (run / "manifest.json").write_text(setup["manifest"] + "\n", encoding="utf-8")
+            public = hf.eval_plan(setup, "dry", tag, today)
+            seen: list[dict[str, Any]] = []
+            systems: dict[str, str] = {}
+            plan_for = {
+                "Hs": "Y",
+                "Hod": "decline",
+                "Nr": "ask",
+                "Hodr": "ask",
+                "Mir": "X",
+                "Hnr": "Y",
+            }
+            Policy = _features_policy(families, seen, systems, plan_for)
+            options = {
+                "exclude_uncommitted": True,
+                "history_fn": hf.history(today, run),
+                "infra_continue": True,
+            }
+            first = hf.cm.select(public["jobs"], "session1", [])
+            outcome = asyncio.run(
+                run_jobs(
+                    setup, run, first, lambda _: Policy([]), [run], 3000, 400.0, 2600, **options
+                )
+            )
+            self.assertEqual((outcome["refused"], len(first)), ([], 64))
+            included = hf.cm.committed(run)
+            self.assertEqual(len(included), 32)
+            shim_journal(run, "mem0", 96)
+            shim_journal(run, "honcho", 300)
+            searched: list[dict[str, Any]] = []
+            ingested: dict[Any, list[Any]] = {}
+            gateway = self._gateway(
+                run, families, cfg["workspace"], cfg["prefix"], searched, ingested
+            )
+            with mock.patch("research.provider_ingest.post", side_effect=gateway):
+                result = hf.providers(setup, run, run, today, hf.EVAL_STAGE)
+            self.assertEqual(result["refused"], [])
+            self.assertEqual((len(ingested), len(searched)), (64, 96))
+            second = hf.cm.select(public["jobs"], "sessions", included)
+            self.assertEqual(len(second), 192)
+            seen.clear()
+            outcome = asyncio.run(
+                run_jobs(
+                    setup, run, second, lambda _: Policy([]), [run], 3000, 400.0, 2600, **options
+                )
+            )
+            self.assertEqual(outcome["refused"], [])
+            self.assertEqual(seen, second)  # arm blocks in priority order
+            self.assertEqual([seen[i * 32]["arm"] for i in range(6)], list(hf.EVAL_ARMS))
+            rows = rows_from_runs(run)
+            result = analyse(rows)
+            self.assertEqual(
+                (result["included"], result["leakage_sessions"], result["not_run_arms"]),
+                (32, 0, []),
+            )
+            arms = {
+                a: (v["successes"], v["stale"], v["declined"], v["restated_sessions"])
+                for a, v in result["arms"].items()
+            }
+            self.assertEqual(arms, {"Hs": (32, 0, 0, 0), "Hod": (0, 0, 32, 0), "Nr": (32, 0, 0, 32),
+                                    "Hodr": (32, 0, 0, 32), "Mir": (0, 32, 0, 0), "Hnr": (32, 0, 0, 0)})  # fmt: skip
+            one, two = result["family_1"]["tests"], result["family_2"]["tests"]
+            self.assertEqual(one["Hs vs Hod (success)"]["arm_only"], 32)
+            self.assertEqual(two["Mir vs Nr (stale)"]["arm_only"], 32)
+            self.assertEqual(two["Mir vs Nr (success)"]["reference_only"], 32)
+            self.assertEqual(two["Hodr vs Nr (stale)"]["p_holm"], 1.0)
+            self.assertEqual(
+                result["arms"]["Mir"]["memory_error"], 1
+            )  # K32's Mem0 retrieval failed
+            write_csv(rows, run / "public.csv")
+            self.assertEqual(analyse(read_csv(run / "public.csv")), result)
+            partial = [
+                r
+                for r in rows
+                if not (r["arm"] == "Mir" and r["family"] == "K05") and r["arm"] != "Hnr"
+            ]
+            cut = analyse(partial)
+            self.assertEqual(cut["not_run_arms"], ["Mir", "Hnr"])
+            self.assertEqual(cut["arms"]["Hnr"], {"status": "not run"})
+            self.assertEqual(
+                cut["family_2"]["not_run"], ["Mir vs Nr (stale)", "Mir vs Nr (success)"]
+            )
+            self.assertEqual(
+                set(cut["family_2"]["tests"]), {"Hodr vs Nr (stale)", "Hodr vs Nr (success)"}
+            )
+
+
 if __name__ == "__main__":
     unittest.main()

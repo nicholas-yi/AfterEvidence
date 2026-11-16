@@ -16,6 +16,8 @@ Optional config keys isolate later pilots from the memory-study stores: "state" 
 directory), "honcho_workspace" (workspace for "customer:" scopes), "honcho_workspace_by_prefix"
 (a separate workspace per customer-scope prefix) and
 "honcho_reasoning_level" (null = the server default). Absent keys keep v1 behaviour.
+A Honcho /search with "mode": "messages" returns workspace message search over both peers'
+messages in the customer's own sessions instead of a dialectic answer.
 Episodes without an "outcome" get no outcome line. Optional "times" (ISO strings, one per line)
 become Honcho message created_at values; Mem0 has no equivalent in its open-source release.
 
@@ -300,6 +302,17 @@ class HonchoStore:
         ])  # fmt: skip
         return {"session": session.id, "queue": self.wait(honcho)}
 
+    def messages(self, scope: str, query: str, limit: int = 10) -> list[str]:
+        """Honcho's ranking; each hit rendered with its stored time and speaker."""
+        honcho, customer = self.workspace(scope), self.customer_id(scope, {})
+        sessions = [s.id for s in honcho.peer(customer).sessions()]
+        if not sessions:
+            return []
+        found = honcho.search(query, filters={"session_id": {"in": sessions}}, limit=limit)
+        speaker = {customer: "Customer", "agent": "Agent"}
+        return [f"[{m.created_at:%Y-%m-%d %H:%M} UTC] {speaker.get(m.peer_id, m.peer_id)}: {m.content}"
+                for m in found]  # fmt: skip
+
     def search(self, scope: str, query: str, level: str | None = None) -> list[str]:
         honcho = self.workspace(scope)
         if scope.startswith("customer:"):
@@ -372,6 +385,8 @@ async def ingest(request: Request):
 @app.post("/search")
 async def search(request: Request):
     body = await request.json()
+    if body["provider"] == "honcho" and body.get("mode") == "messages":
+        return {"results": await call("honcho", "messages", body["scope"], body["query"])}
     level = (body["reasoning_level"],) if body.get("reasoning_level") else ()
     return {"results": await call(body["provider"], "search", body["scope"], body["query"], *level)}
 

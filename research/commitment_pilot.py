@@ -48,7 +48,16 @@ PROVIDER_ARMS = {"M": "mem0", "Ho": "honcho"}
 RETRIEVERS: dict[str, tuple[str, str | None]] = {"M": ("mem0", None), "Ho": ("honcho", None),
                                                  "Hoh": ("honcho", "max"),
                                                  # Dated evaluation: separate scopes from M and Ho.
-                                                 "Mi": ("mem0", None), "Hod": ("honcho", None)}  # fmt: skip
+                                                 "Mi": ("mem0", None), "Hod": ("honcho", None),
+                                                 # Honcho features: message search; restating customer.
+                                                 "Hs": ("honcho", None), "Hodr": ("honcho", None),
+                                                 "Mir": ("mem0", None)}  # fmt: skip
+# Session-2 arms whose customer names the agreed item (with its ID) only after the agent asks
+# which item (Honcho features design); Nr has no memory.
+RESTATING_ARMS, NO_MEMORY_ARMS = (
+    frozenset({"Nr", "Hnr", "Hodr", "Mir"}),
+    frozenset({"N", "R", "Nr"}),
+)
 SHIM_CAPS, EPISODE_CAP = {"mem0": 14, "honcho": 50}, 96
 HONCHO_WORKSPACE, GATEWAY = "commitment-pilot-v5", "http://127.0.0.1:8900"
 EVAL_STAGE, EVAL_TAG, EVAL_ARMS = "eval-v1", "commitment-eval-v1", ("N", "Hc", "Hn", "M", "Ho")
@@ -58,6 +67,13 @@ AMEND_TAG = "commitment-eval-v1-amend1"
 AMEND_HASHES = Path(__file__).resolve().parent / "commitment-eval-v1-amend1-hashes.json"
 # Fresh provider scopes per stage; the memory-study and pilot-v5 stores are never touched.
 PROVIDER_STAGES: dict[str, dict[str, Any]] = {
+    # Honcho features (owner "staged_auto"): dev check, then the evaluation (caps fixed at the tag).
+    "hf-dev-v1": {"prefix": "cmp-hf-d1-", "workspace": "honcho-features-dev-v1",
+                  "shim_caps": {"mem0": 12, "honcho": 40}, "episode_cap": 240,
+                  "stop_on_ingest_error": False},
+    "hf-eval-v1": {"prefix": "cmp-hf-e1-", "workspace": "honcho-features-eval-v1",
+                   "shim_caps": {"mem0": 96, "honcho": 300}, "episode_cap": 2600,
+                   "stop_on_ingest_error": False},  # fmt: skip
     "pilot-v5": {"prefix": "cmp-p5-", "workspace": HONCHO_WORKSPACE, "shim_caps": SHIM_CAPS,
                  "episode_cap": EPISODE_CAP, "stop_on_ingest_error": True},
     "cm-dated-eval-v1": {"prefix": "cmp-cm-d2u-", "workspace": "changed-mind-dated-eval-v1-undated",
@@ -284,6 +300,9 @@ def _option(family: dict[str, Any], item_id: str) -> str:
     return f"{describe(variant['options'])} {family['product']}"
 
 
+RESTATEMENT = "It's the one I changed to last time: "
+
+
 class ScriptedCustomer:
     """Finite-state customer. Session 2 never names the target unless the arm is R."""
 
@@ -383,7 +402,7 @@ def transcript(messages: list[dict[str, Any]]) -> str:
 
 def session_system(policy: str, arm: str, history: str | None) -> str:
     system = ACTOR_SYSTEM + policy
-    if arm in ("N", "R"):
+    if arm in NO_MEMORY_ARMS:
         return system
     if arm in RETRIEVERS:  # no block when retrieval failed or returned nothing (as v1)
         if history and len(history) > HISTORY_MAX:
@@ -410,7 +429,10 @@ def leaks(
     prefix = system.replace(history, "") if history else system
     if _names_target(family, prefix):
         problems.append("target in system prompt outside history")
-    if arm != "R" and any(_names_target(family, t) for t in user_texts):
+    allowed = user_texts
+    if arm in RESTATING_ARMS:  # only the restatement, never the opening message
+        allowed = user_texts[:1] + [t for t in user_texts[1:] if not t.startswith(RESTATEMENT)]
+    if arm != "R" and any(_names_target(family, t) for t in allowed):
         problems.append("target in customer messages")
     stale = family.get("stale_id")  # changed-mind design: the superseded agreement X
     if stale:
@@ -558,13 +580,17 @@ BUDGETS = {
     "cm-dated": {"stages": ("cm-dated-v1",), "cap": 200, "credit_stop": 25.0},
     # Dated evaluation: episodes <= 2,688 (224 x 12), Mem0 shim <= 192, Honcho shim <= 528.
     "cm-dated-eval": {"stages": ("cm-dated-eval-v1",), "cap": 3408, "credit_stop": 400.0},
+    # Honcho features dev check (owner "staged_auto"): everything <= 350 requests, 40 credits.
+    "hf-dev": {"stages": ("hf-dev-v1",), "cap": 350, "credit_stop": 40.0},
+    # Honcho features evaluation: everything <= 3,000 requests, 400 credits.
+    "hf-eval": {"stages": ("hf-eval-v1",), "cap": 3000, "credit_stop": 400.0},
 }
 STAGE_BUDGET = {stage: name for name, b in BUDGETS.items() for stage in b["stages"]}
 PHASE1 = [{"session": 1, "family": "C1", "arm": "S1"}, {"session": 1, "family": "C2", "arm": "S1"},
           {"session": 2, "family": "C1", "arm": "R"}, {"session": 2, "family": "C2", "arm": "R"}]  # fmt: skip
 INFRA_RETRIES, ABORT_CHARGE = 1, 1.0
 # Dev (C1-C4) and evaluation (E01-E32) family IDs (the C-only pattern stopped eval-v1).
-ATTEMPT = re.compile(r"^([CDEFG]\d+-s\d+-\w+?)(?:-a(\d+))?\.json$")
+ATTEMPT = re.compile(r"^([CDEFGK]\d+-s\d+-\w+?)(?:-a(\d+))?\.json$")
 
 
 def journal_rows(*directories: Path) -> list[dict[str, Any]]:
