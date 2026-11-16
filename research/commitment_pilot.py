@@ -71,6 +71,8 @@ PROVIDER_STAGES: dict[str, dict[str, Any]] = {
     "hf-dev-v1": {"prefix": "cmp-hf-d1-", "workspace": "honcho-features-dev-v1",
                   "shim_caps": {"mem0": 12, "honcho": 40}, "episode_cap": 240,
                   "stop_on_ingest_error": False},
+    "hf-dev-v2": {"prefix": "cmp-hf-d1-", "workspace": "honcho-features-dev-v1", "shim_caps": {},
+                  "episode_cap": 192, "stop_on_ingest_error": False},
     "hf-eval-v1": {"prefix": "cmp-hf-e1-", "workspace": "honcho-features-eval-v1",
                    "shim_caps": {"mem0": 96, "honcho": 300}, "episode_cap": 2600,
                    "stop_on_ingest_error": False},  # fmt: skip
@@ -582,6 +584,8 @@ BUDGETS = {
     "cm-dated-eval": {"stages": ("cm-dated-eval-v1",), "cap": 3408, "credit_stop": 400.0},
     # Honcho features dev check (owner "staged_auto"): everything <= 350 requests, 40 credits.
     "hf-dev": {"stages": ("hf-dev-v1",), "cap": 350, "credit_stop": 40.0},
+    # Stage 1b (owner "rerun_then_auto"): restating arms rerun, retrievals reused, no shims.
+    "hf-dev2": {"stages": ("hf-dev-v2",), "cap": 200, "credit_stop": 25.0},
     # Honcho features evaluation: everything <= 3,000 requests, 400 credits.
     "hf-eval": {"stages": ("hf-eval-v1",), "cap": 3000, "credit_stop": 400.0},
 }

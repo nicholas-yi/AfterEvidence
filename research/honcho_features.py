@@ -34,9 +34,13 @@ from research import commitment_pilot as cp
 
 DEV_STAGE, EVAL_STAGE, TAG = "hf-dev-v1", "hf-eval-v1", "honcho-features-eval-v1"
 DEV_DIRECTORY, EVAL_DIRECTORY = cp.RUNS / DEV_STAGE, cp.RUNS / EVAL_STAGE
+# Stage 1b: the restating arms rerun with the structural rule, reusing Stage 1's retrievals.
+DEV2_STAGE = "hf-dev-v2"
+DEV2_DIRECTORY = cp.RUNS / DEV2_STAGE
 SOURCE_STAGE = cm.STAGE  # frozen D1-D4 dialogues, as the dated dev check used
 DEV_SEED = int(hashlib.sha256(b"AE-HONCHO-FEATURES-DEV-v1").hexdigest()[:8], 16)
 DEV_ARMS = ("Hs", "Nr", "Hnr", "Hodr", "Mir")
+RESTATING_DEV_ARMS = ("Nr", "Hnr", "Hodr", "Mir")
 EVAL_ARMS = ("Hs", "Hod", "Nr", "Hodr", "Mir", "Hnr")  # run priority order
 # Retrieval arms: (provider, mode). Hodr reuses Hod's record so only the customer differs.
 RETRIEVALS = {
@@ -55,14 +59,10 @@ ASK_ITEM = (
     "We already agreed on it last time. Please go ahead with that one "
     "and tell me the exact item ID you will use."
 )
-# "Which item" requests, as questions or imperatives (Stage 1 showed agents mostly ask with
-# "please tell me which variant ..." or "please choose one of ..." and no question mark).
-ASKS_WHICH = re.compile(
-    r"\b(?:which|what)\b[^.?!]{0,80}\b(?:items?|options?|variants?|versions?|one|model|exchange|"
-    r"replacement|colou?r|size|style|configuration)\b|\b(?:confirm|specify|tell me|let me know|clarify|"
-    r"provide|share|choose|pick|select)\b[^.?!]{0,80}\b(?:items?|options?|variants?|versions?|one|"
-    r"replacement|exchange|details)\b"
-)
+# Structural restating rule (Lead, 2026-11-16 12:42 ET): after the opening, an agent text naming
+# exactly one alternative item ID gets the base target-blind consent; naming zero or several gets
+# Y's options and ID, whatever the wording, at most RESTATE_MAX times per session.
+RESTATE_MAX = 2
 # Independent, deliberately broad audit of the restating customer (not the detector it uses).
 WHICH_AUDIT = re.compile(r"\b(?:which|choose|pick|select)\b")
 K_FIRST = ("Alaric", "Bettina", "Corwin", "Dagny", "Emrys", "Freya", "Gareth", "Hollis")
@@ -80,10 +80,13 @@ class RestatingCustomer(cm.ChangedMindCustomer):
 
     def reply(self, agent_text: str) -> str:
         text = super().reply(agent_text)
+        # The base script returns ASK_ITEM exactly when the agent named zero or several items,
+        # outside the opening, consent, payment and turn-limit branches.
         if (self.phase == "2" and self.arm in cp.RESTATING_ARMS and text == ASK_ITEM
-                and ASKS_WHICH.search(agent_text.casefold())):  # fmt: skip
+                and self.restated < RESTATE_MAX):  # fmt: skip
             self.restated += 1
-            return f"{cp.RESTATEMENT}the {self._restated()}."
+            f = self.family
+            return f"{cp.RESTATEMENT}the {cp._option(f, f['target_id'])}, item {f['target_id']}."
         return text
 
 
@@ -95,16 +98,19 @@ def restated(report: dict[str, Any]) -> int:
 
 
 def unanswered(report: dict[str, Any]) -> int:
-    """Restating arms: agent turns that ask which item but got the non-restating reply."""
+    """Restating arms: agent turns that ask which item but got the non-restating reply while the
+    customer still had restatements left."""
     if report.get("arm") not in cp.RESTATING_ARMS:
         return 0
-    messages, count = report.get("messages") or [], 0
+    messages, count, used = report.get("messages") or [], 0, 0
     for i, m in enumerate(messages):
         if m.get("role") == "assistant" and WHICH_AUDIT.search((m.get("content") or "").casefold()):
             reply = next(
                 (x.get("content") for x in messages[i + 1 :] if x.get("role") == "user"), None
             )
-            count += reply == ASK_ITEM
+            count += reply == ASK_ITEM and used < RESTATE_MAX
+        if m.get("role") == "user" and (m.get("content") or "").startswith(cp.RESTATEMENT):
+            used += 1
     return count
 
 
@@ -253,8 +259,8 @@ def schedule(families: list[str], arms: tuple[str, ...], seed: int) -> list[dict
 def caps(stage: str) -> dict[str, Any]:
     cfg, budget = cp.PROVIDER_STAGES[stage], cp.BUDGETS[cp.STAGE_BUDGET[stage]]
     limits = {"episodes": cfg["episode_cap"], **cfg["shim_caps"]}
-    at_caps = (limits["episodes"] * RATES["episode"] + limits["mem0"] * RATES["mem0"]
-               + limits["honcho"] * RATES["honcho"])  # fmt: skip
+    at_caps = (limits["episodes"] * RATES["episode"] + limits.get("mem0", 0) * RATES["mem0"]
+               + limits.get("honcho", 0) * RATES["honcho"])  # fmt: skip
     return {"caps": limits, "hard_cap": budget["cap"], "credit_stop": budget["credit_stop"],
             "rates": RATES, "conservative_at_caps": round(at_caps, 1)}  # fmt: skip
 
@@ -272,8 +278,10 @@ def _common(setup: dict[str, Any], today: dt.date, stage: str) -> dict[str, Any]
                      "Nr": "restating customer, no memory", "Hnr": "restating customer, dated transcripts",
                      "Hodr": "restating customer, the Hod retrieval (identical text)",
                      "Mir": "restating customer, Mem0 with in-band dates (Study 6 Mi)"},
-            "restating_rule": {"restatement_prefix": cp.RESTATEMENT, "replaces": ASK_ITEM,
-                               "asks_which": ASKS_WHICH.pattern, "content": "Y's options and item ID; never X"},
+            "restating_rule": {"restatement_prefix": cp.RESTATEMENT, "replaces": ASK_ITEM, "max_per_session": RESTATE_MAX,
+                               "trigger": "after the opening, an agent text naming zero or several alternative item "
+                                          "IDs (exactly one gets the target-blind consent)",
+                               "content": "Y's options and item ID; never X"},
             "retrieval_query": "the customer's first session-2 message", "retrievals": RETRIEVALS, "shared": SHARED,
             "prefix": cfg["prefix"], "honcho": {"workspace": cfg["workspace"], "reasoning_level": "server default"},
             "budget": caps(stage), "call_max": cp.CALL_MAX, "session_requests": cp.SESSION_REQUESTS,
@@ -294,6 +302,30 @@ def dev_plan(
             "gates": "retrieval OK >= 3/4 per provider arm (Hs, Hod for Hodr, Mir); zero leakage (Y only in "
                      "the restatement, after the agent asks); no harness defect. Outcomes descriptive.",
             "note": note, "jobs": schedule(list(setup["families"]), DEV_ARMS, DEV_SEED)}  # fmt: skip
+
+
+def reuse_retrievals(directory: Path) -> dict[str, str]:
+    """Copy Stage 1's Hod, Hodr and Mir records (no new ingestion); returns their hashes."""
+    (directory / "memory").mkdir(parents=True, exist_ok=True)
+    copied = {}
+    for path in sorted((DEV_DIRECTORY / "memory").glob("*.json")):
+        if path.stem.rsplit("-", 1)[1] in ("Hod", "Hodr", "Mir"):
+            target = directory / "memory" / path.name
+            if not target.exists():
+                target.write_bytes(path.read_bytes())
+            copied[path.name] = hashlib.sha256(path.read_bytes()).hexdigest()
+    return copied
+
+
+def dev2_plan(
+    setup: dict[str, Any], note: str | None, today: dt.date, source: Path
+) -> dict[str, Any]:
+    first = dev_plan(setup, note, today, source)
+    reused = {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted((DEV_DIRECTORY / "memory").glob("*.json"))
+              if p.stem.rsplit("-", 1)[1] in ("Hod", "Hodr", "Mir")}  # fmt: skip
+    return {**first, **{k: v for k, v in _common(setup, today, DEV2_STAGE).items() if k in ("stage", "budget")},
+            "rerun_of": "hf-dev-v1 restating arms (invalid: keyword trigger missed imperative which-item requests)",
+            "reused_retrievals": reused, "jobs": schedule(list(setup["families"]), RESTATING_DEV_ARMS, DEV_SEED)}  # fmt: skip
 
 
 def eval_plan(
@@ -331,8 +363,9 @@ def tag_state(tag: str = TAG) -> dict[str, Any] | None:
 
 
 def dev_summary(
-    directory: Path, setup: dict[str, Any], outcome: dict[str, Any] | None = None
-) -> dict[str, Any]:
+    directory: Path, setup: dict[str, Any], outcome: dict[str, Any] | None = None,
+    stage: str = DEV_STAGE, arms: tuple[str, ...] = DEV_ARMS,
+) -> dict[str, Any]:  # fmt: skip
     """Per family x arm (booleans and counts only), integration gates and ledger."""
     rows, records = [], {}
     for path in sorted((directory / "memory").glob("*.json")):
@@ -351,21 +384,22 @@ def dev_summary(
                      "proposals_before_consent": r.get("proposals_before_consent"),
                      "requests": r.get("requests_started"), "attempt": r.get("attempt"),
                      "leakage": bool(r.get("leakage"))})  # fmt: skip
+    needed = [a for a in RETRIEVALS if a in {SHARED.get(x, x) for x in arms}]
     retrieved = {arm: sum(not records.get(f"{f}-{arm}", {"error": "missing"}).get("error")
-                          for f in setup["families"]) for arm in RETRIEVALS}  # fmt: skip
-    expected = len(setup["families"]) * len(DEV_ARMS)
-    gates = {**{f"{arm}_retrieval_3of4": retrieved[arm] >= 3 for arm in RETRIEVALS},
+                          for f in setup["families"]) for arm in needed}  # fmt: skip
+    expected = len(setup["families"]) * len(arms)
+    gates = {**{f"{arm}_retrieval_3of4": retrieved[arm] >= 3 for arm in needed},
              "zero_leakage": not any(r["leakage"] for r in rows),
              "restating_customer_answered_every_which": not any(r["unanswered_which"] for r in rows),
              "no_harness_defect": len(rows) == expected and not (outcome or {}).get("refused")}  # fmt: skip
     rows_all = cp.journal_rows(directory)
-    budget = cp.BUDGETS[cp.STAGE_BUDGET[DEV_STAGE]]
+    budget = cp.BUDGETS[cp.STAGE_BUDGET[stage]]
     groups = {"total": rows_all, "episodes": [r for r in rows_all if Path(r["_journal"]).parent.name != "shims"],
               **{lb: [r for r in rows_all if Path(r["_journal"]).name == f"{lb}.calls.jsonl"]
-                 for lb in cp.PROVIDER_STAGES[DEV_STAGE]["shim_caps"]}}  # fmt: skip
+                 for lb in cp.PROVIDER_STAGES[stage]["shim_caps"]}}  # fmt: skip
     ledger = {k: {x: y for x, y in cp.pilot_ledger(v, budget["cap"], budget["credit_stop"]).items() if x != "reasons"}
               for k, v in groups.items()}  # fmt: skip
-    return {"rows": sorted(rows, key=lambda r: (r["family"], DEV_ARMS.index(r["arm"]))), "retrievals_ok": retrieved,
+    return {"rows": sorted(rows, key=lambda r: (r["family"], arms.index(r["arm"]))), "retrievals_ok": retrieved,
             "gates": gates, "verdict": "PASS" if all(gates.values()) else "FAIL", "ledger": ledger}  # fmt: skip
 
 
@@ -409,30 +443,49 @@ def _sessions(args: argparse.Namespace, parser: argparse.ArgumentParser, directo
 
 
 def dev_main(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
-    setup, source, directory = prepare(), cp.RUNS / SOURCE_STAGE, DEV_DIRECTORY
-    today = _today(directory)
+    rerun = args.stage == "dev2"
+    stage, arms = (DEV2_STAGE, RESTATING_DEV_ARMS) if rerun else (DEV_STAGE, DEV_ARMS)
+    setup, source = prepare(), cp.RUNS / SOURCE_STAGE
+    directory = DEV2_DIRECTORY if rerun else DEV_DIRECTORY
+    today = _today(DEV_DIRECTORY)  # Stage 1b keeps Stage 1's T
     setup["today"] = cm.today_sentence(today)
     if args.summarize:
-        print(json.dumps(dev_summary(directory, setup), indent=2, default=str))
+        print(json.dumps(dev_summary(directory, setup, None, stage, arms), indent=2, default=str))
         return 0
-    public = dev_plan(setup, args.note, today, source)
+    public = (dev2_plan if rerun else dev_plan)(setup, args.note, today, source)
     if args.approved_requests is None:
         print(json.dumps({**public, "jobs": len(public["jobs"])}, indent=2))
         return 0
-    _live(parser, args, DEV_STAGE)
+    _live(parser, args, stage)
     _plan_file(directory, public, parser)
-    if args.phase == "providers":
+    if rerun:
+        if args.phase != "sessions":
+            parser.error("Stage 1b reuses Stage 1's retrievals; use --phase sessions.")
+        if reuse_retrievals(directory) != public["reused_retrievals"]:
+            parser.error("Stage 1 retrieval records changed since the Stage 1b plan.")
+    elif args.phase == "providers":
         result = providers(setup, directory, source, today, DEV_STAGE)
         print(json.dumps(result, indent=2))
         return 1 if result["refused"] else 0
-    outcome = _sessions(args, parser, directory, DEV_STAGE, public["jobs"], setup, source)
-    summary = dev_summary(directory, setup, outcome)
+    outcome = _sessions(args, parser, directory, stage, public["jobs"], setup, source)
+    summary = dev_summary(directory, setup, outcome, stage, arms)
     (directory / "summary.json").write_text(
         json.dumps(summary, indent=2, default=str) + "\n", encoding="utf-8"
     )
     print(json.dumps({"refused": outcome["refused"], "infra_events": outcome["infra_events"],
                       **{k: v for k, v in summary.items() if k != "rows"}}, indent=2, default=str))  # fmt: skip
     return 1 if outcome["refused"] else 0
+
+
+def stage_one_passed() -> bool:
+    """Stage 1's non-restating gates (Hs and retrievals) plus Stage 1b's gates, all passed."""
+    first, rerun = DEV_DIRECTORY / "summary-audited.json", DEV2_DIRECTORY / "summary.json"
+    if not (first.exists() and rerun.exists()):
+        return False
+    gates = json.loads(first.read_text(encoding="utf-8"))["gates"]
+    superseded = {"restating_customer_answered_every_which"}  # rerun in Stage 1b
+    return (all(v for k, v in gates.items() if k not in superseded)
+            and json.loads(rerun.read_text(encoding="utf-8"))["verdict"] == "PASS")  # fmt: skip
 
 
 def eval_main(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
@@ -445,8 +498,9 @@ def eval_main(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
         parser.error(f"The evaluation needs the annotated protocol tag {TAG}.")
     if tag["changed"]:
         parser.error(f"Frozen sources differ from {TAG}: {tag['changed']} (a deviation; not run).")
-    dev = DEV_DIRECTORY / "summary.json"
-    tag["dev_check"] = hashlib.sha256(dev.read_bytes()).hexdigest() if dev.exists() else None
+    checks = [DEV_DIRECTORY / "summary-audited.json", DEV2_DIRECTORY / "summary.json"]
+    tag["dev_check"] = {p.parent.name + "/" + p.name: hashlib.sha256(p.read_bytes()).hexdigest()
+                        for p in checks if p.exists()}  # fmt: skip
     setup = prepare(tag["seed"])
     today = _today(directory)
     setup["today"] = cm.today_sentence(today)
@@ -469,7 +523,7 @@ def eval_main(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
         )
         return 0
     _live(parser, args, EVAL_STAGE)
-    if not dev.exists() or json.loads(dev.read_text(encoding="utf-8"))["verdict"] != "PASS":
+    if not stage_one_passed():
         parser.error("Stage 2 starts only after every Stage 1 gate passed.")
     _plan_file(directory, public, parser)
     if args.phase in ("providers", "sessions"):
@@ -503,18 +557,18 @@ def main() -> int:
     parser = argparse.ArgumentParser(
         description="Honcho features: Stage 1 dev check and Stage 2 evaluation."
     )
-    parser.add_argument("--stage", choices=["dev", "eval"], default="dev")
+    parser.add_argument("--stage", choices=["dev", "dev2", "eval"], default="dev")
     parser.add_argument("--phase", choices=["session1", "providers", "sessions"])
     parser.add_argument("--approved-requests", type=int)
     parser.add_argument("--note", help="Provenance note recorded in the plan (required to run).")
     parser.add_argument("--model", default="claude-haiku-5.5")
     parser.add_argument("--summarize", action="store_true")
     args = parser.parse_args()
-    if args.stage == "dev" and args.phase == "session1":
+    if args.stage in ("dev", "dev2") and args.phase == "session1":
         parser.error(
             "The dev check reuses frozen session-1 dialogues; use --phase providers|sessions."
         )
-    return dev_main(parser, args) if args.stage == "dev" else eval_main(parser, args)
+    return eval_main(parser, args) if args.stage == "eval" else dev_main(parser, args)
 
 
 if __name__ == "__main__":

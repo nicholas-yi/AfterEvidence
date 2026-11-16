@@ -1773,44 +1773,94 @@ class HonchoFeaturesTests(unittest.TestCase):
         cls.hf, cls.today = honcho_features, dt.date(2026, 11, 16)
         cls.dev = honcho_features.prepare()
 
-    def test_restating_branch_names_y_only_after_a_which_item_question(self) -> None:
+    def test_restating_rule_is_structural(self) -> None:
         from research.commitment_pilot import RESTATEMENT
 
         hf = self.hf
         f = self.dev["families"]["D1"]
         x, y = f["stale_id"], f["target_id"]
-        prompts = ["Which item did we agree on last time?", "Could you confirm which option you chose?",
-                   "What variant would you like?", "Can you tell me the item you agreed?",
-                   # Stage 1 phrasings that the first detector missed (no question mark):
-                   "I have no record of an agreement. Please tell me which item you want instead.",
-                   "For the Makeup Kit, please choose one of the available options.",
-                   "To proceed, please tell me which Espresso Machine variant you want."]  # fmt: skip
-        for prompt in prompts:
+        other = next(v["item_id"] for v in f["alternatives"] if v["item_id"] not in (x, y))
+        current = f["current"]["item_id"]
+        fires = [
+            "Which item did we agree on last time?",  # question
+            "I have no record of an agreement. Please tell me which variant you want.",  # imperative, no record
+            "Please choose one of the available options.",  # no question mark
+            f"Available variants: item {x} and item {other}.",  # listing two IDs (one of them X)
+            f"The current item is {current}; I need the replacement you want.",
+        ]  # current item is not an alternative
+        for text in fires:
             customer = hf.RestatingCustomer(f, 2, "Nr")
-            opening = customer.reply(OPENING)
-            self.assertFalse(identified(f, opening))  # never unprompted
-            reply = customer.reply(prompt)
-            self.assertTrue(reply.startswith(RESTATEMENT), prompt)
-            self.assertIn(y, reply)
-            self.assertNotIn(x, reply)  # never X
-            self.assertEqual(identified(f, reply), {y})
-        for arm in ("Nr", "Hnr", "Hodr", "Mir"):
-            customer = hf.RestatingCustomer(f, 2, arm)
+            self.assertFalse(identified(f, customer.reply(OPENING)))  # never unprompted
+            reply = customer.reply(text)
+            self.assertTrue(reply.startswith(RESTATEMENT), text)
+            self.assertEqual(identified(f, reply), {y})  # Y with its ID; never X
+            self.assertNotIn(x, reply)
+        for item in (x, y, other):  # exactly one alternative: the base target-blind consent
+            customer = hf.RestatingCustomer(f, 2, "Mir")
             customer.reply(OPENING)
-            self.assertEqual(
-                customer.reply("Let me look up your order."), hf.ASK_ITEM
-            )  # no question
-            self.assertEqual(customer.reply("I'll process it now."), hf.ASK_ITEM)
-            self.assertEqual(customer.reply(f"Item {x}: shall I proceed?"), CONSENT)  # target-blind
-        for arm in ("Hod", "Hs", "Hn"):  # other arms keep the base script
-            customer = hf.RestatingCustomer(f, 2, arm)
-            customer.reply(OPENING)
-            self.assertEqual(customer.reply("Which item did we agree on last time?"), hf.ASK_ITEM)
+            self.assertEqual(customer.reply(f"Shall I exchange it for item {item}?"), CONSENT)
+        customer = hf.RestatingCustomer(f, 2, "Hodr")
+        customer.reply(OPENING)
+        replies = [customer.reply("Which item?") for _ in range(3)]
+        self.assertEqual(
+            [r.startswith(RESTATEMENT) for r in replies], [True, True, False]
+        )  # at most 2
+        self.assertEqual(replies[2], hf.ASK_ITEM)
+        for arm in ("Hod", "Hs", "Hn"):  # other arms: unchanged and target-blind
+            replies = {}
+            for item in (x, y):
+                customer = hf.RestatingCustomer(f, 2, arm)
+                customer.reply(OPENING)
+                self.assertEqual(customer.reply("Which item did we agree on?"), hf.ASK_ITEM)
+                replies[item] = customer.reply(f"Item {item}: shall I proceed?")
+            self.assertEqual(replies[x], replies[y])
         base = hf.cm.ChangedMindCustomer(f, 2, "Hod")
         base.reply(OPENING)
         self.assertEqual(
             base.reply("Which item?"), hf.ASK_ITEM
         )  # the constant is the base script's reply
+
+    def test_stage_one_b_reuses_retrievals_and_gates_stage_two(self) -> None:
+        from unittest import mock
+
+        hf = self.hf
+        with tempfile.TemporaryDirectory() as tmp:
+            first, rerun = Path(tmp) / "v1", Path(tmp) / "v2"
+            (first / "memory").mkdir(parents=True)
+            for name in ("D1-Hod", "D1-Hodr", "D1-Mir", "D1-Hs"):
+                (first / "memory" / f"{name}.json").write_text(
+                    json.dumps({"text": name}), encoding="utf-8"
+                )
+            with (
+                mock.patch.object(hf, "DEV_DIRECTORY", first),
+                mock.patch.object(hf, "DEV2_DIRECTORY", rerun),
+            ):
+                copied = hf.reuse_retrievals(rerun)
+                self.assertEqual(sorted(copied), ["D1-Hod.json", "D1-Hodr.json", "D1-Mir.json"])
+                self.assertFalse((rerun / "memory" / "D1-Hs.json").exists())
+                self.assertFalse(hf.stage_one_passed())
+                gates = {"Hs_retrieval_3of4": True, "zero_leakage": True, "no_harness_defect": True,
+                         "restating_customer_answered_every_which": False}  # fmt: skip
+                (first / "summary-audited.json").write_text(
+                    json.dumps({"gates": gates}), encoding="utf-8"
+                )
+                (rerun / "summary.json").write_text(
+                    json.dumps({"verdict": "PASS"}), encoding="utf-8"
+                )
+                self.assertTrue(
+                    hf.stage_one_passed()
+                )  # the restating gate is superseded by Stage 1b
+                (first / "summary-audited.json").write_text(
+                    json.dumps({"gates": {**gates, "zero_leakage": False}}), encoding="utf-8"
+                )
+                self.assertFalse(hf.stage_one_passed())
+                (first / "summary-audited.json").write_text(
+                    json.dumps({"gates": gates}), encoding="utf-8"
+                )
+                (rerun / "summary.json").write_text(
+                    json.dumps({"verdict": "FAIL"}), encoding="utf-8"
+                )
+                self.assertFalse(hf.stage_one_passed())
 
     def test_leak_check_allows_only_the_restatement(self) -> None:
         from research.commitment_pilot import RESTATEMENT
@@ -1865,7 +1915,11 @@ class HonchoFeaturesTests(unittest.TestCase):
                 for b in blocks
             )
         )
-        for stage, (cap, stop) in ((hf.DEV_STAGE, (350, 40.0)), (hf.EVAL_STAGE, (3000, 400.0))):
+        for stage, (cap, stop) in (
+            (hf.DEV_STAGE, (350, 40.0)),
+            (hf.DEV2_STAGE, (200, 25.0)),
+            (hf.EVAL_STAGE, (3000, 400.0)),
+        ):
             budget = hf.caps(stage)
             self.assertEqual((budget["hard_cap"], budget["credit_stop"]), (cap, stop))
             self.assertLessEqual(sum(budget["caps"].values()), cap)
