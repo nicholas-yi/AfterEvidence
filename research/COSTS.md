@@ -273,3 +273,8 @@ credits.
 - Dated changed-mind dev check (owner approval: 200 requests / 25-credit stop): **132
   requests** (episodes 101, Mem0 shim 8, Honcho shim 23), **15.09 AI credits**.
   Cumulative: **17,038 requests**, about **1,934.78 credits** recorded.
+- Dated changed-mind evaluation (owner approval: 3,408 requests / 400-credit stop;
+  tag `changed-mind-dated-eval-v1`): **2,197 requests** (episodes 1,735, Mem0 shim
+  124, Honcho shim 338), **243.38 AI credits**, no aborts (max single call 0.23). A
+  providers-phase launch error was rejected before any billed call. Cumulative:
+  **19,235 requests**, about **2,178.16 credits** recorded.

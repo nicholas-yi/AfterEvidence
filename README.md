@@ -96,7 +96,7 @@ The sleep-style condition borrows the memory-level idea of replay, reweighting a
 [Language Models Need Sleep](https://arxiv.org/abs/2606.03979). That paper also trains model
 weights, which a hosted model cannot do, so only the memory-level idea is tested.
 
-### Five studies
+### Six studies
 
 | Study | Question | Design |
 |---|---|---|
@@ -105,6 +105,7 @@ weights, which a hosted model cannot do, so only the memory-level idea is tested
 | **3. Deletion** | After deleting one conversation, is everything derived from it gone, and is everything else intact? | 3 conversations per system; delete one through the system's own API, then probe |
 | **4. Remembering an agreement** | When a task is impossible without memory, does memory let the agent finish it? | 32 customers; an agreement in one conversation, "go ahead" in the next; 5 conditions |
 | **5. A change of mind** | If the customer changed the agreement later, does memory make the agent act on the latest one? | 32 customers; agreement, then a changed agreement, then "go ahead"; 5 conditions |
+| **6. Dated memories** | With real time between those conversations, does dating them help each memory system act on the latest agreement? | 32 new customers; Study 5 with the agreements 3 and 1 days old; each system undated vs dated; 5 conditions |
 
 ### An analysis fixed before the data
 
@@ -234,6 +235,23 @@ condition did significantly worse than the plain transcripts. These results come
 system's default pipeline and one synthetic task, so they describe this setup, not the products. Data:
 [per-conversation CSV](research/data/changed-mind-eval-v1-episodes.csv).
 
+### Study 6: dating the memories
+
+Study 5 again with 32 new customers (31 completed both agreements), the agreements dated 3 and 1 days
+before the follow-up, and every agent told today's date.
+
+| What the agent was given | Carried out the latest agreement | Carried out the superseded one | Declined and asked |
+|---|---:|---:|---:|
+| Both earlier conversations, dated | 29 of 31 | 0 | 2 |
+| Mem0, undated / dates written into the text | 17 / 17 of 31 | 9 / 5 | 5 / 9 |
+| Honcho, undated / backdated timestamps | 3 / 8 of 31 | 0 / 0 | 28 / 22 |
+
+Neither date treatment changed success or superseded actions significantly (Mem0 9 vs 9 discordant
+customers; Honcho 7 vs 2, adjusted p = 0.36), although the dated memories reported the right dates (Mem0 28, Honcho 31 of 31).
+Declining is a safe failure here only because the scripted customer never repeats the item; a real
+one would likely say it when asked. Data:
+[per-conversation CSV](research/data/changed-mind-dated-eval-v1-episodes.csv).
+
 ### Takeaways
 
 - **Measure memory on actions, not answers.** The revealing failures (wrong order, stale address)
@@ -247,16 +265,17 @@ system's default pipeline and one synthetic task, so they describe this setup, n
   malformed tool call); a summarized memory sometimes lost the exact item number.
 - **Memory needs to know what came last.** When an agreement changed, transcripts kept the order and
   the agent followed the latest one; summarized memories either revived the superseded agreement or
-  left the agent unsure enough to do nothing.
+  left the agent unsure enough to do nothing. Giving them real dates did not significantly change that.
 - **Deletion needs provenance.** Systems can only forget cleanly if they record where each memory
   came from.
 
 ## Verify the numbers
 
-Every Study 1, 2, 4 and 5 table and both figures are recomputed from public per-episode tables,
+Every Study 1, 2, 4, 5 and 6 table and both figures are recomputed from public per-episode tables,
 [memory-study-v1-episodes.csv](research/data/memory-study-v1-episodes.csv),
-[commitment-eval-v1-episodes.csv](research/data/commitment-eval-v1-episodes.csv) and
-[changed-mind-eval-v1-episodes.csv](research/data/changed-mind-eval-v1-episodes.csv), which contain no
+[commitment-eval-v1-episodes.csv](research/data/commitment-eval-v1-episodes.csv),
+[changed-mind-eval-v1-episodes.csv](research/data/changed-mind-eval-v1-episodes.csv) and
+[changed-mind-dated-eval-v1-episodes.csv](research/data/changed-mind-dated-eval-v1-episodes.csv), which contain no
 transcripts, prompts, customer names or account data. CI fails if a published number or figure
 stops matching it:
 
@@ -265,7 +284,8 @@ python -m research.memory_analysis --csv research/data/memory-study-v1-episodes.
 python -m research.figures --check
 python -m research.commitment_analysis --csv research/data/commitment-eval-v1-episodes.csv
 python -m research.changed_mind_analysis --csv research/data/changed-mind-eval-v1-episodes.csv
-python -m unittest research.test_memory_csv research.test_commitment_csv research.test_changed_mind_csv -v
+python -m research.changed_mind_dated_analysis --csv research/data/changed-mind-dated-eval-v1-episodes.csv
+python -m unittest research.test_memory_csv research.test_commitment_csv research.test_changed_mind_csv research.test_changed_mind_dated_csv -v
 ```
 
 Rerunning the episodes needs the pinned benchmark, Copilot access and a request budget; see the
@@ -303,7 +323,7 @@ python -m afterevidence serve
 | Question | Status |
 |---|---|
 | Does labelling memories with when they were written, and whether they were later corrected, stop an agent from acting on stale ones? | A first small synthetic run could not separate the conditions: the agent checked the live account every time, ignoring stale and valid memories alike. No comparison result. |
-| Would provider memory that records when each fact was agreed, or retrieval that asks for the latest agreement, close the gap to transcripts in Study 5? | Not yet tested. In Study 5 the earlier conversations were stored seconds before the follow-up, so the memory systems saw no time pass. |
+| Would provider memory that records when each fact was agreed, or retrieval that asks for the latest agreement, close the gap to transcripts in Study 5? | Dates tested in Study 6: dated memories reported the right dates (Mem0 28, Honcho 31 of 31) but did not significantly change the outcome for either system. Retrieval that asks for the latest agreement is not yet tested. |
 | Do agents that query memory step by step, rather than once up front, benefit more? | Not yet tested. |
 
 Designs: [research design](research/DESIGN.md).

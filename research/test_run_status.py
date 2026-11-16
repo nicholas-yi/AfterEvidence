@@ -138,6 +138,17 @@ class RunStatusTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 budget_snapshot(self.root)
 
+    def test_dated_plan_nested_budget(self) -> None:
+        (self.root / "plan.json").write_text(
+            json.dumps({"budget": {"hard_cap": 3408, "credit_stop": 400.0}}), encoding="utf-8"
+        )
+        ledger = Mock(return_value={"started": 8, "charged_credits": 1.0, "reasons": []})
+        fake = SimpleNamespace(journal_rows=Mock(return_value=[]), pilot_ledger=ledger)
+        with patch.dict("sys.modules", {"research.commitment_pilot": fake}):
+            result = budget_snapshot(self.root)
+        ledger.assert_called_once_with([], 3408, 400.0)
+        self.assertEqual(result["request_headroom"], 3400)
+
 
 if __name__ == "__main__":
     unittest.main()

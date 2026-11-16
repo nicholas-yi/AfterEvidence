@@ -182,7 +182,9 @@ def snapshot(
 
 def budget_snapshot(root: Path) -> dict[str, Any]:
     plan = json.loads((root / "plan.json").read_text(encoding="utf-8"))
-    cap, stop = plan["request_cap"], plan["credit_stop"]
+    nested = plan.get("budget") or {}  # dated changed-mind plans nest the caps
+    cap = plan.get("request_cap", nested.get("hard_cap"))
+    stop = plan.get("credit_stop", nested.get("credit_stop"))
     if (
         type(cap) is not int
         or cap <= 0

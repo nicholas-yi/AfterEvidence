@@ -75,7 +75,8 @@ agent-learning evidence.
   diagnostic](staleness.py) and its [episode runner](staleness_runner.py)
   (dry run unless a stage cap is approved; Stage A run, see [design](DESIGN.md)).
 - [Necessary-memory pilots and evaluation](commitment_pilot.py), its [analysis](commitment_analysis.py)
-  and the [changed-mind pilot](changed_mind.py): synthetic multi-session exchange families,
+  and the [changed-mind pilot and evaluations](changed_mind.py) ([analysis](changed_mind_analysis.py),
+  [dated analysis](changed_mind_dated_analysis.py)): synthetic multi-session exchange families,
   scripted customer, oracle and capped runners (see design).
 - [Run status](run_status.py): `python -m research.run_status --root research\runs\commitment\<stage> --budget`
   shows planned versus reported job IDs from file names, plus the runner's ledger, without opening any report.

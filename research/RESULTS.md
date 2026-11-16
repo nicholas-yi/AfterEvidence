@@ -13,6 +13,54 @@ account data, and provider state. Earlier feasibility work is under
 [Development history](#development-history). Environment: unmodified
 MIT-licensed tau2-bench retail at `c06b07dd7c4d4ec61ba6ff9bcdf0b15dd7ef36d4`.
 
+## Dated changed-mind evaluation
+
+Protocol: [design](DESIGN.md#dated-changed-mind-evaluation-pre-specified-before-tag-changed-mind-dated-eval-v1),
+tag `changed-mind-dated-eval-v1` (`cb61754`). The [changed-mind task](#changed-mind-evaluation) with
+32 fresh families and real elapsed time: 1a dated three days and 1b one day before session 2
+(T = 2026-11-16), and every arm's prompt saying "Today is Monday 16 November 2026 (UTC)." M and Ho
+ingest as before (ingestion-time timestamps); Mi writes each session's date as its first line into
+Mem0 (open-source Mem0 accepts no timestamp); Hod gives Honcho backdated message timestamps. Each arm
+has its own memory scope. G03 had no 1a agreement (a malformed tool call) and is excluded; 31
+families, all 155 sessions ran.
+
+| Arm | Successes / n | Wilson 95% | Executed superseded X (harmful) | Declined, asked the customer (safe here) | Credits / session |
+|---|---|---|---|---|---|
+| Hn: both transcripts, dated labels | 29 / 31 | 0.79-0.98 | 0 | 2 | 0.91 |
+| M: Mem0, undated | 17 / 31 | 0.38-0.71 | 9 | 5 | 0.97 |
+| Mi: Mem0, in-band dates | 17 / 31 | 0.38-0.71 | 5 | 9 | 1.00 |
+| Ho: Honcho, undated | 3 / 31 | 0.03-0.25 | 0 | 28 | 1.47 |
+| Hod: Honcho, backdated timestamps | 8 / 31 | 0.14-0.43 | 0 | 22 | 1.29 |
+
+Primary (success; exact family-paired McNemar, Holm across two): Mi vs M 9 / 9 discordant families,
+p = 1.0; Hod vs Ho 7 / 2, p = 0.18, Holm 0.36. Secondary (X executed): Mi vs M 4 / 8, Holm 0.78; Hod
+vs Ho 0 / 0, 1.0. Neither date treatment changed either endpoint significantly; with 31 families only
+large differences are detectable, and non-significance is not equivalence. Ingestion and retrieval
+added 8.99 (Mem0) and 26.47 (Honcho) credits.
+
+- Harmful versus safe failure: executing X acts on a superseded agreement. Declining made no exchange,
+  and in all 66 declined sessions the agent asked the customer a question. That fails here only
+  because the scripted customer never restates the item; a real customer would likely restate it
+  when asked.
+- Mem0: in-band dates left success unchanged (17 and 17) and X executions went from 9 to 5 (not
+  significant). Both memories held Y's ID in 31 of 31 and X's in 29 (M) and 28 (Mi); Mi's answers
+  carried the backdated dates in 28 (M 0) and never stated the deferral as current (M 9).
+- Honcho: backdated timestamps gave 8 successes against 3 and fewer declines (22 against 28); neither
+  arm ever executed X. Hod's answers dated both sessions correctly in 31 of 31 (Ho 0) and stated the
+  deferral as current in 3 (Ho 10), but held Y's ID in only 18 of 31, as Ho did. One Hod session
+  executed Y but hit the 12-request cap (a failure).
+- Against Hn (descriptive, unadjusted wins / losses): M 1 / 13, Mi 0 / 12, Ho 0 / 26, Hod 1 / 22.
+- The providers phase ran twice: a launch error (shim token argument) rejected every provider call
+  before any model call, retrieval or session-2 outcome; attempt 1 is preserved, and the design was
+  unchanged.
+- Scope: one model (Copilot Claude Haiku 5.5) as actor and as every provider's substituted LLM, each
+  provider's default pipeline, one synthetic retail task, and deferral wording fixed before any
+  provider ran. These describe this setup, not product quality.
+- Data: [per-session CSV](data/changed-mind-dated-eval-v1-episodes.csv) (no transcripts, names or
+  memory text);
+  `python -m research.changed_mind_dated_analysis --csv research/data/changed-mind-dated-eval-v1-episodes.csv`;
+  CI test `research.test_changed_mind_dated_csv`.
+
 ## Changed-mind evaluation
 
 Protocol: [design](DESIGN.md#changed-mind-evaluation-pre-specified-before-tag-changed-mind-eval-v1),
