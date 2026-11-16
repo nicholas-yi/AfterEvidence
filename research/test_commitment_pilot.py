@@ -1947,6 +1947,10 @@ class HonchoFeaturesTests(unittest.TestCase):
                 )
                 self.assertEqual((hodr["text"], hodr["shared_from"]), (hod["text"], "Hod"))
             public = hf.dev_plan(setup, "dry", today, source)
+            stored = run / "plan-check"
+            stored.mkdir()
+            hf._plan_file(stored, public, None)  # type: ignore[arg-type]
+            hf._plan_file(stored, public, None)  # type: ignore[arg-type]  # resume: JSON round trip is equal
             self.assertEqual(
                 [j["arm"] for j in public["jobs"]], [a for a in hf.DEV_ARMS for _ in range(4)]
             )

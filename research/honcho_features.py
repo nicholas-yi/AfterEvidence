@@ -359,7 +359,9 @@ def _live(parser: argparse.ArgumentParser, args: argparse.Namespace, stage: str)
 def _plan_file(directory: Path, public: dict[str, Any], parser: argparse.ArgumentParser) -> None:
     path = directory / "plan.json"
     if path.exists():
-        if json.loads(path.read_text(encoding="utf-8")) != public:
+        if json.loads(path.read_text(encoding="utf-8")) != json.loads(
+            json.dumps(public)
+        ):  # JSON lists vs tuples
             parser.error("The plan or frozen sources changed since the run started.")
         return
     if any(directory.glob("*.calls.jsonl")):
