@@ -431,11 +431,20 @@ def _today(directory: Path) -> dt.date:
     return dt.datetime.now(dt.timezone.utc).date()
 
 
+def shim_problems(directory: Path, stage: str) -> list[str]:
+    """cp.shim_problems treats empty caps as the v5 defaults; Stage 1b has no shims at all."""
+    caps = cp.PROVIDER_STAGES[stage]["shim_caps"]
+    if not caps:
+        found = sorted(p.name for p in (directory / "shims").glob("*.calls.jsonl"))
+        return [f"unexpected shim journals {found}"] if found else []
+    return cp.shim_problems(directory, caps)
+
+
 def _sessions(args: argparse.Namespace, parser: argparse.ArgumentParser, directory: Path, stage: str,
               jobs: list[dict[str, Any]], setup: dict[str, Any], source: Path) -> dict[str, Any]:  # fmt: skip
     missing = [cp.job_id(j) for j in jobs if j["arm"] in cp.RETRIEVERS
                and not (directory / "memory" / f"{j['family']}-{j['arm']}.json").exists()]  # fmt: skip
-    if missing or cp.shim_problems(directory, cp.PROVIDER_STAGES[stage]["shim_caps"]):
+    if missing or shim_problems(directory, stage):
         parser.error(f"Sessions need every retrieval and clean shims: {missing}")
     today = _today(directory)
     return asyncio.run(cp.live_run(directory, args.model, stage, jobs, setup, history_fn=history(today, source),

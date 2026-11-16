@@ -1836,6 +1836,10 @@ class HonchoFeaturesTests(unittest.TestCase):
                 mock.patch.object(hf, "DEV2_DIRECTORY", rerun),
             ):
                 copied = hf.reuse_retrievals(rerun)
+                self.assertEqual(hf.shim_problems(rerun, hf.DEV2_STAGE), [])  # no shims in Stage 1b
+                (rerun / "shims").mkdir()
+                (rerun / "shims" / "mem0.calls.jsonl").write_text("", encoding="utf-8")
+                self.assertTrue(hf.shim_problems(rerun, hf.DEV2_STAGE))
                 self.assertEqual(sorted(copied), ["D1-Hod.json", "D1-Hodr.json", "D1-Mir.json"])
                 self.assertFalse((rerun / "memory" / "D1-Hs.json").exists())
                 self.assertFalse(hf.stage_one_passed())
