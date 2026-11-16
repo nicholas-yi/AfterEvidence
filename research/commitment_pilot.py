@@ -46,7 +46,9 @@ PROVIDER_ARMS = {"M": "mem0", "Ho": "honcho"}
 # Retrieval arms: (provider, Honcho reasoning level or None for the server default). Hoh reuses
 # the Honcho ingestion of Ho at the highest level the pinned server accepts (changed-mind design).
 RETRIEVERS: dict[str, tuple[str, str | None]] = {"M": ("mem0", None), "Ho": ("honcho", None),
-                                                 "Hoh": ("honcho", "max")}  # fmt: skip
+                                                 "Hoh": ("honcho", "max"),
+                                                 # Dated evaluation: separate scopes from M and Ho.
+                                                 "Mi": ("mem0", None), "Hod": ("honcho", None)}  # fmt: skip
 SHIM_CAPS, EPISODE_CAP = {"mem0": 14, "honcho": 50}, 96
 HONCHO_WORKSPACE, GATEWAY = "commitment-pilot-v5", "http://127.0.0.1:8900"
 EVAL_STAGE, EVAL_TAG, EVAL_ARMS = "eval-v1", "commitment-eval-v1", ("N", "Hc", "Hn", "M", "Ho")
@@ -58,6 +60,9 @@ AMEND_HASHES = Path(__file__).resolve().parent / "commitment-eval-v1-amend1-hash
 PROVIDER_STAGES: dict[str, dict[str, Any]] = {
     "pilot-v5": {"prefix": "cmp-p5-", "workspace": HONCHO_WORKSPACE, "shim_caps": SHIM_CAPS,
                  "episode_cap": EPISODE_CAP, "stop_on_ingest_error": True},
+    "cm-dated-eval-v1": {"prefix": "cmp-cm-d2u-", "workspace": "changed-mind-dated-eval-v1-undated",
+                         "shim_caps": {"mem0": 192, "honcho": 528}, "episode_cap": 2688,
+                         "stop_on_ingest_error": False},
     "cm-dated-v1": {"prefix": "cmp-cm-t1-", "workspace": "changed-mind-dated-v1",
                     "shim_caps": {"mem0": 12, "honcho": 45}, "episode_cap": 144,
                     "stop_on_ingest_error": True},
@@ -380,7 +385,7 @@ def session_system(policy: str, arm: str, history: str | None) -> str:
     system = ACTOR_SYSTEM + policy
     if arm in ("N", "R"):
         return system
-    if arm in PROVIDER_ARMS:  # no block when retrieval failed or returned nothing (as v1)
+    if arm in RETRIEVERS:  # no block when retrieval failed or returned nothing (as v1)
         if history and len(history) > HISTORY_MAX:
             raise FatalStop("Provider memory exceeds 8,000 characters.")
         return system + "\n\n" + NEUTRAL_HEADER + history if history else system
@@ -551,13 +556,15 @@ BUDGETS = {
     "cm-eval": {"stages": ("cm-eval-v1",), "cap": 3120, "credit_stop": 360.0},
     # Dated dev check: episodes <= 144 (12 x 12), Mem0 shim <= 12, Honcho shim <= 45.
     "cm-dated": {"stages": ("cm-dated-v1",), "cap": 200, "credit_stop": 25.0},
+    # Dated evaluation: episodes <= 2,688 (224 x 12), Mem0 shim <= 192, Honcho shim <= 528.
+    "cm-dated-eval": {"stages": ("cm-dated-eval-v1",), "cap": 3408, "credit_stop": 400.0},
 }
 STAGE_BUDGET = {stage: name for name, b in BUDGETS.items() for stage in b["stages"]}
 PHASE1 = [{"session": 1, "family": "C1", "arm": "S1"}, {"session": 1, "family": "C2", "arm": "S1"},
           {"session": 2, "family": "C1", "arm": "R"}, {"session": 2, "family": "C2", "arm": "R"}]  # fmt: skip
 INFRA_RETRIES, ABORT_CHARGE = 1, 1.0
 # Dev (C1-C4) and evaluation (E01-E32) family IDs (the C-only pattern stopped eval-v1).
-ATTEMPT = re.compile(r"^([CDEF]\d+-s\d+-\w+?)(?:-a(\d+))?\.json$")
+ATTEMPT = re.compile(r"^([CDEFG]\d+-s\d+-\w+?)(?:-a(\d+))?\.json$")
 
 
 def journal_rows(*directories: Path) -> list[dict[str, Any]]:
@@ -709,6 +716,7 @@ def target_mentions(family: dict[str, Any], text: str) -> dict[str, bool]:
 def retrieve_memories(
     setup: dict[str, Any], directory: Path, search: Any, prefix: str = "cmp-p5-",
     families: list[str] | None = None, arms: tuple[str, ...] = tuple(PROVIDER_ARMS),
+    prefixes: dict[str, str] | None = None,
 ) -> list[dict[str, Any]]:  # fmt: skip
     """One retrieval per (family, retrieval arm), never repeated; an error means no memory."""
     from research.memory_retrievers import pack
@@ -724,7 +732,7 @@ def retrieve_memories(
             if not path.exists():
                 query, record = first_message(family, arm), {}
                 try:
-                    scope = provider_scope(name, prefix)
+                    scope = provider_scope(name, (prefixes or {}).get(arm, prefix))
                     results = list(
                         search(provider, scope, query, level)
                         if level
@@ -741,7 +749,8 @@ def retrieve_memories(
                         "raw_count": 0,
                         "error": f"{type(error).__name__}: {error}"[:300],
                     }
-                record.update(provider=provider, reasoning_level=level, scope=provider_scope(name, prefix), query=query,
+                record.update(provider=provider, reasoning_level=level, query=query,
+                              scope=provider_scope(name, (prefixes or {}).get(arm, prefix)),
                               chars=len(record["text"]), **target_mentions(family, record["text"]))  # fmt: skip
                 path.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
             records.append(json.loads(path.read_text(encoding="utf-8")))

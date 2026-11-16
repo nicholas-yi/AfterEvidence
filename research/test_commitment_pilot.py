@@ -1472,5 +1472,239 @@ class DatedCheckTests(unittest.TestCase):
             self.assertEqual(summary["retrievals_ok"], {"mem0": 3, "honcho": 4})
 
 
+class DatedEvaluationTests(unittest.TestCase):
+    """Dated changed-mind evaluation (tag changed-mind-dated-eval-v1): generation, scopes, dry pass."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        import datetime as dt
+
+        from research import changed_mind
+
+        cls.cm, cls.today = changed_mind, dt.date(2026, 11, 16)
+        seed = eval_seed("1" * 40)
+        cls.tag = {"tag": changed_mind.DE_TAG, "commit": "1" * 40, "seed": seed,
+                   "sources": (*changed_mind.EVAL_SOURCES, "changed_mind_dated_analysis.py")}  # fmt: skip
+        cls.setup = changed_mind.prepare(seed, dated=True)
+
+    def test_generation_caps_and_workspace_map(self) -> None:
+        from unittest import mock
+
+        from research import memory_gateway as gateway
+
+        cm = self.cm
+        self.assertIsNone(cm.de_tag_state("no-such-tag-for-tests"))
+        families = list(self.setup["families"].values())
+        self.assertEqual(sorted(f["family"] for f in families), [f"G{i:02d}" for i in range(1, 33)])
+        self.assertEqual(Counter(f["target_position"] for f in families), {0: 8, 1: 8, 2: 8, 3: 8})
+        self.assertTrue(all((f["first"], f["last"]) in {(a, b) for a in cm.DE_FIRST for b in cm.DE_LAST}
+                            for f in families))  # fmt: skip
+        others = [*SETUP["families"].values(), *cm.prepare()["families"].values(),
+                  *cm.prepare(cm.CM_EVAL_SEED)["families"].values()]  # fmt: skip
+        keys = {x for f in others for x in (f["user_id"], f["order_id"], (f["first"], f["last"]))}
+        self.assertFalse(
+            keys
+            & {x for f in families for x in (f["user_id"], f["order_id"], (f["first"], f["last"]))}
+        )
+        self.assertTrue(
+            all(len({f["stale_id"], f["target_id"], f["rejected_id"]}) == 3 for f in families)
+        )
+        caps = cm.de_caps()
+        self.assertEqual((caps["hard_cap"], caps["credit_stop"]), (3408, 400.0))
+        self.assertEqual(sum(caps["caps"].values()), 3408)
+        self.assertLessEqual(caps["conservative_at_caps"], 400.0)
+        self.assertEqual(len(set(cm.DE_PREFIXES.values())), 3)
+        self.assertEqual(cm.DE_PREFIXES["M"], cm.DE_CFG["prefix"])
+        store = object.__new__(gateway.HonchoStore)
+        store.clients, store.factory = {}, lambda workspace: workspace
+        config = {
+            "honcho_workspace": cm.DE_CFG["workspace"],
+            "honcho_workspace_by_prefix": cm.DE_WORKSPACES,
+        }
+        with mock.patch.dict(gateway.CONFIG, config, clear=True):
+            self.assertEqual(
+                store.workspace("customer:cmp-cm-d2d-G01"), "changed-mind-dated-eval-v1-dated"
+            )
+            self.assertEqual(
+                store.workspace("customer:cmp-cm-d2u-G01"), "changed-mind-dated-eval-v1-undated"
+            )
+            self.assertEqual(store.workspace("customer:"), "changed-mind-dated-eval-v1-undated")
+
+    def test_end_to_end_dry_pass(self) -> None:
+        from unittest import mock
+
+        from research.changed_mind_dated_analysis import (
+            analyse,
+            read_csv,
+            rows_from_runs,
+            write_csv,
+        )
+
+        cm, today = self.cm, self.today
+        setup = {**self.setup, "today": cm.today_sentence(today)}
+        families = setup["families"]
+        with tempfile.TemporaryDirectory() as tmp:
+            run = Path(tmp)
+            public = cm.de_plan(setup, "dry pass", self.tag, today)
+            (run / "manifest.json").write_text(setup["manifest"] + "\n", encoding="utf-8")
+            (run / "plan.json").write_text(json.dumps(public), encoding="utf-8")
+            self.assertEqual(public["today_sentence"], "Today is Monday 16 November 2026 (UTC).")
+            seen: list[dict[str, Any]] = []
+            systems: dict[str, str] = {}
+
+            class Policy(FakeBackend):
+                def write(self, event: str, **fields: object) -> None:
+                    if event != "commitment-session-started":
+                        return
+                    job = {k: fields[k] for k in ("session", "family", "arm")}
+                    seen.append(job)
+                    self.key = f"{job['family']}-{job['arm']}"
+                    f = families[str(job["family"])]
+                    x, y = f["stale_id"], f["target_id"]
+
+                    def execute(item: str) -> list[str]:
+                        return [act(text=f"I can exchange it for item {item}. Shall I proceed?"),
+                                act("exchange_delivered_order_items", order_id=f["order_id"],
+                                    item_ids=[f["current"]["item_id"]], new_item_ids=[item],
+                                    payment_method_id=f["payment_id"]),
+                                act(text="The exchange has been processed.")]  # fmt: skip
+
+                    decline = [act(text="I can't act on that without the exact item.")] * 12
+                    self.replies = {"S1a": [act(text="Options."), act(text=f"Item {x}: is that the one?")],
+                                    "S1b": [act(text=f"Item {y}: is that the one?")],
+                                    "Hn": execute(y), "M": execute(x), "Mi": execute(y),
+                                    "Ho": decline, "Hod": execute(y)}[str(job["arm"])]  # fmt: skip
+
+                async def complete(
+                    self, system: str, prompt: str, response_schema: Any = None
+                ) -> str:
+                    systems.setdefault(self.key, system)
+                    return await super().complete(system, prompt, response_schema)
+
+            options = {"exclude_uncommitted": True, "history_fn": cm.dated_history(today, run),
+                       "infra_continue": True}  # fmt: skip
+            first = cm.select(public["jobs"], "session1", [])
+            outcome = asyncio.run(run_jobs(setup, run, first, lambda _: Policy([]), [run], 3408, 400.0, 2688,
+                                           **options))  # fmt: skip
+            self.assertEqual((outcome["refused"], len(first)), ([], 64))
+            included = cm.committed(run)
+            self.assertEqual(len(included), 32)
+
+            shim_journal(run, "mem0", 192)
+            shim_journal(run, "honcho", 528)
+            ingested: dict[tuple[str, str], list[dict[str, Any]]] = {}
+            searched: dict[tuple[str, str], int] = {}
+            drained: list[str] = []
+
+            def gateway(
+                path: str, body: dict[str, Any], url: str = "", timeout: int = 0
+            ) -> dict[str, Any]:
+                if path == "/status":
+                    drained.append(body.get("scope", ""))
+                    return {"state": str((run / "mem0").resolve()), "honcho_workspace": cm.DE_CFG["workspace"],
+                            "honcho_workspace_by_prefix": cm.DE_WORKSPACES, "honcho_reasoning_level": None,
+                            "queue": {"total": 64, "completed": 64, "pending": 0, "in_progress": 0}}  # fmt: skip
+                if path == "/ingest":
+                    ingested.setdefault((body["provider"], body["scope"]), []).append(
+                        body["episode"]
+                    )
+                    return {"result": {}}
+                key = (body["provider"], body["scope"])
+                searched[key] = searched.get(key, 0) + 1
+                prefix, name = body["scope"].removeprefix("customer:")[:11], body["scope"][-3:]
+                f = families[name]
+                dated = (
+                    "On 13 November item {x}; on 15 November changed to item {y}."
+                    if prefix != "cmp-cm-d2u-"
+                    else "Item {x}, later item {y}. Do not process today."
+                )
+                return {"results": [dated.format(x=f["stale_id"], y=f["target_id"])]}
+
+            with mock.patch("research.provider_ingest.post", side_effect=gateway):
+                providers = cm.de_providers(setup, run, today)
+            self.assertEqual((providers["refused"], providers["ingestion_errors"]), ([], []))
+            self.assertEqual(drained.count("customer:cmp-cm-d2u-"), 1)
+            self.assertEqual(drained.count("customer:cmp-cm-d2d-"), 1)
+            self.assertEqual(len(ingested), 128)  # four separate scopes per family
+            for f in included:
+                streams = {(p, prefix): ingested[(p, f"customer:{prefix}{f}")]
+                           for p, prefix in (("mem0", "cmp-cm-d2u-"), ("mem0", "cmp-cm-d2i-"),
+                                             ("honcho", "cmp-cm-d2u-"), ("honcho", "cmp-cm-d2d-"))}  # fmt: skip
+                for (provider, prefix), episodes in streams.items():
+                    self.assertEqual([e["id"][-4:] for e in episodes], ["-s1a", "-s1b"])
+                    dated_text = provider == "mem0" and prefix == "cmp-cm-d2i-"
+                    for order, episode in zip("ab", episodes):
+                        label = cm.session_label(today, order)
+                        self.assertEqual(
+                            episode["lines"][0][1].startswith(label + "\n"), dated_text
+                        )
+                        self.assertEqual("times" in episode, prefix == "cmp-cm-d2d-")
+                    if prefix == "cmp-cm-d2d-":
+                        self.assertEqual(
+                            [e["times"][0][:10] for e in episodes], ["2026-11-13", "2026-11-15"]
+                        )
+                undated = [
+                    [line for _, line in e["lines"]] for e in streams[("mem0", "cmp-cm-d2u-")]
+                ]
+                self.assertEqual(
+                    undated,
+                    [[line for _, line in e["lines"]] for e in streams[("honcho", "cmp-cm-d2u-")]],
+                )
+            self.assertEqual(len(providers["retrievals"]), 128)
+            self.assertEqual(len(searched), 128)
+            self.assertEqual(
+                {k[1][9:20] for k in searched if k[0] == "mem0"}, {"cmp-cm-d2u-", "cmp-cm-d2i-"}
+            )
+            self.assertEqual(
+                {k[1][9:20] for k in searched if k[0] == "honcho"}, {"cmp-cm-d2u-", "cmp-cm-d2d-"}
+            )
+
+            second = cm.select(public["jobs"], "sessions", included)
+            self.assertEqual(len(second), 160)
+            seen.clear()
+            systems.clear()
+            outcome = asyncio.run(run_jobs(setup, run, second, lambda _: Policy([]), [run], 3408, 400.0, 2688,
+                                           **options))  # fmt: skip
+            self.assertEqual(outcome["refused"], [])
+            self.assertEqual(seen, second)  # the plan's seeded order
+            policy_today = setup["policy"] + "\n\n" + cm.today_sentence(today)
+            self.assertEqual(len(systems), 160)
+            for key, system in systems.items():
+                self.assertTrue(
+                    system.startswith(ACTOR_SYSTEM + policy_today), key
+                )  # same sentence, same place
+                self.assertEqual(system.count("Today is"), 1, key)
+                self.assertIn(NEUTRAL_HEADER, system, key)
+            self.assertIn(cm.session_label(today, "b"), systems["G01-Hn"])
+
+            rows = rows_from_runs(run)
+            result = analyse(rows)
+            self.assertEqual(
+                (result["included"], result["complete"], result["leakage_sessions"]), (32, True, 0)
+            )
+            arms = {
+                a: (v["successes"], v["n"], v["stale"], v["declined"])
+                for a, v in result["arms"].items()
+            }
+            self.assertEqual(arms, {"Hn": (32, 32, 0, 0), "M": (0, 32, 32, 0), "Mi": (32, 32, 0, 0),
+                                    "Ho": (0, 32, 0, 32), "Hod": (32, 32, 0, 0)})  # fmt: skip
+            primary, secondary = result["primary_success"], result["secondary_stale"]
+            self.assertEqual(set(primary), {"Mi vs M", "Hod vs Ho"})
+            self.assertEqual(
+                (primary["Mi vs M"]["arm_only"], primary["Hod vs Ho"]["arm_only"]), (32, 32)
+            )
+            self.assertEqual(secondary["Mi vs M"]["reference_only"], 32)
+            self.assertEqual(
+                result["descriptive_vs_hn"]["Ho vs Hn"]["success"]["reference_only"], 32
+            )
+            memory = result["provider_memory"]
+            self.assertEqual((memory["Hod"]["date_correct"], memory["M"]["date_correct"]), (32, 0))
+            self.assertEqual(
+                (memory["M"]["deferral_present"], memory["Mi"]["deferral_present"]), (32, 0)
+            )
+            write_csv(rows, run / "public.csv")
+            self.assertEqual(analyse(read_csv(run / "public.csv")), result)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -355,7 +355,7 @@ including the Honcho shim, 12-credit stop):
 | Spend | 2,118 of 3,120 requests (episodes 1,835 of 2,688; Mem0 shim 62 of 96; Honcho shim 221 of 336); 239.15 credits recorded, 240.15 charged (1 abort) of 360; max call 0.22 |
 | Memory text (counts only) | Deferral mentioned: M 30, Ho 30, Hoh 29 of 31; stated with no past-session marker (heuristic, sentence level): M 4, Ho 6, Hoh 6. Every M and Ho answer and 30 Hoh answers carry the session date (2026-11-14 / "November 14"), the same day as session 2. Session-ordering wording: M 23, Ho 31, Hoh 30 |
 
-### Proposed: timestamped changed-mind (not approved)
+### Timestamped changed-mind: proposal and dev check
 
 | Element | Proposal |
 |---|---|
@@ -368,3 +368,16 @@ including the Honcho shim, 12-credit stop):
 | Approved run setup (2026-11-15, recorded in `plan.json` before any call) | T = the run's UTC date. 1a starts at T−3 days 14:20 UTC, 1b at T−1 day 16:05 UTC, messages 40 s apart. One label format for Hn and Mem0's in-band first line ("Earlier session (1 of 2), <weekday dd Month yyyy>, 14:20 UTC:"); Honcho gets the same instants as per-message `created_at` and no in-band label. Every arm's session-2 system prompt adds the same "Today is <weekday dd Month yyyy> (UTC)." right after the policy. Budget 200 requests (episodes 144, Mem0 12, Honcho 45), 25-credit stop |
 | Result (`cb85968`; T = 2026-11-15) | **Gates passed**: ingestion 8/8 and retrieval 4/4 per provider; Honcho stored the backdated `created_at` (1a 2026-11-12 from 14:20, 1b 2026-11-14 from 16:05) and all 4 answers show those dates; zero leakage; no infrastructure events. Spend 132 of 200 requests (episodes 101, Mem0 8, Honcho 23), 15.09 of 25 credits |
 | Per family (D1-D4; outcome, stale; memory has Y / X; date-correct; deferral present tense) | Hn-dated ✓✓✓✓, 0 stale. M-inband ✓, ✗ (stale X), ✓, ✓; Y and X in all 4; date-correct 2/4 (Mem0's text also names T, its ingestion day); present-tense deferral 0/4. Ho-dated ✗ ×4, all declined (each asked for the exact item; none cited conflicting notes); Y in 1/4, X in 3/4; date-correct 4/4; present-tense deferral 0/4. Requests per session: Hn 6.8, M 6.8, Ho 11.8. Descriptive (undated pilot on the same dialogues: Hn 4/4, M 1/4 with 3 stale, Ho 0/4) |
+
+### Dated changed-mind evaluation (pre-specified before tag `changed-mind-dated-eval-v1`)
+
+| Element | Pre-specified |
+|---|---|
+| Approval and caps | Owner, 2026-11-15 ~13:42 ET ("A_five_arm"). Hard cap 3,408 requests: episodes 2,688 (7 sessions × 12 × 32), Mem0 shim 192, Honcho shim 528. Settled-credit stop 400; conservative total at the caps 392.7 (2,688 × 0.122 + 192 × 0.098 + 528 × 0.087, dated dev check rates), about 406 at the highest single-stage episode rate (0.127); expected about 2,240 requests and 258 credits. Call > 1 credit or un-journaled mismatch stops; journaled aborts charged 1.0 |
+| Families | 32 G families after the tag: seed = int(first 8 hex of SHA-256(tag commit)); namespace `AE-CHANGED-MIND-DATED-EVAL-v1-<seed>`; eval-v1 template pool; a fresh 8 × 8 name pool; disjoint from the DB and the C, D, E and F families; Y positions 8/8/8/8, X two after Y |
+| Dates | T = the UTC date when `plan.json` is first written, kept fixed if the run crosses midnight. 1a at T−3 days 14:20 UTC and 1b at T−1 day 16:05 UTC, messages 40 s apart. All five arms' session-2 system prompts add the same "Today is <T> (UTC)." right after the policy |
+| Arms and scopes | Hn (dated labels as the dev check); M (Mem0 user `cmp-cm-d2u-<family>`, undated, as changed-mind-eval-v1); Mi (Mem0 user `cmp-cm-d2i-<family>`, the dated label as each session's first line; Mem0 `created_at` is still ingestion time); Ho (Honcho workspace `changed-mind-dated-eval-v1-undated`, undated); Hod (workspace `changed-mind-dated-eval-v1-dated`, backdated `created_at`). Default Honcho level; one Mem0 store; never shared scopes. Seeded arm order in `plan.json`; customer and deferral wording unchanged |
+| Primary; secondary | Success, Mi vs M and Hod vs Ho: family-paired exact McNemar, two-sided α = 0.05, Holm across the two. Stale commitment: the same pairs, Holm across the two |
+| Descriptive | Each provider arm vs Hn (unadjusted); declined-to-act; retrieved Y/X ID, date-correct and present-tense-deferral booleans (batch O/P heuristic, counts only); requests and credits. Power: Holm significance needs ≥ 7 discordant families in one direction (6 for the second pair once the first is significant); non-significance is not equivalence |
+| Exclusion; failures | No 1a or 1b agreement → excluded from every arm, reported, not replaced. Infrastructure: one re-attempt, a second marks that session failed and the run continues; ingestion error recorded, retrieval error = no memory block. Budget, ledger, leakage or harness-logic stops halt the run; a harness-logic defect after the tag is reported as partial, with no amendment without the owner |
+| Analysis | [changed_mind_dated_analysis.py](changed_mind_dated_analysis.py) only; per-session CSV without transcripts, names or memory text |

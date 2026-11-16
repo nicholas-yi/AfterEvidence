@@ -13,7 +13,8 @@ Copilot shim (embeddings go to local nomic-embed-text). Operations:
   deriver queue and returns its counts.
 
 Optional config keys isolate later pilots from the memory-study stores: "state" (Mem0
-directory), "honcho_workspace" (workspace for "customer:" scopes) and
+directory), "honcho_workspace" (workspace for "customer:" scopes), "honcho_workspace_by_prefix"
+(a separate workspace per customer-scope prefix) and
 "honcho_reasoning_level" (null = the server default). Absent keys keep v1 behaviour.
 Episodes without an "outcome" get no outcome line. Optional "times" (ISO strings, one per line)
 become Honcho message created_at values; Mem0 has no equivalent in its open-source release.
@@ -257,6 +258,9 @@ class HonchoStore:
 
     def workspace(self, scope: str):
         customer = CONFIG.get("honcho_workspace", "ae-customer")
+        for prefix, workspace in CONFIG.get("honcho_workspace_by_prefix", {}).items():
+            if scope.startswith("customer:" + prefix):
+                customer = workspace
         name = customer if scope.startswith("customer:") else "ae-" + safe(scope)
         if name not in self.clients:
             self.clients[name] = self.factory(name)
@@ -384,10 +388,12 @@ async def status(request: Request):
     body = await request.json()
     result: dict[str, Any] = {"state": str(state().resolve()),
                               "honcho_workspace": CONFIG.get("honcho_workspace", "ae-customer"),
-                              "honcho_reasoning_level": CONFIG.get("honcho_reasoning_level", "low")}  # fmt: skip
+                              "honcho_reasoning_level": CONFIG.get("honcho_reasoning_level", "low"),
+                              "honcho_workspace_by_prefix": CONFIG.get("honcho_workspace_by_prefix", {})}  # fmt: skip
     if body.get("provider") == "honcho":
         honcho = store("honcho")
-        result["queue"] = await asyncio.to_thread(honcho.wait, honcho.workspace("customer:"))
+        scope = body.get("scope", "customer:")
+        result["queue"] = await asyncio.to_thread(honcho.wait, honcho.workspace(scope))
     return result
 
 

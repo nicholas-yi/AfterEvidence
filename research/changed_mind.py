@@ -82,6 +82,31 @@ DEFER = re.compile(r"today|next time|not (yet )?to (make|process|submit|proceed)
 PAST = re.compile(r"\b(previous|previously|earlier|prior|last (session|conversation|time)|first (session|conversation)|"
                   r"second (session|conversation)|at (that|the) time|that day|in (session|conversation) \d|"
                   r"had (asked|said|requested|wanted)|asked|said|requested|stated|indicated|mentioned|wanted)\b")  # fmt: skip
+DE_STAGE, DE_TAG = "cm-dated-eval-v1", "changed-mind-dated-eval-v1"
+DE_DIRECTORY = cp.RUNS / DE_STAGE
+DE_CFG = cp.PROVIDER_STAGES[DE_STAGE]
+DE_BUDGET = cp.BUDGETS[cp.STAGE_BUDGET[DE_STAGE]]
+DE_ARMS = ("Hn", "M", "Mi", "Ho", "Hod")
+# Separate scopes per arm: Mem0 users for M and Mi; Honcho workspaces for Ho and Hod.
+DE_PREFIXES = {"M": "cmp-cm-d2u-", "Ho": "cmp-cm-d2u-", "Mi": "cmp-cm-d2i-", "Hod": "cmp-cm-d2d-"}
+DE_WORKSPACES = {
+    "cmp-cm-d2u-": "changed-mind-dated-eval-v1-undated",
+    "cmp-cm-d2d-": "changed-mind-dated-eval-v1-dated",
+}
+CM_EVAL_SEED = 1549545006  # changed-mind-eval-v1 F families are avoided (names and IDs)
+DE_FIRST = ("Quinn", "Rosalind", "Silas", "Talia", "Ulric", "Vera", "Wren", "Xavier")
+DE_LAST = (
+    "Quarles",
+    "Rutherford",
+    "Sinclair",
+    "Thackeray",
+    "Underwood",
+    "Vandermeer",
+    "Whitlock",
+    "Yardley",
+)
+# Measured per-request credits (dated dev check; Mem0 and Honcho shims) used for the caps.
+DE_RATES = {"episode": 0.122, "mem0": 0.098, "honcho": 0.087}
 ASKS_EARLIER = re.compile(r"\b(?:previous|earlier|originally|before|last time|which item)\b")
 
 
@@ -108,12 +133,32 @@ def build_eval(base: dict[str, Any], pool: list[str], seed: int) -> list[dict[st
     return families
 
 
-def prepare(seed: int | None = None) -> dict[str, Any]:
+def build_dated_eval(base: dict[str, Any], pool: list[str], seed: int) -> list[dict[str, Any]]:
+    """32 G families from the tag-derived seed, disjoint from the C, D, E and F families."""
+    avoid = (
+        cp.build_eval_families(base, EVAL_SEED, pool)
+        + build(base, pool)
+        + build_eval(base, pool, CM_EVAL_SEED)
+    )
+    families = cp.build_eval_families(base, seed, pool, count=32, prefix="G", width=2,
+                                      namespace=f"AE-CHANGED-MIND-DATED-EVAL-v1-{seed}", avoid=avoid,
+                                      names=[(a, b) for a in DE_FIRST for b in DE_LAST])  # fmt: skip
+    for f in families:
+        alternatives = f["alternatives"]
+        f["stale_id"] = alternatives[(f["target_position"] + 2) % len(alternatives)]["item_id"]
+    return families
+
+
+def prepare(seed: int | None = None, dated: bool = False) -> dict[str, Any]:
     """Families (pilot D1-D4, or the 32 evaluation families for a seed), isolated DB, validated Y
     references and X (stale) exchanges; zero inference."""
-    setup = cp.prepare(
-        builder=build if seed is None else (lambda base, pool: build_eval(base, pool, seed))
-    )
+    if seed is None:
+        builder = build
+    elif dated:
+        builder = lambda base, pool: build_dated_eval(base, pool, seed)  # noqa: E731
+    else:
+        builder = lambda base, pool: build_eval(base, pool, seed)  # noqa: E731
+    setup = cp.prepare(builder=builder)
     for f in setup["families"].values():
         if len({f["stale_id"], f["target_id"], f["rejected_id"]}) != 3:
             raise cp.FatalStop(f"{f['family']}: X, Y and the rejected variant must differ.")
@@ -534,7 +579,9 @@ def summarize(directory: Path, setup: dict[str, Any]) -> dict[str, Any]:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Changed-mind pilot; dry run by default.")
-    parser.add_argument("--stage", choices=["pilot", "hoh", "eval", "dated"], default="dated")
+    parser.add_argument(
+        "--stage", choices=["pilot", "hoh", "eval", "dated", "dated-eval"], default="dated-eval"
+    )
     parser.add_argument("--phase", choices=["session1", "providers", "sessions"])
     parser.add_argument("--approved-requests", type=int)
     parser.add_argument("--note", help="Provenance note recorded in the plan (required to run).")
@@ -545,6 +592,8 @@ def main() -> int:
         return eval_main(parser, args)
     if args.stage == "dated":
         return dated_main(parser, args)
+    if args.stage == "dated-eval":
+        return de_main(parser, args)
     setup = prepare()
     if args.stage == "hoh":
         return hoh_main(parser, args, setup)
@@ -807,6 +856,212 @@ def dated_main(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int
     )
     print(json.dumps({"refused": outcome["refused"], "infra_events": outcome["infra_events"],
                       **{k: v for k, v in summary.items() if k != "rows"}}, indent=2, default=str))  # fmt: skip
+    return 1 if outcome["refused"] else 0
+
+
+def de_tag_state(tag: str = DE_TAG) -> dict[str, Any] | None:
+    import subprocess
+
+    root = Path(cp.__file__).resolve().parent.parent
+    names = (*EVAL_SOURCES, "changed_mind_dated_analysis.py")
+
+    def git(*args: str) -> bytes:
+        return subprocess.run(["git", *args], cwd=root, capture_output=True, check=True).stdout
+
+    try:
+        commit = git("rev-parse", f"{tag}^{{commit}}").decode().strip()
+    except subprocess.CalledProcessError:
+        return None
+    changed = [
+        n
+        for n in names
+        if git("show", f"{commit}:research/{n}") != (Path(cp.__file__).parent / n).read_bytes()
+    ]
+    return {
+        "tag": tag,
+        "commit": commit,
+        "seed": cp.eval_seed(commit),
+        "changed": changed,
+        "sources": names,
+    }
+
+
+def de_caps() -> dict[str, Any]:
+    caps = {"episodes": DE_CFG["episode_cap"], **DE_CFG["shim_caps"]}
+    conservative = (caps["episodes"] * DE_RATES["episode"] + caps["mem0"] * DE_RATES["mem0"]
+                    + caps["honcho"] * DE_RATES["honcho"])  # fmt: skip
+    return {"caps": caps, "hard_cap": DE_BUDGET["cap"], "credit_stop": DE_BUDGET["credit_stop"], "rates": DE_RATES,
+            "conservative_at_caps": round(conservative, 1),
+            "expected": "about 2,237 requests and 258 credits at the rates above: per family S1a+S1b 10.6, Hn 6.8, M 7.8, Mi 6.8, "
+                        "Ho 11.1, Hod 11.8 episode requests (1,757 total); Mem0 128 and Honcho about 352 shim requests",
+            "sensitivity": "with the highest single-stage episode rate (0.127, Hoh check) the at-caps total is about 406"}  # fmt: skip
+
+
+def de_plan(
+    setup: dict[str, Any], note: str | None, tag: dict[str, Any], today: dt.date
+) -> dict[str, Any]:
+    names = sorted(setup["families"])
+    first = [{"session": 1, "family": f, "arm": a} for f in names for a in ("S1a", "S1b")]
+    second = [{"session": 2, "family": f, "arm": a} for f in names for a in DE_ARMS]
+    random.Random(tag["seed"]).shuffle(second)
+    sources = {
+        n: hashlib.sha256((Path(cp.__file__).parent / n).read_bytes()).hexdigest()
+        for n in tag["sources"]
+    }
+    return {"stage": DE_STAGE, "tag": tag["tag"], "tag_commit": tag["commit"], "seed": tag["seed"],
+            "seed_rule": "int(first 8 hex of SHA-256(tag commit SHA))",
+            "namespace": f"AE-CHANGED-MIND-DATED-EVAL-v1-{tag['seed']}", "manifest_sha256": setup["manifest_sha256"],
+            "template_pool": setup["pool"], "today_utc": today.isoformat(), "today_sentence": today_sentence(today),
+            "sessions": {o: {"start_utc": session_start(today, o).isoformat(), "label": session_label(today, o)}
+                         for o in DATED_SESSIONS}, "message_gap_seconds": MESSAGE_GAP_SECONDS,
+            "arms": {"Hn": "dated labelled transcripts", "M": "Mem0 undated (as changed-mind-eval-v1)",
+                     "Mi": "Mem0 with a dated first line per session", "Ho": "Honcho undated, default level",
+                     "Hod": "Honcho backdated created_at, default level"},
+            "prefixes": DE_PREFIXES, "honcho_workspaces": DE_WORKSPACES, "budget": de_caps(),
+            "call_max": cp.CALL_MAX, "episode_cap": DE_CFG["episode_cap"], "shim_caps": DE_CFG["shim_caps"],
+            "session_requests": cp.SESSION_REQUESTS, "session_tools": cp.SESSION_TOOLS,
+            "header": cp.NEUTRAL_HEADER, "memory_max_chars": cp.HISTORY_MAX,
+            "exclusion": "no explicit 1a or 1b agreement: excluded from every arm, reported, not replaced",
+            "infra_rule": "second infrastructure failure: that session failed (infra); the run continues",
+            "analysis": "research/changed_mind_dated_analysis.py", "note": note, "sources": sources,
+            "jobs": first + second}  # fmt: skip
+
+
+def de_streams(
+    directory: Path, today: dt.date
+) -> dict[str, list[tuple[str, str, list[dict[str, Any]]]]]:
+    """Per family: four (provider, scope prefix, episodes) streams, each into its own scope."""
+    undated_m = provider_inputs(directory, DE_PREFIXES["M"])
+    inband = dated_inputs(directory, today, DE_PREFIXES["Mi"])
+    dated_ho = dated_inputs(directory, today, DE_PREFIXES["Hod"])
+    return {f: [("mem0", DE_PREFIXES["M"], undated_m[f]["episodes"]),
+                ("mem0", DE_PREFIXES["Mi"], inband[f]["episodes_mem0"]),
+                ("honcho", DE_PREFIXES["Ho"], undated_m[f]["episodes"]),
+                ("honcho", DE_PREFIXES["Hod"], dated_ho[f]["episodes_honcho"])] for f in undated_m}  # fmt: skip
+
+
+def de_providers(setup: dict[str, Any], directory: Path, today: dt.date) -> dict[str, Any]:
+    from research import provider_ingest
+
+    status = provider_ingest.post("/status", {"provider": "mem0"}, url=cp.GATEWAY)
+    problems = cp.shim_problems(directory, DE_CFG["shim_caps"])
+    if Path(status["state"]) != (directory / "mem0").resolve():
+        problems.append("gateway Mem0 state is not the fresh dated-eval directory")
+    if (
+        status["honcho_workspace"] != DE_CFG["workspace"]
+        or status.get("honcho_workspace_by_prefix") != DE_WORKSPACES
+        or status["honcho_reasoning_level"] is not None
+    ):
+        problems.append("gateway Honcho workspaces or level are not the dated-eval setting")
+    problems += cp.pilot_ledger(
+        cp.journal_rows(directory), DE_BUDGET["cap"], DE_BUDGET["credit_stop"]
+    )["reasons"]
+    if problems:
+        return {"refused": problems}
+    ledger, errors = directory / "ingest.jsonl", []
+    streams = de_streams(directory, today)
+    for family in sorted(streams):
+        for provider, prefix, episodes in streams[family]:
+            rows = provider_ingest.ingest_provider(
+                provider, cp.provider_scope(family, prefix), episodes, ledger, cp.GATEWAY
+            )
+            caps = cp.shim_problems(directory, DE_CFG["shim_caps"])
+            if caps:
+                return {"refused": caps}
+            errors += [
+                f"ingestion failed: {provider} {prefix}{family}"
+                for r in rows
+                if r["status"] != "ok"
+            ]
+    queues = {prefix: provider_ingest.post("/status", {"provider": "honcho", "scope": f"customer:{prefix}"},
+                                           url=cp.GATEWAY)["queue"] for prefix in DE_WORKSPACES}  # fmt: skip
+    (directory / "honcho-queue.json").write_text(json.dumps(queues) + "\n", encoding="utf-8")
+
+    def search(provider: str, scope: str, query: str) -> list[str]:
+        body = {"provider": provider, "scope": scope, "query": query}
+        return provider_ingest.post("/search", body, url=cp.GATEWAY, timeout=900)["results"]
+
+    records = cp.retrieve_memories(setup, directory, search, DE_PREFIXES["M"], sorted(streams),
+                                   ("M", "Mi", "Ho", "Hod"), DE_PREFIXES)  # fmt: skip
+    return {"refused": cp.shim_problems(directory, DE_CFG["shim_caps"]), "ingestion_errors": errors,
+            "honcho_queues": queues, "retrievals": [cp.memory_meta(r) for r in records]}  # fmt: skip
+
+
+def de_main(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
+    tag = de_tag_state()
+    if tag is None:
+        if args.approved_requests is None:
+            print(
+                f"Dry run: tag {DE_TAG} not found; evaluation families are generated only after it."
+            )
+            print(json.dumps(de_caps(), indent=2))
+            return 0
+        parser.error(f"The evaluation needs the annotated protocol tag {DE_TAG}.")
+    if tag["changed"]:
+        parser.error(
+            f"Frozen sources differ from {DE_TAG}: {tag['changed']} (a deviation; not run)."
+        )
+    setup = prepare(tag["seed"], dated=True)
+    plan_path = DE_DIRECTORY / "plan.json"
+    stored = json.loads(plan_path.read_text(encoding="utf-8")) if plan_path.exists() else None
+    today = (
+        dt.date.fromisoformat(stored["today_utc"])
+        if stored
+        else dt.datetime.now(dt.timezone.utc).date()
+    )
+    setup["today"] = today_sentence(today)
+    if args.summarize:
+        from research.changed_mind_dated_analysis import analyse, rows_from_runs
+
+        print(json.dumps(analyse(rows_from_runs(DE_DIRECTORY)), indent=2))
+        return 0
+    public = de_plan(setup, args.note, tag, today)
+    if args.approved_requests is None:
+        print(
+            json.dumps(
+                {
+                    **public,
+                    "jobs": len(public["jobs"]),
+                    "references_validated": len(setup["tasks"]),
+                },
+                indent=2,
+            )
+        )
+        return 0
+    if args.approved_requests != DE_BUDGET["cap"] or not args.note or not args.phase:
+        parser.error(f"Live runs need --phase, --note and --approved-requests {DE_BUDGET['cap']}.")
+    if stored is not None and stored != public:
+        parser.error("The plan or frozen sources changed since the run started.")
+    if stored is None:
+        if any(DE_DIRECTORY.glob("*.calls.jsonl")):
+            parser.error("Run directory has journals but no plan; use a fresh directory.")
+        DE_DIRECTORY.mkdir(parents=True, exist_ok=True)
+        plan_path.write_text(json.dumps(public, indent=2) + "\n", encoding="utf-8")
+    if args.phase in ("providers", "sessions"):
+        done = {r["family"] for r in cp.final_reports(DE_DIRECTORY) if r.get("session") == 1}
+        if done != set(setup["families"]):
+            parser.error(f"Session 1 is incomplete: {sorted(set(setup['families']) - done)}")
+    included = committed(DE_DIRECTORY)
+    if args.phase == "providers":
+        excluded = sorted(set(setup["families"]) - set(included))
+        (DE_DIRECTORY / "exclusions.json").write_text(
+            json.dumps({"included": included, "excluded": excluded}, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        result = de_providers(setup, DE_DIRECTORY, today)
+        print(json.dumps(result, indent=2))
+        return 1 if result["refused"] else 0
+    jobs = select(public["jobs"], args.phase, included)
+    if args.phase == "sessions":
+        missing = [cp.job_id(j) for j in jobs if j["arm"] in cp.RETRIEVERS
+                   and not (DE_DIRECTORY / "memory" / f"{j['family']}-{j['arm']}.json").exists()]  # fmt: skip
+        if missing or cp.shim_problems(DE_DIRECTORY, DE_CFG["shim_caps"]):
+            parser.error(f"Sessions need every retrieval and clean shims: {missing}")
+    outcome = asyncio.run(cp.live_run(DE_DIRECTORY, args.model, DE_STAGE, jobs, setup,
+                                      history_fn=dated_history(today, DE_DIRECTORY), infra_continue=True,
+                                      exclude_uncommitted=True))  # fmt: skip
+    print(json.dumps({"refused": outcome["refused"], "infra_events": outcome["infra_events"],
+                      "sessions_run": len(outcome["results"])}, indent=2))  # fmt: skip
     return 1 if outcome["refused"] else 0
 
 
