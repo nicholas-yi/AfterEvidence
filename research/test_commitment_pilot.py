@@ -1780,7 +1780,11 @@ class HonchoFeaturesTests(unittest.TestCase):
         f = self.dev["families"]["D1"]
         x, y = f["stale_id"], f["target_id"]
         prompts = ["Which item did we agree on last time?", "Could you confirm which option you chose?",
-                   "What variant would you like?", "Can you tell me the item you agreed?"]  # fmt: skip
+                   "What variant would you like?", "Can you tell me the item you agreed?",
+                   # Stage 1 phrasings that the first detector missed (no question mark):
+                   "I have no record of an agreement. Please tell me which item you want instead.",
+                   "For the Makeup Kit, please choose one of the available options.",
+                   "To proceed, please tell me which Espresso Machine variant you want."]  # fmt: skip
         for prompt in prompts:
             customer = hf.RestatingCustomer(f, 2, "Nr")
             opening = customer.reply(OPENING)

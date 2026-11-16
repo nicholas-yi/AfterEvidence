@@ -55,13 +55,16 @@ ASK_ITEM = (
     "We already agreed on it last time. Please go ahead with that one "
     "and tell me the exact item ID you will use."
 )
-# "Which item" questions: a question mark plus a which/what or confirm/specify phrase about the item.
+# "Which item" requests, as questions or imperatives (Stage 1 showed agents mostly ask with
+# "please tell me which variant ..." or "please choose one of ..." and no question mark).
 ASKS_WHICH = re.compile(
-    r"\b(?:which|what)\b[^.?!]{0,60}\b(?:items?|options?|variants?|versions?|one|model|exchange|"
+    r"\b(?:which|what)\b[^.?!]{0,80}\b(?:items?|options?|variants?|versions?|one|model|exchange|"
     r"replacement|colou?r|size|style|configuration)\b|\b(?:confirm|specify|tell me|let me know|clarify|"
-    r"provide|share)\b[^.?!]{0,60}\b(?:items?|options?|variants?|versions?|one|replacement|exchange|"
-    r"details)\b"
+    r"provide|share|choose|pick|select)\b[^.?!]{0,80}\b(?:items?|options?|variants?|versions?|one|"
+    r"replacement|exchange|details)\b"
 )
+# Independent, deliberately broad audit of the restating customer (not the detector it uses).
+WHICH_AUDIT = re.compile(r"\b(?:which|choose|pick|select)\b")
 K_FIRST = ("Alaric", "Bettina", "Corwin", "Dagny", "Emrys", "Freya", "Gareth", "Hollis")
 K_LAST = ("Ashdown", "Blackwood", "Carrow", "Davenport", "Ellery", "Fairweather", "Greenhalgh",
           "Hartigan")  # fmt: skip
@@ -78,7 +81,7 @@ class RestatingCustomer(cm.ChangedMindCustomer):
     def reply(self, agent_text: str) -> str:
         text = super().reply(agent_text)
         if (self.phase == "2" and self.arm in cp.RESTATING_ARMS and text == ASK_ITEM
-                and "?" in agent_text and ASKS_WHICH.search(agent_text.casefold())):  # fmt: skip
+                and ASKS_WHICH.search(agent_text.casefold())):  # fmt: skip
             self.restated += 1
             return f"{cp.RESTATEMENT}the {self._restated()}."
         return text
@@ -89,6 +92,20 @@ def restated(report: dict[str, Any]) -> int:
         m.get("role") == "user" and (m.get("content") or "").startswith(cp.RESTATEMENT)
         for m in report.get("messages") or []
     )
+
+
+def unanswered(report: dict[str, Any]) -> int:
+    """Restating arms: agent turns that ask which item but got the non-restating reply."""
+    if report.get("arm") not in cp.RESTATING_ARMS:
+        return 0
+    messages, count = report.get("messages") or [], 0
+    for i, m in enumerate(messages):
+        if m.get("role") == "assistant" and WHICH_AUDIT.search((m.get("content") or "").casefold()):
+            reply = next(
+                (x.get("content") for x in messages[i + 1 :] if x.get("role") == "user"), None
+            )
+            count += reply == ASK_ITEM
+    return count
 
 
 def _validate(setup: dict[str, Any]) -> dict[str, Any]:
@@ -328,7 +345,8 @@ def dev_summary(
         rows.append({"family": r["family"], "arm": r["arm"], "status": r.get("status"), "success": bool(r.get("success")),
                      "stale_commitment": stale, "declined": r.get("mutations") == 0,
                      "wrong_variant_other": int(r.get("wrong_variant_attempts") or 0) - stale,
-                     "restated": restated(r), "memory_error": bool(record.get("error")),
+                     "restated": restated(r), "unanswered_which": unanswered(r),
+                     "memory_error": bool(record.get("error")),
                      "memory_has_Y": f["target_id"] in text, "memory_has_X": f["stale_id"] in text,
                      "proposals_before_consent": r.get("proposals_before_consent"),
                      "requests": r.get("requests_started"), "attempt": r.get("attempt"),
@@ -338,6 +356,7 @@ def dev_summary(
     expected = len(setup["families"]) * len(DEV_ARMS)
     gates = {**{f"{arm}_retrieval_3of4": retrieved[arm] >= 3 for arm in RETRIEVALS},
              "zero_leakage": not any(r["leakage"] for r in rows),
+             "restating_customer_answered_every_which": not any(r["unanswered_which"] for r in rows),
              "no_harness_defect": len(rows) == expected and not (outcome or {}).get("refused")}  # fmt: skip
     rows_all = cp.journal_rows(directory)
     budget = cp.BUDGETS[cp.STAGE_BUDGET[DEV_STAGE]]
