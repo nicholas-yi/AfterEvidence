@@ -77,7 +77,8 @@ agent-learning evidence.
 - [Necessary-memory pilots and evaluation](commitment_pilot.py), its [analysis](commitment_analysis.py)
   and the [changed-mind pilot and evaluations](changed_mind.py) ([analysis](changed_mind_analysis.py),
   [dated analysis](changed_mind_dated_analysis.py)): synthetic multi-session exchange families,
-  scripted customer, oracle and capped runners (see design).
+  scripted customer, oracle and capped runners (see design); [Honcho features](honcho_features.py)
+  (message search, restating customer) and its [analysis](honcho_features_analysis.py).
 - [Run status](run_status.py): `python -m research.run_status --root research\runs\commitment\<stage> --budget`
   shows planned versus reported job IDs from file names, plus the runner's ledger, without opening any report.
 - Memory study: [protocol](PROTOCOL-MEMORY.md), [runbook](MEMORY-STUDY.md),

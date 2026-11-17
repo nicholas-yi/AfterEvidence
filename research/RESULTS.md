@@ -13,6 +13,47 @@ account data, and provider state. Earlier feasibility work is under
 [Development history](#development-history). Environment: unmodified
 MIT-licensed tau2-bench retail at `c06b07dd7c4d4ec61ba6ff9bcdf0b15dd7ef36d4`.
 
+## Honcho features evaluation
+
+Protocol: [design](DESIGN.md#honcho-features-owner-decision-staged_auto-2026-11-16), tag
+`honcho-features-eval-v1` (`b0238c8`). The [dated changed-mind task](#dated-changed-mind-evaluation)
+with 32 fresh families; every first-session agreement succeeded, so none is excluded and all 192
+follow-up sessions ran. Two questions: does Honcho's raw message search help more than its dialectic
+answer (family 1), and when the customer names the item if asked, does memory cause harm (family 2)?
+
+| Arm | Customer | Successes / n | Wilson 95% | Executed superseded X (harmful) | Declined | Customer restated | Credits / session |
+|---|---|---|---|---|---|---|---|
+| Hs: Honcho message search | never restates | 14 / 32 | 0.28-0.61 | 0 | 18 | — | 1.24 |
+| Hod: Honcho dialectic | never restates | 8 / 32 | 0.13-0.42 | 0 | 24 | — | 1.31 |
+| Nr: no memory | restates when asked | 32 / 32 | 0.89-1.00 | 0 | 0 | 32 | 1.10 |
+| Hnr: dated transcripts | restates when asked | 32 / 32 | 0.89-1.00 | 0 | 0 | 1 | 0.86 |
+| Hodr: Honcho dialectic | restates when asked | 27 / 32 | 0.68-0.93 | 0 | 4 | 21 | 1.05 |
+| Mir: Mem0, in-band dates | restates when asked | 30 / 32 | 0.80-0.98 | 2 | 0 | 9 | 0.86 |
+
+Exact family-paired McNemar. Family 1: Hs vs Hod, 11 / 5 discordant families, p = 0.21. Family 2
+(Holm across four), each vs Nr: Mir executed X 2 / 0, Holm 1.0; Hodr executed X 0 / 0, 1.0; success
+Hodr 0 / 5, Holm 0.25; Mir 0 / 2, Holm 1.0. Nothing is significant; with 32 families only large
+differences are detectable, and non-significance is not equivalence. Ingestion and retrieval added
+5.11 (Mem0) and 15.46 (Honcho, one journaled abort) credits.
+
+- Message search: every retrieval carried both items' exact IDs (the dialectic's: Y 21, X 17 of 32),
+  and successes rose from 8 to 14, not significantly; the agent still declined in 18 of 32 and never
+  executed X.
+- Restating customer ("restates when asked": after the opening, any agent turn that does not name
+  exactly one alternative gets Y with its ID, at most twice; a single proposed item gets the usual
+  target-blind consent). With that help, no memory at all succeeded 32 of 32, so memory mattered
+  mainly through harm: Mem0's memory led the agent to propose and execute the superseded X twice;
+  Honcho's never did, but 5 of its 32 sessions ended without an exchange (in 3 the customer had
+  consented to the agent's proposal and the agent still did not act).
+- Stage 1 (4 development families) found a defect in the first restating customer, which waited for
+  a question mark; its sessions are preserved as invalid and the rule above replaced it before the tag.
+- Scope: one model (Copilot Claude Haiku 5.5) as actor and as every provider's substituted LLM,
+  default pipelines, Honcho at its server default level, one synthetic retail task. A real customer
+  might object to a wrong proposal rather than consent. These describe this setup, not product quality.
+- Data: [per-session CSV](data/honcho-features-eval-v1-episodes.csv) (no transcripts, names or memory
+  text); `python -m research.honcho_features_analysis --csv research/data/honcho-features-eval-v1-episodes.csv`;
+  CI test `research.test_honcho_features_csv`.
+
 ## Dated changed-mind evaluation
 
 Protocol: [design](DESIGN.md#dated-changed-mind-evaluation-pre-specified-before-tag-changed-mind-dated-eval-v1),

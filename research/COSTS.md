@@ -278,3 +278,9 @@ credits.
   124, Honcho shim 338), **243.38 AI credits**, no aborts (max single call 0.23). A
   providers-phase launch error was rejected before any billed call. Cumulative:
   **19,235 requests**, about **2,178.16 credits** recorded.
+- Honcho features (owner decision "staged_auto"; tag `honcho-features-eval-v1`): Stage 1
+  dev check **205 requests** (episodes 176, Mem0 shim 8, Honcho shim 21), **23.86 credits**;
+  Stage 1b rerun **122 requests**, **13.98 credits**; Stage 2 evaluation **2,286 requests**
+  (episodes 2,031, Mem0 shim 64, Honcho shim 191) of 3,000, **259.08 AI credits** recorded,
+  260.08 charged with one abort at 1.0 (max single call 0.22). Cumulative: **21,848
+  requests**, about **2,475.08 credits** recorded.

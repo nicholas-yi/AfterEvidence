@@ -96,7 +96,7 @@ The sleep-style condition borrows the memory-level idea of replay, reweighting a
 [Language Models Need Sleep](https://arxiv.org/abs/2606.03979). That paper also trains model
 weights, which a hosted model cannot do, so only the memory-level idea is tested.
 
-### Six studies
+### Seven studies
 
 | Study | Question | Design |
 |---|---|---|
@@ -106,6 +106,7 @@ weights, which a hosted model cannot do, so only the memory-level idea is tested
 | **4. Remembering an agreement** | When a task is impossible without memory, does memory let the agent finish it? | 32 customers; an agreement in one conversation, "go ahead" in the next; 5 conditions |
 | **5. A change of mind** | If the customer changed the agreement later, does memory make the agent act on the latest one? | 32 customers; agreement, then a changed agreement, then "go ahead"; 5 conditions |
 | **6. Dated memories** | With real time between those conversations, does dating them help each memory system act on the latest agreement? | 32 new customers; Study 5 with the agreements 3 and 1 days old; each system undated vs dated; 5 conditions |
+| **7. Honcho features** | Does Honcho's raw message search beat its summarized answer, and does memory cause harm when the customer helps? | 32 new customers; Study 6's dated task; 6 conditions, 3 of them with a customer who names the item when asked |
 
 ### An analysis fixed before the data
 
@@ -252,6 +253,25 @@ Declining is a safe failure here only because the scripted customer never repeat
 one would likely say it when asked. Data:
 [per-conversation CSV](research/data/changed-mind-dated-eval-v1-episodes.csv).
 
+### Study 7: Honcho's features and a helpful customer
+
+32 new customers, Study 6's dated setup. Honcho's raw message search, rather than its summarized
+answer, gave the agent both items' exact IDs every time:
+
+| What the agent was given | Customer | Carried out the latest agreement | Carried out the superseded one |
+|---|---|---:|---:|
+| Honcho's summarized answer | never repeats the item | 8 of 32 | 0 |
+| Honcho's message search | never repeats the item | 14 of 32 | 0 |
+| Nothing | names the item when asked | 32 of 32 | 0 |
+| Both earlier conversations, dated | names the item when asked | 32 of 32 | 0 |
+| Honcho's summarized answer | names the item when asked | 27 of 32 | 0 |
+| Mem0, dates in the text | names the item when asked | 30 of 32 | 2 |
+
+None of the pre-specified comparisons was significant (search vs summary 11 vs 5 discordant
+customers, p = 0.21). With a customer who names the item on request, no memory was enough, and memory
+mattered mainly through harm: Mem0's memory twice led the agent to the superseded item, Honcho's never
+did. Data: [per-conversation CSV](research/data/honcho-features-eval-v1-episodes.csv).
+
 ### Takeaways
 
 - **Measure memory on actions, not answers.** The revealing failures (wrong order, stale address)
@@ -266,16 +286,20 @@ one would likely say it when asked. Data:
 - **Memory needs to know what came last.** When an agreement changed, transcripts kept the order and
   the agent followed the latest one; summarized memories either revived the superseded agreement or
   left the agent unsure enough to do nothing. Giving them real dates did not significantly change that.
+- **A helpful customer covers most memory gaps; harm is what remains.** When the customer named the
+  item on request, no memory succeeded every time, while a memory that recalled the old agreement could
+  still steer the agent to it.
 - **Deletion needs provenance.** Systems can only forget cleanly if they record where each memory
   came from.
 
 ## Verify the numbers
 
-Every Study 1, 2, 4, 5 and 6 table and both figures are recomputed from public per-episode tables,
+Every Study 1, 2, 4, 5, 6 and 7 table and both figures are recomputed from public per-episode tables,
 [memory-study-v1-episodes.csv](research/data/memory-study-v1-episodes.csv),
 [commitment-eval-v1-episodes.csv](research/data/commitment-eval-v1-episodes.csv),
-[changed-mind-eval-v1-episodes.csv](research/data/changed-mind-eval-v1-episodes.csv) and
-[changed-mind-dated-eval-v1-episodes.csv](research/data/changed-mind-dated-eval-v1-episodes.csv), which contain no
+[changed-mind-eval-v1-episodes.csv](research/data/changed-mind-eval-v1-episodes.csv),
+[changed-mind-dated-eval-v1-episodes.csv](research/data/changed-mind-dated-eval-v1-episodes.csv) and
+[honcho-features-eval-v1-episodes.csv](research/data/honcho-features-eval-v1-episodes.csv), which contain no
 transcripts, prompts, customer names or account data. CI fails if a published number or figure
 stops matching it:
 
@@ -285,7 +309,8 @@ python -m research.figures --check
 python -m research.commitment_analysis --csv research/data/commitment-eval-v1-episodes.csv
 python -m research.changed_mind_analysis --csv research/data/changed-mind-eval-v1-episodes.csv
 python -m research.changed_mind_dated_analysis --csv research/data/changed-mind-dated-eval-v1-episodes.csv
-python -m unittest research.test_memory_csv research.test_commitment_csv research.test_changed_mind_csv research.test_changed_mind_dated_csv -v
+python -m research.honcho_features_analysis --csv research/data/honcho-features-eval-v1-episodes.csv
+python -m unittest research.test_memory_csv research.test_commitment_csv research.test_changed_mind_csv research.test_changed_mind_dated_csv research.test_honcho_features_csv -v
 ```
 
 Rerunning the episodes needs the pinned benchmark, Copilot access and a request budget; see the
@@ -323,7 +348,7 @@ python -m afterevidence serve
 | Question | Status |
 |---|---|
 | Does labelling memories with when they were written, and whether they were later corrected, stop an agent from acting on stale ones? | A first small synthetic run could not separate the conditions: the agent checked the live account every time, ignoring stale and valid memories alike. No comparison result. |
-| Would provider memory that records when each fact was agreed, or retrieval that asks for the latest agreement, close the gap to transcripts in Study 5? | Dates tested in Study 6: dated memories reported the right dates (Mem0 28, Honcho 31 of 31) but did not significantly change the outcome for either system. Retrieval that asks for the latest agreement is not yet tested. |
+| Would provider memory that records when each fact was agreed, or retrieval that asks for the latest agreement, close the gap to transcripts in Study 5? | Dates tested in Study 6: dated memories reported the right dates (Mem0 28, Honcho 31 of 31) but did not significantly change the outcome for either system. Study 7: Honcho's raw message search instead of its summary carried exact IDs every time but did not significantly change success (14 vs 8 of 32). Retrieval that asks for the latest agreement is not yet tested. |
 | Do agents that query memory step by step, rather than once up front, benefit more? | Not yet tested. |
 
 Designs: [research design](research/DESIGN.md).
