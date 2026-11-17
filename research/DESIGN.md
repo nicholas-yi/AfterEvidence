@@ -392,6 +392,8 @@ including the Honcho shim, 12-credit stop):
 | Task and arms | The dated changed-mind task, customer who never restates. Arms in priority order: Hn (dated transcripts), Mi (Mem0 with in-band dates), Hod (Honcho dialectic), Hs (Honcho message search); ingestion and retrieval reuse the Honcho features code |
 | Dev check | Frozen cm-pilot-v1 D1-D4 dialogues (Haiku's session 1), fresh scopes `cmp-m2-d1-`; ≤ 260 requests (episodes 192, Mem0 12, Honcho 45), 35-credit stop. Gates: memory OK ≥ 3/4 for Mi, Hod, Hs; zero leakage; no harness defect |
 | Evaluation | After tag `second-model-eval-v1`: 32 P families (session 1 also by `gpt-6-luna`), disjoint from C-K; caps from measured dev costs. Primary (Holm across three): Mi, Hod and Hs each vs Hn on success. Secondary: executing X, the same pairs. Comparisons with the Haiku studies are descriptive only |
+| Dev run (2026-11-17, harness `42c7d9a`) | **Gates passed**: memory 4/4 for Mi, Hod and Hs; zero leakage; 16/16 sessions; no infrastructure events. `gpt-6-luna` served Mem0 and Honcho without shim errors. Spend 140 of 260 requests (episodes 112, Mem0 8, Honcho 20), 10.31 of 35 credits (0.076 per episode request). Descriptive (4 families): Hn 4/4, Mi 4/4, Hod 4/4, Hs 3/4 (D1: the agent exchanged Y before the customer's consent) |
+| Evaluation caps (set before the tag) | Episodes 1,544 (measured 38.6 per family incl. session 1 × 32 × 1.25), Mem0 96, Honcho 240 (× 1.5); hard cap 1,880; settled-credit stop 230; conservative at caps 218.7 credits using the higher Haiku-era rates (0.122 / 0.098 / 0.087) |
 
 ### Dated changed-mind evaluation (pre-specified before tag `changed-mind-dated-eval-v1`)
 

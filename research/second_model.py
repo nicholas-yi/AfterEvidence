@@ -14,6 +14,7 @@ Studies 6-7 are descriptive only.
 from __future__ import annotations
 
 import argparse
+import asyncio
 import hashlib
 import json
 from pathlib import Path
@@ -27,7 +28,7 @@ MODEL = "gpt-6-luna"
 DEV_STAGE, EVAL_STAGE, TAG = "m2-dev-v1", "m2-eval-v1", "second-model-eval-v1"
 DEV_DIRECTORY, EVAL_DIRECTORY = cp.RUNS / DEV_STAGE, cp.RUNS / EVAL_STAGE
 ARMS = ("Hn", "Mi", "Hod", "Hs")
-SOURCES = (*hf.SOURCES, "second_model.py")
+SOURCES = (*hf.SOURCES, "second_model.py", "second_model_analysis.py")
 P_FIRST = ("Ines", "Jorah", "Kestrel", "Lior", "Mireille", "Niall", "Odessa", "Perrin")
 P_LAST = (
     "Islington",
@@ -158,12 +159,114 @@ def dev_main(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
     return 1 if outcome["refused"] else 0
 
 
+def tag_state(tag: str = TAG) -> dict[str, Any] | None:
+    import subprocess
+
+    root = Path(cp.__file__).resolve().parent.parent
+
+    def git(*args: str) -> bytes:
+        return subprocess.run(["git", *args], cwd=root, capture_output=True, check=True).stdout
+
+    try:
+        commit = git("rev-parse", f"{tag}^{{commit}}").decode().strip()
+    except subprocess.CalledProcessError:
+        return None
+    changed = [
+        n
+        for n in SOURCES
+        if git("show", f"{commit}:research/{n}") != (Path(cp.__file__).parent / n).read_bytes()
+    ]
+    return {"tag": tag, "commit": commit, "seed": cp.eval_seed(commit), "changed": changed}
+
+
+def eval_plan(
+    setup: dict[str, Any], note: str | None, tag: dict[str, Any], today: Any
+) -> dict[str, Any]:
+    names = sorted(setup["families"])
+    first = [{"session": 1, "family": f, "arm": a} for f in names for a in ("S1a", "S1b")]
+    dev = DEV_DIRECTORY / "summary.json"
+    sources = {
+        n: hashlib.sha256((Path(cp.__file__).parent / n).read_bytes()).hexdigest() for n in SOURCES
+    }
+    return plan(setup, note, today, EVAL_STAGE, tag["seed"], {
+        "tag": tag["tag"], "tag_commit": tag["commit"], "seed": tag["seed"],
+        "seed_rule": "int(first 8 hex of SHA-256(tag commit SHA))", "template_pool": setup["pool"],
+        "namespace": f"AE-SECOND-MODEL-EVAL-v1-{tag['seed']}", "sources": sources,
+        "dev_check": hashlib.sha256(dev.read_bytes()).hexdigest() if dev.exists() else None,
+        "exclusion": "no explicit 1a or 1b agreement: excluded from every arm, reported, not replaced",
+        "analysis": "research/second_model_analysis.py: only arms complete for every included family"}, first)  # fmt: skip
+
+
+def eval_main(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
+    tag, directory = tag_state(), EVAL_DIRECTORY
+    if tag is None:
+        if args.approved_requests is None:
+            print(f"Dry run: tag {TAG} not found; evaluation families are generated only after it.")
+            print(json.dumps(hf.caps(EVAL_STAGE), indent=2))
+            return 0
+        parser.error(f"The evaluation needs the annotated protocol tag {TAG}.")
+    if tag["changed"]:
+        parser.error(f"Frozen sources differ from {TAG}: {tag['changed']} (a deviation; not run).")
+    setup = prepare(tag["seed"])
+    today = hf._today(directory)
+    setup["today"] = cm.today_sentence(today)
+    if args.summarize:
+        from research.second_model_analysis import analyse, rows_from_runs
+
+        print(json.dumps(analyse(rows_from_runs(directory)), indent=2))
+        return 0
+    public = eval_plan(setup, args.note, tag, today)
+    if args.approved_requests is None:
+        print(
+            json.dumps(
+                {
+                    **public,
+                    "jobs": len(public["jobs"]),
+                    "references_validated": len(setup["tasks"]),
+                },
+                indent=2,
+            )
+        )
+        return 0
+    hf._live(parser, args, EVAL_STAGE)
+    dev = DEV_DIRECTORY / "summary.json"
+    if not dev.exists() or json.loads(dev.read_text(encoding="utf-8"))["verdict"] != "PASS":
+        parser.error("The evaluation starts only after the dev check passed.")
+    hf._plan_file(directory, public, parser)
+    if args.phase in ("providers", "sessions"):
+        done = {
+            (r["family"], r["arm"]) for r in cp.final_reports(directory) if r.get("session") == 1
+        }
+        if done != {(f, a) for f in setup["families"] for a in ("S1a", "S1b")}:
+            parser.error("Session 1 is incomplete.")
+    included = cm.committed(directory)
+    if args.phase == "providers":
+        excluded = sorted(set(setup["families"]) - set(included))
+        (directory / "exclusions.json").write_text(
+            json.dumps({"included": included, "excluded": excluded}, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        result = hf.providers(setup, directory, directory, today, EVAL_STAGE)
+        mem0_record(directory, included)
+        print(json.dumps(result, indent=2))
+        return 1 if result["refused"] else 0
+    if args.phase == "session1":
+        outcome = asyncio.run(cp.live_run(directory, args.model, EVAL_STAGE, cm.select(public["jobs"], "session1", []),
+                                          setup, infra_continue=True, exclude_uncommitted=True))  # fmt: skip
+    else:
+        outcome = hf._sessions(args, parser, directory, EVAL_STAGE, cm.select(public["jobs"], "sessions", included),
+                               setup, directory)  # fmt: skip
+    print(json.dumps({"refused": outcome["refused"], "infra_events": outcome["infra_events"],
+                      "sessions_run": len(outcome["results"])}, indent=2))  # fmt: skip
+    return 1 if outcome["refused"] else 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Second-model replication of the dated changed-mind task."
     )
-    parser.add_argument("--stage", choices=["dev"], default="dev")
-    parser.add_argument("--phase", choices=["providers", "sessions"])
+    parser.add_argument("--stage", choices=["dev", "eval"], default="dev")
+    parser.add_argument("--phase", choices=["session1", "providers", "sessions"])
     parser.add_argument("--approved-requests", type=int)
     parser.add_argument("--note", help="Provenance note recorded in the plan (required to run).")
     parser.add_argument("--model", default=MODEL)
@@ -171,7 +274,11 @@ def main() -> int:
     args = parser.parse_args()
     if args.model != MODEL:
         parser.error(f"This stage runs {MODEL} only.")
-    return dev_main(parser, args)
+    if args.stage == "dev" and args.phase == "session1":
+        parser.error(
+            "The dev check reuses frozen session-1 dialogues; use --phase providers|sessions."
+        )
+    return eval_main(parser, args) if args.stage == "eval" else dev_main(parser, args)
 
 
 if __name__ == "__main__":

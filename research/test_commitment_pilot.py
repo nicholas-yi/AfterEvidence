@@ -2420,6 +2420,92 @@ class SecondModelTests(unittest.TestCase):
             & {x for f in families for x in (f["user_id"], f["order_id"], (f["first"], f["last"]))}
         )
 
+    def test_eval_dry_pass(self) -> None:
+        from unittest import mock
+
+        from research.honcho_features_analysis import read_csv, write_csv
+        from research.second_model_analysis import analyse, rows_from_runs
+
+        m2, today = self.m2, self.today
+        self.assertIsNone(m2.tag_state("no-such-tag-for-tests"))
+        tag = {"tag": m2.TAG, "commit": "3" * 40, "seed": eval_seed("3" * 40)}
+        setup = {**m2.prepare(tag["seed"]), "today": m2.cm.today_sentence(today)}
+        families, cfg = setup["families"], PROVIDER_STAGES[m2.EVAL_STAGE]
+        with tempfile.TemporaryDirectory() as tmp:
+            run = Path(tmp)
+            (run / "manifest.json").write_text(setup["manifest"] + "\n", encoding="utf-8")
+            public = m2.eval_plan(setup, "dry", tag, today)
+            seen: list[dict[str, Any]] = []
+            systems: dict[str, str] = {}
+            Policy = _features_policy(
+                families, seen, systems, {"Hn": "Y", "Mi": "X", "Hod": "decline", "Hs": "Y"}
+            )
+            options = {
+                "exclude_uncommitted": True,
+                "history_fn": m2.hf.history(today, run),
+                "infra_continue": True,
+            }
+            first = m2.cm.select(public["jobs"], "session1", [])
+            outcome = asyncio.run(
+                run_jobs(
+                    setup, run, first, lambda _: Policy([]), [run], 1880, 230.0, 1544, **options
+                )
+            )
+            self.assertEqual((outcome["refused"], len(first)), ([], 64))
+            included = m2.cm.committed(run)
+            shim_journal(run, "mem0", 96)
+            shim_journal(run, "honcho", 240)
+
+            def gateway(
+                path: str, body: dict[str, Any], url: str = "", timeout: int = 0
+            ) -> dict[str, Any]:
+                if path == "/status":
+                    return {"state": str((run / "mem0").resolve()), "honcho_workspace": cfg["workspace"],
+                            "honcho_workspace_by_prefix": {}, "honcho_reasoning_level": None,
+                            "queue": {"total": 1, "completed": 1, "pending": 0, "in_progress": 0}}  # fmt: skip
+                if path == "/ingest":
+                    return {"result": {}}
+                f = families[body["scope"][-3:]]
+                return {"results": [f"Agreed {f['stale_id']}, then changed to {f['target_id']}."]}
+
+            with mock.patch("research.provider_ingest.post", side_effect=gateway):
+                result = m2.hf.providers(setup, run, run, today, m2.EVAL_STAGE)
+            m2.mem0_record(run, included)
+            self.assertEqual(result["refused"], [])
+            second = m2.cm.select(public["jobs"], "sessions", included)
+            self.assertEqual(len(second), 128)
+            seen.clear()
+            outcome = asyncio.run(
+                run_jobs(
+                    setup, run, second, lambda _: Policy([]), [run], 1880, 230.0, 1544, **options
+                )
+            )
+            self.assertEqual(outcome["refused"], [])
+            self.assertEqual(
+                [seen[i * 32]["arm"] for i in range(4)], list(m2.ARMS)
+            )  # arm blocks in priority order
+            rows = rows_from_runs(run)
+            analysis = analyse(rows)
+            self.assertEqual(
+                (analysis["included"], analysis["not_run_arms"], analysis["leakage_sessions"]),
+                (32, [], 0),
+            )
+            arms = {
+                a: (v["successes"], v["stale"], v["declined"]) for a, v in analysis["arms"].items()
+            }
+            self.assertEqual(
+                arms, {"Hn": (32, 0, 0), "Mi": (0, 32, 0), "Hod": (0, 0, 32), "Hs": (32, 0, 0)}
+            )
+            self.assertEqual(
+                analysis["primary_success"]["tests"]["Hod vs Hn (success)"]["reference_only"], 32
+            )
+            self.assertEqual(
+                analysis["secondary_stale"]["tests"]["Mi vs Hn (stale)"]["arm_only"], 32
+            )
+            self.assertEqual(analysis["arms"]["Mi"]["memory_has_Y"], 32)
+            write_csv(rows, run / "public.csv")
+            self.assertEqual(analyse(read_csv(run / "public.csv")), analysis)
+
     def test_dev_dry_pass_and_analysis(self) -> None:
         from unittest import mock
 
