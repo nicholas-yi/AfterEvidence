@@ -17,7 +17,10 @@ directory), "honcho_workspace" (workspace for "customer:" scopes), "honcho_works
 (a separate workspace per customer-scope prefix) and
 "honcho_reasoning_level" (null = the server default). Absent keys keep v1 behaviour.
 A Honcho /search with "mode": "messages" returns workspace message search over both peers'
-messages in the customer's own sessions instead of a dialectic answer.
+messages in the customer's own sessions instead of a dialectic answer; "mode": "ask" sends the
+caller's question to the dialectic verbatim (mid-conversation memory tool). /honcho/facts writes
+the application's own conclusions about a customer (deleting its earlier ones) and /honcho/dream
+schedules one dream for a customer and waits for the queue to drain.
 Episodes without an "outcome" get no outcome line. Optional "times" (ISO strings, one per line)
 become Honcho message created_at values; Mem0 has no equivalent in its open-source release.
 
@@ -313,9 +316,13 @@ class HonchoStore:
         return [f"[{m.created_at:%Y-%m-%d %H:%M} UTC] {speaker.get(m.peer_id, m.peer_id)}: {m.content}"
                 for m in found]  # fmt: skip
 
-    def search(self, scope: str, query: str, level: str | None = None) -> list[str]:
+    def search(
+        self, scope: str, query: str, level: str | None = None, ask: bool = False
+    ) -> list[str]:
         honcho = self.workspace(scope)
-        if scope.startswith("customer:"):
+        if ask and scope.startswith("customer:"):
+            peer, question = honcho.peer(self.customer_id(scope, {})), query
+        elif scope.startswith("customer:"):
             peer = honcho.peer(self.customer_id(scope, {}))
             question = f"What is known about this customer that is relevant to their new request? Request: {query}"
         else:
@@ -328,6 +335,27 @@ class HonchoStore:
         answer = peer.chat(question, reasoning_level=level) if level else peer.chat(question)
         text = getattr(answer, "content", answer)
         return [str(text)] if text else []
+
+    def facts(
+        self, scope: str, facts: list[str], session: str, delete: list[str]
+    ) -> dict[str, Any]:
+        """Application-written conclusions about the customer; deletes its own earlier ones."""
+        customer = self.workspace(scope).peer(self.customer_id(scope, {}))
+        for conclusion_id in delete:
+            customer.conclusions.delete(conclusion_id)
+        made = customer.conclusions.create(
+            [{"content": fact, "session_id": safe(session)} for fact in facts]
+        )
+        return {"created": [c.id for c in made], "deleted": list(delete)}
+
+    def dream(self, scope: str) -> dict[str, Any]:
+        """One dream for the customer's self-representation, then two empty queue polls."""
+        honcho, customer = self.workspace(scope), self.customer_id(scope, {})
+        before = len(list(honcho.dreams(observed=customer)))
+        honcho.schedule_dream(customer)
+        queue = self.wait(honcho, limit=1800)
+        after = len(list(honcho.dreams(observed=customer)))
+        return {"queue": queue, "dream_runs_before": before, "dream_runs_after": after}
 
     def delete(self, scope: str, episode_id: str) -> dict[str, Any]:
         self.workspace(scope).session(safe(episode_id)).delete()
@@ -387,8 +415,26 @@ async def search(request: Request):
     body = await request.json()
     if body["provider"] == "honcho" and body.get("mode") == "messages":
         return {"results": await call("honcho", "messages", body["scope"], body["query"])}
+    if body["provider"] == "honcho" and body.get("mode") == "ask":
+        args = (body["scope"], body["query"], body.get("reasoning_level"), True)
+        return {"results": await call("honcho", "search", *args)}
     level = (body["reasoning_level"],) if body.get("reasoning_level") else ()
     return {"results": await call(body["provider"], "search", body["scope"], body["query"], *level)}
+
+
+@app.post("/honcho/facts")
+async def honcho_facts(request: Request):
+    body = await request.json()
+    async with lock("honcho"):
+        args = (body["scope"], body["facts"], body["session"], body.get("delete", []))
+        return {"result": await call("honcho", "facts", *args)}
+
+
+@app.post("/honcho/dream")
+async def honcho_dream(request: Request):
+    body = await request.json()
+    async with lock("honcho"):
+        return {"result": await call("honcho", "dream", body["scope"])}
 
 
 @app.post("/delete")

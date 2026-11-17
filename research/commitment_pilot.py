@@ -51,13 +51,24 @@ RETRIEVERS: dict[str, tuple[str, str | None]] = {"M": ("mem0", None), "Ho": ("ho
                                                  "Mi": ("mem0", None), "Hod": ("honcho", None),
                                                  # Honcho features: message search; restating customer.
                                                  "Hs": ("honcho", None), "Hodr": ("honcho", None),
-                                                 "Mir": ("mem0", None)}  # fmt: skip
+                                                 "Mir": ("mem0", None),
+                                                 # Stage 3: dream, app-written facts, facts direct.
+                                                 "Hdr": ("honcho", None), "Hw": ("honcho", None),
+                                                 "Fd": ("app", None)}  # fmt: skip
 # Session-2 arms whose customer names the agreed item (with its ID) only after the agent asks
 # which item (Honcho features design); Nr has no memory.
+# Ht has no memory block: it queries memory only through the mid-conversation tool.
 RESTATING_ARMS, NO_MEMORY_ARMS = (
     frozenset({"Nr", "Hnr", "Hodr", "Mir"}),
-    frozenset({"N", "R", "Nr"}),
+    frozenset({"N", "R", "Nr", "Ht"}),
 )
+MEMORY_TOOL = "recall_customer_memory"
+MEMORY_TOOL_SCHEMA = {"type": "function", "function": {
+    "name": MEMORY_TOOL,
+    "description": "Ask the customer-memory service a question about this customer's earlier "
+                   "conversations. Returns the service's answer.",
+    "parameters": {"type": "object", "properties": {"question": {"type": "string"}},
+                   "required": ["question"]}}}  # fmt: skip
 SHIM_CAPS, EPISODE_CAP = {"mem0": 14, "honcho": 50}, 96
 HONCHO_WORKSPACE, GATEWAY = "commitment-pilot-v5", "http://127.0.0.1:8900"
 EVAL_STAGE, EVAL_TAG, EVAL_ARMS = "eval-v1", "commitment-eval-v1", ("N", "Hc", "Hn", "M", "Ho")
@@ -71,6 +82,9 @@ PROVIDER_STAGES: dict[str, dict[str, Any]] = {
     "hf-dev-v1": {"prefix": "cmp-hf-d1-", "workspace": "honcho-features-dev-v1",
                   "shim_caps": {"mem0": 12, "honcho": 40}, "episode_cap": 240,
                   "stop_on_ingest_error": False},
+    "hf3-dev-v1": {"prefix": "cmp-h3d-", "workspace": "honcho-stage3-dev-v1",
+                   "shim_caps": {"honcho": 180, "app": 10}, "episode_cap": 210,
+                   "stop_on_ingest_error": False},
     "hf-dev-v2": {"prefix": "cmp-hf-d1-", "workspace": "honcho-features-dev-v1", "shim_caps": {},
                   "episode_cap": 192, "stop_on_ingest_error": False},
     "hf-eval-v1": {"prefix": "cmp-hf-e1-", "workspace": "honcho-features-eval-v1",
@@ -588,13 +602,15 @@ BUDGETS = {
     "hf-dev2": {"stages": ("hf-dev-v2",), "cap": 200, "credit_stop": 25.0},
     # Honcho features evaluation: everything <= 3,000 requests, 400 credits.
     "hf-eval": {"stages": ("hf-eval-v1",), "cap": 3000, "credit_stop": 400.0},
+    # Honcho Stage 3 dev check (owner, 2026-11-17; Lead cap): everything <= 400 requests, 50 credits.
+    "hf3-dev": {"stages": ("hf3-dev-v1",), "cap": 400, "credit_stop": 50.0},
 }
 STAGE_BUDGET = {stage: name for name, b in BUDGETS.items() for stage in b["stages"]}
 PHASE1 = [{"session": 1, "family": "C1", "arm": "S1"}, {"session": 1, "family": "C2", "arm": "S1"},
           {"session": 2, "family": "C1", "arm": "R"}, {"session": 2, "family": "C2", "arm": "R"}]  # fmt: skip
 INFRA_RETRIES, ABORT_CHARGE = 1, 1.0
 # Dev (C1-C4) and evaluation (E01-E32) family IDs (the C-only pattern stopped eval-v1).
-ATTEMPT = re.compile(r"^([CDEFGK]\d+-s\d+-\w+?)(?:-a(\d+))?\.json$")
+ATTEMPT = re.compile(r"^([CDEFGKL]\d+-s\d+-\w+?)(?:-a(\d+))?\.json$")
 
 
 def journal_rows(*directories: Path) -> list[dict[str, Any]]:
@@ -994,7 +1010,13 @@ async def run_session(
 ) -> dict[str, Any]:
     """One orchestrated session with the scripted customer; returns a report (no retries)."""
     from tau2.agent.llm_agent import LLMAgent, LLMAgentState
-    from tau2.data_model.message import AssistantMessage, MultiToolMessage, ToolCall, UserMessage
+    from tau2.data_model.message import (
+        AssistantMessage,
+        MultiToolMessage,
+        ToolCall,
+        ToolMessage,
+        UserMessage,
+    )
     from tau2.evaluator.evaluator_env import EnvironmentEvaluator
     from tau2.orchestrator.orchestrator import Orchestrator
     from tau2.user.user_simulator import UserSimulator
@@ -1012,6 +1034,12 @@ async def run_session(
     env = setup["constructor"]()
     schemas = [tool.openai_schema for tool in env.get_tools()]
     names = {tool.name for tool in env.get_tools()}
+    # Stage 3 memory tool: only listed session-2 arms, at most memory_tool_cap calls per session.
+    recall = (setup.get("memory_tool") if job["session"] == 2
+              and job["arm"] in setup.get("memory_tool_arms", ()) else None)  # fmt: skip
+    memory_calls: list[dict[str, Any]] = []
+    if recall:
+        schemas, names = [*schemas, MEMORY_TOOL_SCHEMA], names | {MEMORY_TOOL}
     custom = setup.get("customer")  # changed-mind design supplies its own customer
     customer = (
         custom(family, job["session"], job["arm"])
@@ -1042,8 +1070,8 @@ async def run_session(
                 raise FatalStop("Target leakage in session-2 actor inputs.")
             prompt = json.dumps({"tools": schemas,
                                  "messages": [m.model_dump(mode="json") for m in state.messages]}, default=str)  # fmt: skip
-            text, note = invoke(system, prompt), ""
-            for attempt in range(2):
+            text, note, attempt = invoke(system, prompt), "", 0
+            while True:
                 try:
                     value = WireCommand.model_validate_json(text).native(names)
                     if value["kind"] == "message":
@@ -1051,6 +1079,35 @@ async def run_session(
                     counters["tools"] += 1
                     if counters["tools"] > SESSION_TOOLS:
                         raise RuntimeError("Session tool cap reached.")
+                    if recall and value["name"] == MEMORY_TOOL:
+                        # Answered inside the agent turn: the service's reply is a tool result in
+                        # the actor's context (memory channel); no environment call, no DB change.
+                        question = str(value["arguments"].get("question") or "")
+                        if len(memory_calls) >= setup.get("memory_tool_cap", 2):
+                            answer, error = (
+                                "Memory tool call limit reached for this conversation.",
+                                "cap",
+                            )
+                        else:
+                            try:
+                                answer, error = recall(job["family"], question)[:HISTORY_MAX], None
+                            except FatalStop:
+                                raise
+                            except Exception as failure:  # recorded; the actor sees no memory
+                                answer, error = (
+                                    "Memory service unavailable.",
+                                    f"{type(failure).__name__}: {failure}"[:300],
+                                )
+                        memory_calls.append({"question": question, "chars": len(answer), "error": error,
+                                             "answer": answer})  # fmt: skip
+                        call = ToolCall(id=f"memory_{len(memory_calls)}", name=MEMORY_TOOL,
+                                        arguments={"question": question}, requestor="assistant")  # fmt: skip
+                        state.messages.extend([AssistantMessage(role="assistant", content=None, tool_calls=[call]),
+                                               ToolMessage(id=call.id, role="tool", content=answer, requestor="assistant")])  # fmt: skip
+                        prompt = json.dumps({"tools": schemas, "messages": [m.model_dump(mode="json")
+                                                                            for m in state.messages]}, default=str)  # fmt: skip
+                        text, attempt = invoke(system, prompt), 0
+                        continue
                     tool = next(t for t in env.get_tools() if t.name == value["name"])
                     arguments = tool.params.model_validate(value["arguments"]).model_dump()
                     call = ToolCall(id=f"call_{backend.calls}", name=tool.name, arguments=arguments,
@@ -1060,10 +1117,10 @@ async def run_session(
                     if attempt or counters["reasks"]:
                         raise
                     counters["reasks"] += 1
+                    attempt = 1
                     backend.write("actor-reask", error=str(error)[:500], rejected=text)
                     note = f"\n\nYour previous action was rejected: {str(error)[:300]} Return exactly one valid action."
                     text = invoke(system + note, prompt)
-            raise RuntimeError("Action loop ended without a decision.")
 
     class Customer(UserSimulator):
         def _generate_next_message(self, message, state: UserState) -> UserMessage:
@@ -1121,6 +1178,7 @@ async def run_session(
         )
     return {**job, "status": status, "error": error, "termination": termination,
             "requests_started": backend.calls, "reasks": counters["reasks"], "tools": counters["tools"],
+            **({"memory_tool_calls": memory_calls} if recall else {}),
             "history_chars": len(history or ""), "leakage": leakage, "lookups": sum(
                 c["name"].startswith(("get_", "find_", "list_")) for m in messages
                 if m.get("role") == "assistant" for c in (m.get("tool_calls") or [])), **result, "messages": messages}  # fmt: skip

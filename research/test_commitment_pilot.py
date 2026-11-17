@@ -2156,5 +2156,240 @@ class HonchoFeaturesTests(unittest.TestCase):
             )
 
 
+class Stage3Tests(unittest.TestCase):
+    """Honcho Stage 3: summarizer input, memory tool hook, facts/dream providers phase, dry pass."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        import datetime as dt
+
+        from research import honcho_stage3
+
+        cls.s3, cls.today = honcho_stage3, dt.date(2026, 11, 17)
+
+    def _policy(
+        self,
+        families: dict[str, Any],
+        plan_for: dict[str, str],
+        seen: list[Any],
+        prompts: dict[str, list[str]],
+    ) -> Any:
+        from research.commitment_pilot import MEMORY_TOOL
+
+        class Policy(FakeBackend):
+            def write(self, event: str, **fields: object) -> None:
+                if event != "commitment-session-started":
+                    return
+                self.key = f"{fields['family']}-{fields['arm']}"
+                seen.append(self.key)
+                f = families[str(fields["family"])]
+                y = f["target_id"]
+                execute = [act(text=f"I can exchange it for item {y}. Shall I proceed?"),
+                           act("exchange_delivered_order_items", order_id=f["order_id"], item_ids=[f["current"]["item_id"]],
+                               new_item_ids=[y], payment_method_id=f["payment_id"]),
+                           act(text="The exchange has been processed.")]  # fmt: skip
+                recall = act(MEMORY_TOOL, question="Which exchange did this customer agree last?")
+                self.replies = {"Y": execute, "decline": [act(text="I can't act without the exact item.")] * 12,
+                                "recall": [recall, *execute], "recall3": [recall, recall, recall, *execute]}[plan_for[str(fields["arm"])]]  # fmt: skip
+
+            async def complete(self, system: str, prompt: str, response_schema: Any = None) -> str:
+                prompts.setdefault(getattr(self, "key", ""), []).append(system + prompt)
+                return await super().complete(system, prompt, response_schema)
+
+        return Policy
+
+    def test_summarizer_sees_only_dated_transcripts(self) -> None:
+        from unittest import mock
+
+        s3, today = self.s3, self.today
+        families = s3.hf.prepare()["families"]
+        with tempfile.TemporaryDirectory() as tmp:
+            source = _first_session_source(Path(tmp), families)
+            first = s3.summarizer_input(source, "D1", today, "a")
+            both = s3.summarizer_input(source, "D1", today, "b")
+            self.assertEqual(both, s3.cm.dated_history_text(source, "D1", today))
+            self.assertTrue(
+                both.startswith(first) and first.startswith(s3.cm.session_label(today, "a"))
+            )
+            f = families["D1"]
+            self.assertNotIn(f["target_id"], first)  # 1a's transcript never mentions Y
+            for key in ("stale_id", "target_id", "rejected_id", "target_position"):
+                self.assertNotIn(key, both)
+            sent: list[Any] = []
+
+            class Reply:
+                def __enter__(self) -> Any:
+                    return self
+
+                def __exit__(self, *args: Any) -> None:
+                    pass
+
+                def read(self) -> bytes:
+                    content = (
+                        "Notes:\n- Current agreement: item 1.\n- Replaced: item 2.\nignored line"
+                    )
+                    return json.dumps({"choices": [{"message": {"content": content}}]}).encode()
+
+            def urlopen(request: Any, timeout: int = 0) -> Reply:
+                sent.append(json.loads(request.data))
+                return Reply()
+
+            with mock.patch("urllib.request.urlopen", side_effect=urlopen):
+                facts = s3.summarize(both, "token")
+            self.assertEqual(facts, ["Current agreement: item 1.", "Replaced: item 2."])
+            self.assertEqual(
+                [m["content"] for m in sent[0]["messages"]], [s3.SUMMARIZER_PROMPT, both]
+            )
+
+    def test_memory_tool_hook_counts_caps_and_stops(self) -> None:
+        from research.commitment_pilot import MEMORY_TOOL
+
+        s3 = self.s3
+        setup = {**s3.hf.prepare(), "today": s3.cm.today_sentence(self.today)}
+        families, asked = setup["families"], []
+
+        def recall(family: str, question: str) -> str:
+            asked.append((family, question))
+            return f"The customer changed to item {families[family]['target_id']}."
+
+        setup.update(memory_tool=recall, memory_tool_arms=("Ht",), memory_tool_cap=2)
+        jobs = [
+            {"session": 2, "family": "D1", "arm": "Ht"},
+            {"session": 2, "family": "D2", "arm": "Hod"},
+        ]
+        seen: list[Any] = []
+        prompts: dict[str, list[str]] = {}
+        Policy = self._policy(families, {"Ht": "recall3", "Hod": "decline"}, seen, prompts)
+        with tempfile.TemporaryDirectory() as tmp:
+            run = Path(tmp)
+            (run / "memory").mkdir()
+            (run / "memory" / "D2-Hod.json").write_text(
+                json.dumps({"text": "", "error": "x"}), encoding="utf-8"
+            )
+            outcome = asyncio.run(run_jobs(setup, run, jobs, lambda _: Policy([]), [run], 400, 50.0, 210,
+                                           history_fn=s3.history(), infra_continue=True))  # fmt: skip
+            self.assertEqual(outcome["refused"], [])
+            report = next(r for r in final_reports(run) if r["arm"] == "Ht")
+            calls = report["memory_tool_calls"]
+            self.assertEqual(
+                [c["error"] for c in calls], [None, None, "cap"]
+            )  # third call over the cap
+            self.assertEqual(len(asked), 2)
+            self.assertTrue(report["success"] and report["tools"] >= 3)
+            self.assertIn(
+                "changed to item", prompts["D1-Ht"][1]
+            )  # the answer is in the next prompt
+            self.assertTrue(all(MEMORY_TOOL in p for p in prompts["D1-Ht"]))
+            self.assertFalse(
+                any(MEMORY_TOOL in p for p in prompts["D2-Hod"])
+            )  # other arms: no tool
+            self.assertNotIn(
+                "memory_tool_calls", next(r for r in final_reports(run) if r["arm"] == "Hod")
+            )
+
+            def broken(family: str, question: str) -> str:
+                raise FatalStop("shim cap")
+
+            setup["memory_tool"] = broken
+            stop = Path(tmp) / "stop"
+            stop.mkdir()
+            outcome = asyncio.run(run_jobs(setup, stop, jobs[:1], lambda _: Policy([]), [stop], 400, 50.0, 210,
+                                           history_fn=s3.history(), infra_continue=True))  # fmt: skip
+            self.assertTrue(outcome["refused"])  # a shim stop is never swallowed as "no memory"
+
+    def test_dev_dry_pass(self) -> None:
+        from unittest import mock
+
+        s3, today = self.s3, self.today
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / "src").mkdir()
+            run = Path(tmp) / "run"
+            run.mkdir()
+            setup = {**s3.setup_for(s3.DEV_STAGE, run), "today": s3.cm.today_sentence(today)}
+            families = setup["families"]
+            source = _first_session_source(Path(tmp) / "src", families)
+            shim_journal(run, "honcho", 180)
+            shim_journal(run, "app", 10)
+            calls: dict[str, list[dict[str, Any]]] = {}
+            ids = iter(range(10**6))
+
+            def gateway(
+                path: str, body: dict[str, Any], url: str = "", timeout: int = 0
+            ) -> dict[str, Any]:
+                calls.setdefault(
+                    path + (":" + body["mode"] if body.get("mode") else ""), []
+                ).append(body)
+                if path == "/status":
+                    return {"state": "x", "honcho_workspace": "honcho-stage3-dev-v1", "honcho_reasoning_level": None,
+                            "honcho_workspace_by_prefix": s3.workspaces(s3.DEV_STAGE),
+                            "queue": {"total": 1, "completed": 1, "pending": 0, "in_progress": 0}}  # fmt: skip
+                if path == "/ingest":
+                    return {"result": {}}
+                if path == "/honcho/facts":
+                    return {
+                        "result": {
+                            "created": [f"c{next(ids)}" for _ in body["facts"]],
+                            "deleted": body["delete"],
+                        }
+                    }
+                if path == "/honcho/dream":
+                    return {"result": {"queue": {}, "dream_runs_before": 0, "dream_runs_after": 1}}
+                f = families[body["scope"][-2:]]
+                return {"results": [f"Agreed {f['stale_id']}, then changed to {f['target_id']}."]}
+
+            def summarizer(text: str) -> list[str]:
+                return [
+                    f"Summary of {len(text)} characters.",
+                    "Current agreement: the latest item.",
+                ]
+
+            with mock.patch("research.provider_ingest.post", side_effect=gateway):
+                result = s3.providers(
+                    setup, run, source, today, s3.DEV_STAGE, summarizer=summarizer
+                )
+            self.assertEqual((result["refused"], result["ingestion_errors"]), ([], []))
+            scopes = {b["scope"].removeprefix("customer:")[:8] for b in calls["/ingest"]}
+            self.assertEqual(scopes, {"cmp-h3d-", "cmp-h3r-", "cmp-h3w-"})
+            facts = calls["/honcho/facts"]
+            self.assertEqual(len(facts), 8)
+            self.assertTrue(
+                all(b["delete"] == [] for b in facts[0::2])
+                and all(len(b["delete"]) == 2 for b in facts[1::2])
+            )
+            self.assertEqual({b["scope"][-2:] for b in calls["/honcho/dream"]}, set(families))
+            fd = json.loads((run / "memory" / "D1-Fd.json").read_text(encoding="utf-8"))
+            expected = (f"- Summary of {len(s3.summarizer_input(source, 'D1', today, 'b'))} characters.\n"
+                        "- Current agreement: the latest item.")  # fmt: skip
+            self.assertIn(expected, fd["text"])  # Fd = the final (after 1b) summarizer facts
+            public = s3.plan(setup, "dry", today, source, s3.DEV_STAGE, s3.ARMS, s3.hf.DEV_SEED, {})
+            seen: list[Any] = []
+            prompts: dict[str, list[str]] = {}
+            Policy = self._policy(
+                families,
+                {"Hod": "decline", "Hdr": "Y", "Ht": "recall", "Hw": "Y", "Fd": "Y"},
+                seen,
+                prompts,
+            )
+            with mock.patch("research.provider_ingest.post", side_effect=gateway):
+                outcome = asyncio.run(run_jobs(setup, run, public["jobs"], lambda _: Policy([]), [run], 400, 50.0, 210,
+                                               history_fn=s3.history(), infra_continue=True))  # fmt: skip
+            self.assertEqual(outcome["refused"], [])
+            self.assertEqual(len(calls["/search:ask"]), 4)  # one memory-tool call per Ht session
+            self.assertTrue(
+                all(b["scope"].startswith("customer:cmp-h3d-") for b in calls["/search:ask"])
+            )
+            self.assertIn("Current agreement", prompts["D1-Fd"][0])
+            self.assertNotIn(NEUTRAL_HEADER, prompts.get("D1-Ht", [""])[0] + "")
+            summary = s3.dev_summary(run, setup, outcome)
+            self.assertEqual(summary["verdict"], "PASS", summary["gates"])
+            rows = {(r["family"], r["arm"]): r for r in summary["rows"]}
+            self.assertTrue(
+                all(
+                    rows[(f, "Ht")]["tool_calls"] == 1 and rows[(f, "Ht")]["tool_has_Y"]
+                    for f in families
+                )
+            )
+
+
 if __name__ == "__main__":
     unittest.main()
