@@ -272,7 +272,12 @@ def create_app(args: argparse.Namespace):
     from fastapi import FastAPI, HTTPException, Request
     from fastapi.responses import JSONResponse, StreamingResponse
 
-    from research.copilot_backend import CopilotBackend, isolated_client
+    from research.copilot_backend import (
+        CopilotBackend,
+        isolated_client,
+        quota_problem,
+        quota_snapshot,
+    )
 
     class ShimBackend(CopilotBackend):
         max_request_limit = 16000
@@ -283,6 +288,10 @@ def create_app(args: argparse.Namespace):
     async def lifespan(_app):
         client = isolated_client()
         await client.start()
+        problem = quota_problem(await quota_snapshot(client))
+        if problem:  # refuse to serve before any billed request
+            await client.stop()
+            raise RuntimeError(problem)
         journal = args.journal.open("x", encoding="utf-8", newline="\n")
         backend = ShimBackend(
             client,

@@ -904,7 +904,12 @@ async def live_run(
     directory: Path, model: str, stage: str, jobs: list[dict[str, Any]], setup: dict[str, Any],
     **options: Any,
 ) -> dict[str, Any]:  # fmt: skip
-    from research.copilot_backend import CopilotBackend, isolated_client, quota_snapshot
+    from research.copilot_backend import (
+        CopilotBackend,
+        isolated_client,
+        quota_problem,
+        quota_snapshot,
+    )
 
     directory.mkdir(parents=True, exist_ok=True)
     manifest = directory / "manifest.json"
@@ -916,9 +921,9 @@ async def live_run(
         selected = next((m for m in await client.list_models() if m.id == model), None)
         if selected is None or (selected.policy is not None and selected.policy.state != "enabled"):
             raise ValueError("Model is not enabled for this Copilot account.")
-        quota = (await quota_snapshot(client)).quota_snapshots.get("premium_interactions")
-        if quota is None or quota.remaining_percentage < 1:
-            raise RuntimeError("Quota unavailable or below 1%; no inference permitted.")
+        problem = quota_problem(await quota_snapshot(client))
+        if problem:
+            raise RuntimeError(problem)
 
         def make_backend(journal: Any) -> Any:
             return CopilotBackend(

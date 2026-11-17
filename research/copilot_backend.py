@@ -65,6 +65,22 @@ async def quota_snapshot(client: CopilotClient):
     return await client.rpc.account.get_quota(AccountGetQuotaRequest())
 
 
+# Owner rule (2026-11-17): research usage must stay inside the included allowance, never overage.
+QUOTA_FLOOR_PERCENT = 50.0
+
+
+def quota_problem(snapshot: Any) -> str | None:
+    """Why no inference may start, or None: premium quota unknown, any overage, or under the floor."""
+    quota = snapshot.quota_snapshots.get("premium_interactions")
+    if quota is None:
+        return "Premium quota unavailable; no inference permitted."
+    if (getattr(quota, "overage", 0) or 0) > 0:
+        return "Premium usage is already in overage; no inference permitted."
+    if quota.remaining_percentage < QUOTA_FLOOR_PERCENT:
+        return f"Premium quota below {QUOTA_FLOOR_PERCENT:.0f}% remaining; no inference permitted."
+    return None
+
+
 class CopilotBackend:
     max_request_limit = 30
 

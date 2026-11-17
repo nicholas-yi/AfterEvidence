@@ -91,5 +91,25 @@ class BackendTests(unittest.IsolatedAsyncioTestCase):
             self.assertIn("copilot-request-aborted", journal.getvalue())
 
 
+class QuotaGuardTests(unittest.TestCase):
+    def test_refuses_overage_low_and_unknown_quota(self) -> None:
+        from types import SimpleNamespace
+
+        from research.copilot_backend import quota_problem
+
+        def snapshot(**quota: object) -> SimpleNamespace:
+            premium = {"premium_interactions": SimpleNamespace(**quota)} if quota else {}
+            return SimpleNamespace(quota_snapshots=premium)
+
+        self.assertIsNone(quota_problem(snapshot(remaining_percentage=99.8, overage=0.0)))
+        self.assertIn("unavailable", quota_problem(snapshot()) or "")
+        self.assertIn(
+            "overage", quota_problem(snapshot(remaining_percentage=99.0, overage=1.0)) or ""
+        )
+        self.assertIn(
+            "below 50%", quota_problem(snapshot(remaining_percentage=49.9, overage=0.0)) or ""
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
