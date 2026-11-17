@@ -82,6 +82,9 @@ PROVIDER_STAGES: dict[str, dict[str, Any]] = {
     "hf-dev-v1": {"prefix": "cmp-hf-d1-", "workspace": "honcho-features-dev-v1",
                   "shim_caps": {"mem0": 12, "honcho": 40}, "episode_cap": 240,
                   "stop_on_ingest_error": False},
+    "hf3-eval-v1": {"prefix": "cmp-h3d-", "workspace": "honcho-stage3-eval-v1",
+                    "shim_caps": {"honcho": 1272, "app": 96}, "episode_cap": 2374,
+                    "stop_on_ingest_error": False},
     "m2-eval-v1": {"prefix": "cmp-m2-e1-", "workspace": "second-model-eval-v1",
                    "shim_caps": {"mem0": 96, "honcho": 240}, "episode_cap": 1544,
                    "stop_on_ingest_error": False},
@@ -614,6 +617,8 @@ BUDGETS = {
     "m2-dev": {"stages": ("m2-dev-v1",), "cap": 260, "credit_stop": 35.0},
     # Second-model evaluation, sized from the dev check: episodes 1,544, Mem0 96, Honcho 240.
     "m2-eval": {"stages": ("m2-eval-v1",), "cap": 1880, "credit_stop": 230.0},
+    # Honcho Stage 3 evaluation, sized from its dev check: episodes 2,374, Honcho 1,272, app 96.
+    "hf3-eval": {"stages": ("hf3-eval-v1",), "cap": 3742, "credit_stop": 450.0},
 }
 STAGE_BUDGET = {stage: name for name, b in BUDGETS.items() for stage in b["stages"]}
 PHASE1 = [{"session": 1, "family": "C1", "arm": "S1"}, {"session": 1, "family": "C2", "arm": "S1"},

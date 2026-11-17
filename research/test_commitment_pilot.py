@@ -2167,8 +2167,8 @@ class Stage3Tests(unittest.TestCase):
 
         cls.s3, cls.today = honcho_stage3, dt.date(2026, 11, 17)
 
+    @staticmethod
     def _policy(
-        self,
         families: dict[str, Any],
         plan_for: dict[str, str],
         seen: list[Any],
@@ -2392,6 +2392,130 @@ class Stage3Tests(unittest.TestCase):
                     for f in families
                 )
             )
+
+
+class Stage3EvaluationTests(unittest.TestCase):
+    """Honcho Stage 3 evaluation: L families, call-notes gate, 32-family dry pass and analysis."""
+
+    def test_eval_dry_pass_and_analysis(self) -> None:
+        import datetime as dt
+        from unittest import mock
+
+        from research import honcho_stage3 as s3
+        from research.honcho_features_analysis import read_csv
+        from research.honcho_stage3_analysis import analyse, rows_from_runs, write_csv
+
+        today = dt.date(2026, 11, 17)
+        self.assertTrue(s3.CALL_NOTES)  # recorded before the tag
+        self.assertIsNone(s3.tag_state("no-such-tag-for-tests"))
+        tag = {"tag": s3.TAG, "commit": "4" * 40, "seed": eval_seed("4" * 40)}
+        with tempfile.TemporaryDirectory() as tmp:
+            run = Path(tmp)
+            setup = {
+                **s3.setup_for(s3.EVAL_STAGE, run, tag["seed"]),
+                "today": s3.cm.today_sentence(today),
+            }
+            families = setup["families"]
+            self.assertEqual(sorted(families), [f"L{i:02d}" for i in range(1, 33)])
+            self.assertEqual(
+                Counter(f["target_position"] for f in families.values()), {0: 8, 1: 8, 2: 8, 3: 8}
+            )
+            (run / "manifest.json").write_text(setup["manifest"] + "\n", encoding="utf-8")
+            public = s3.eval_plan(setup, "dry", tag, today)
+            self.assertEqual(public["call_notes"], s3.CALL_NOTES)
+            budget = public["budget"]
+            self.assertLessEqual(budget["conservative_at_caps"], 450.0)
+            self.assertLessEqual(sum(budget["caps"].values()), budget["hard_cap"])
+            seen: list[Any] = []
+            prompts: dict[str, list[str]] = {}
+            Policy = Stage3Tests._policy(families, {"Hod": "decline", "Hdr": "Y", "Ht": "recall", "Hw": "Y",
+                                                         "Fd": "Y", "S1a": "s1", "S1b": "s1"}, seen, prompts)  # fmt: skip
+            first = s3.cm.select(public["jobs"], "session1", [])
+
+            class Session1(FakeBackend):
+                def write(self, event: str, **fields: object) -> None:
+                    if event == "commitment-session-started":
+                        f = families[str(fields["family"])]
+                        item = f["stale_id"] if fields["arm"] == "S1a" else f["target_id"]
+                        self.replies = (
+                            [act(text="Options.")] if fields["arm"] == "S1a" else []
+                        ) + [act(text=f"Item {item}: is that the one?")]
+
+            outcome = asyncio.run(run_jobs(setup, run, first, lambda _: Session1([]), [run], 3742, 450.0, 2374,
+                                           infra_continue=True, exclude_uncommitted=True))  # fmt: skip
+            self.assertEqual((outcome["refused"], len(s3.cm.committed(run))), ([], 32))
+            stage = PROVIDER_STAGES[s3.EVAL_STAGE]
+            shim_journal(run, "honcho", stage["shim_caps"]["honcho"])
+            shim_journal(run, "app", stage["shim_caps"]["app"])
+            ids = iter(range(10**6))
+
+            def gateway(
+                path: str, body: dict[str, Any], url: str = "", timeout: int = 0
+            ) -> dict[str, Any]:
+                if path == "/status":
+                    return {"state": "x", "honcho_workspace": stage["workspace"], "honcho_reasoning_level": None,
+                            "honcho_workspace_by_prefix": s3.workspaces(s3.EVAL_STAGE),
+                            "queue": {"total": 1, "completed": 1, "pending": 0, "in_progress": 0}}  # fmt: skip
+                if path == "/ingest":
+                    return {"result": {}}
+                if path == "/honcho/facts":
+                    return {
+                        "result": {
+                            "created": [f"c{next(ids)}" for _ in body["facts"]],
+                            "deleted": body["delete"],
+                        }
+                    }
+                if path == "/honcho/dream":
+                    return {"result": {"queue": {}, "dream_runs_before": 0, "dream_runs_after": 1}}
+                f = families[body["scope"][-3:]]
+                return {"results": [f"Agreed {f['stale_id']}, then changed to {f['target_id']}."]}
+
+            with mock.patch("research.provider_ingest.post", side_effect=gateway):
+                result = s3.providers(
+                    setup,
+                    run,
+                    run,
+                    today,
+                    s3.EVAL_STAGE,
+                    summarizer=lambda text: ["Current agreement."],
+                )
+                self.assertEqual(result["refused"], [])
+                second = s3.cm.select(public["jobs"], "sessions", s3.cm.committed(run))
+                self.assertEqual(len(second), 160)
+                outcome = asyncio.run(run_jobs(setup, run, second, lambda _: Policy([]), [run], 3742, 450.0, 2374,
+                                               history_fn=s3.history(), infra_continue=True))  # fmt: skip
+            self.assertEqual(outcome["refused"], [])
+            self.assertEqual(
+                [seen[i * 32].split("-")[1] for i in range(5)], list(s3.ARMS)
+            )  # arm blocks in priority order
+            rows = rows_from_runs(run)
+            analysis = analyse(rows)
+            self.assertEqual(
+                (analysis["included"], analysis["not_run_arms"], analysis["leakage_sessions"]),
+                (32, [], 0),
+            )
+            arms = {
+                a: (v["successes"], v["declined"], v["tool_sessions"])
+                for a, v in analysis["arms"].items()
+            }
+            self.assertEqual(
+                arms,
+                {
+                    "Hod": (0, 32, 0),
+                    "Hdr": (32, 0, 0),
+                    "Ht": (32, 0, 32),
+                    "Hw": (32, 0, 0),
+                    "Fd": (32, 0, 0),
+                },
+            )
+            self.assertEqual(
+                analysis["primary_success"]["tests"]["Hw vs Hod (success)"]["arm_only"], 32
+            )
+            self.assertEqual(
+                analysis["secondary_facts"]["tests"]["Hw vs Fd (success)"]["arm_only"], 0
+            )
+            write_csv(rows, run / "public.csv")
+            self.assertEqual(analyse(read_csv(run / "public.csv")), analysis)
 
 
 class SecondModelTests(unittest.TestCase):

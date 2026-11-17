@@ -41,7 +41,12 @@ PREFIXES = {"Hod": "cmp-h3d-", "Ht": "cmp-h3d-", "Hdr": "cmp-h3r-", "Hw": "cmp-h
 APP_SHIM, APP_URL = "app", "http://127.0.0.1:8815/v1/chat/completions"
 TOKEN_FILE = Path(cp.__file__).resolve().parent / "providers" / "shim-token.txt"  # git-ignored
 # Filled from the owner's notes after the Plastic Labs call, before any tag (Lead, 2026-11-17).
-CALL_NOTES: str | None = None
+CALL_NOTES: str | None = (
+    "Owner, 2026-11-17 ~13:00 ET: the Plastic Labs call did not cover models or configuration, so no "
+    "recommendation is recorded and none is adopted. Stage 3 keeps its pre-specified design: server "
+    "default level, claude-haiku-5.5 substituted for every provider LLM. A Plastic Labs-recommended "
+    "model remains untested (an unaddressed limitation)."
+)
 SUMMARIZER_PROMPT = (
     "You keep a customer-account record for a retail support application. Below are the dated "
     "transcripts of this customer's conversations so far, oldest first. Write the facts the "
@@ -50,7 +55,22 @@ SUMMARIZER_PROMPT = (
     "exact item IDs as stated in the transcripts. If an agreement was changed, state which "
     "agreement is current and which one it replaced."
 )
-SOURCES = (*hf.SOURCES, "honcho_stage3.py")
+SOURCES = (*hf.SOURCES, "honcho_stage3.py", "honcho_stage3_analysis.py")
+# Credits per request for the caps: the dev check's measured episode rate (higher than Study 6's),
+# Study 6's Honcho rate (higher than measured) and the episode rate for the app summarizer.
+RATES = {"episodes": 0.1253, "honcho": 0.087, APP_SHIM: 0.122}
+L_FIRST = ("Leander", "Marisol", "Nevin", "Oriana", "Pascal", "Rosalie", "Soren", "Tamsin")
+L_LAST = (
+    "Langford",
+    "Merriman",
+    "Nettleton",
+    "Overbury",
+    "Penhallow",
+    "Radcliffe",
+    "Stanhope",
+    "Tolliver",
+)
+M2_SEED = 2964917046  # second-model-eval-v1 P families are avoided
 
 
 def workspaces(stage: str) -> dict[str, str]:
@@ -234,11 +254,7 @@ def plan(setup: dict[str, Any], note: str | None, today: dt.date, source: Path, 
         common.pop(key, None)
     cfg, cap = cp.PROVIDER_STAGES[stage], cp.BUDGETS[cp.STAGE_BUDGET[stage]]
     limits = {"episodes": cfg["episode_cap"], **cfg["shim_caps"]}
-    rates = {
-        "episodes": hf.RATES["episode"],
-        "honcho": hf.RATES["honcho"],
-        APP_SHIM: hf.RATES["episode"],
-    }
+    rates = RATES
     common["budget"] = {"caps": limits, "hard_cap": cap["cap"], "credit_stop": cap["credit_stop"], "rates": rates,
                         "conservative_at_caps": round(sum(limits[k] * rates[k] for k in limits), 1)}  # fmt: skip
     return {**common, "call_notes": CALL_NOTES, "arms_priority": arms,
@@ -320,22 +336,134 @@ def setup_for(stage: str, directory: Path, seed: int | None = None) -> dict[str,
     return setup
 
 
-def prepare_eval(
-    seed: int,
-) -> dict[str, Any]:  # pragma: no cover - defined with the evaluation, after the dev check
-    raise NotImplementedError(
-        "The Stage 3 evaluation is defined after the dev check and the call notes."
-    )
+def build_eval(base: dict[str, Any], pool: list[str], seed: int) -> list[dict[str, Any]]:
+    """32 L families from the tag-derived seed, disjoint from the C-G, K and P families."""
+    from research import second_model as m2
+
+    avoid = (cp.build_eval_families(base, cm.EVAL_SEED, pool) + cm.build(base, pool)
+             + cm.build_eval(base, pool, cm.CM_EVAL_SEED) + cm.build_dated_eval(base, pool, hf.DE_SEED)
+             + hf.build_eval(base, pool, m2.HF_SEED) + m2.build_eval(base, pool, M2_SEED))  # fmt: skip
+    families = cp.build_eval_families(base, seed, pool, count=32, prefix="L", width=2,
+                                      namespace=f"AE-HONCHO-STAGE3-EVAL-v1-{seed}", avoid=avoid,
+                                      names=[(a, b) for a in L_FIRST for b in L_LAST])  # fmt: skip
+    for f in families:
+        alternatives = f["alternatives"]
+        f["stale_id"] = alternatives[(f["target_position"] + 2) % len(alternatives)]["item_id"]
+    return families
+
+
+def prepare_eval(seed: int) -> dict[str, Any]:
+    return hf._validate(cp.prepare(builder=lambda base, pool: build_eval(base, pool, seed)))
 
 
 def tag_state(tag: str = TAG) -> dict[str, Any] | None:
     root = Path(cp.__file__).resolve().parent.parent
+
+    def git(*args: str) -> bytes:
+        return subprocess.run(["git", *args], cwd=root, capture_output=True, check=True).stdout
+
     try:
-        commit = subprocess.run(["git", "rev-parse", f"{tag}^{{commit}}"], cwd=root, capture_output=True,
-                                check=True).stdout.decode().strip()  # fmt: skip
+        commit = git("rev-parse", f"{tag}^{{commit}}").decode().strip()
     except subprocess.CalledProcessError:
         return None
-    return {"tag": tag, "commit": commit, "seed": cp.eval_seed(commit)}
+    changed = [
+        n
+        for n in SOURCES
+        if git("show", f"{commit}:research/{n}") != (Path(cp.__file__).parent / n).read_bytes()
+    ]
+    return {"tag": tag, "commit": commit, "seed": cp.eval_seed(commit), "changed": changed}
+
+
+def eval_plan(
+    setup: dict[str, Any], note: str | None, tag: dict[str, Any], today: Any
+) -> dict[str, Any]:
+    names = sorted(setup["families"])
+    dev = DEV_DIRECTORY / "summary.json"
+    sources = {
+        n: hashlib.sha256((Path(cp.__file__).parent / n).read_bytes()).hexdigest() for n in SOURCES
+    }
+    public = plan(setup, note, today, EVAL_DIRECTORY, EVAL_STAGE, ARMS, tag["seed"], {
+        "tag": tag["tag"], "tag_commit": tag["commit"], "seed": tag["seed"],
+        "seed_rule": "int(first 8 hex of SHA-256(tag commit SHA))", "template_pool": setup["pool"],
+        "namespace": f"AE-HONCHO-STAGE3-EVAL-v1-{tag['seed']}", "sources": sources,
+        "dev_check": hashlib.sha256(dev.read_bytes()).hexdigest() if dev.exists() else None,
+        "exclusion": "no explicit 1a or 1b agreement: excluded from every arm, reported, not replaced",
+        "analysis": "research/honcho_stage3_analysis.py: only arms complete for every included family"})  # fmt: skip
+    first = [{"session": 1, "family": f, "arm": a} for f in names for a in ("S1a", "S1b")]
+    return {**public, "jobs": first + public["jobs"]}
+
+
+def eval_main(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
+    tag, directory = tag_state(), EVAL_DIRECTORY
+    if tag is None:
+        if args.approved_requests is None:
+            print(
+                f"Dry run: tag {TAG} not found; the tag needs CALL_NOTES and evaluation caps first."
+            )
+            return 0
+        parser.error(f"The evaluation needs the annotated protocol tag {TAG}.")
+    if tag["changed"]:
+        parser.error(f"Frozen sources differ from {TAG}: {tag['changed']} (a deviation; not run).")
+    if not CALL_NOTES:
+        parser.error(
+            "The Stage 3 evaluation needs the owner's Plastic Labs call notes (CALL_NOTES)."
+        )
+    setup = setup_for(EVAL_STAGE, directory, tag["seed"])
+    today = hf._today(directory)
+    setup["today"] = cm.today_sentence(today)
+    if args.summarize:
+        from research.honcho_stage3_analysis import analyse, rows_from_runs
+
+        print(json.dumps(analyse(rows_from_runs(directory)), indent=2))
+        return 0
+    public = eval_plan(setup, args.note, tag, today)
+    if args.approved_requests is None:
+        print(
+            json.dumps(
+                {
+                    **public,
+                    "jobs": len(public["jobs"]),
+                    "references_validated": len(setup["tasks"]),
+                },
+                indent=2,
+            )
+        )
+        return 0
+    hf._live(parser, args, EVAL_STAGE)
+    dev = DEV_DIRECTORY / "summary.json"
+    if not dev.exists() or json.loads(dev.read_text(encoding="utf-8"))["verdict"] != "PASS":
+        parser.error("The evaluation starts only after the dev check passed.")
+    hf._plan_file(directory, public, parser)
+    if args.phase in ("providers", "sessions"):
+        done = {
+            (r["family"], r["arm"]) for r in cp.final_reports(directory) if r.get("session") == 1
+        }
+        if done != {(f, a) for f in setup["families"] for a in ("S1a", "S1b")}:
+            parser.error("Session 1 is incomplete.")
+    included = cm.committed(directory)
+    if args.phase == "providers":
+        excluded = sorted(set(setup["families"]) - set(included))
+        (directory / "exclusions.json").write_text(
+            json.dumps({"included": included, "excluded": excluded}, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        result = providers(setup, directory, directory, today, EVAL_STAGE)
+        print(json.dumps(result, indent=2))
+        return 1 if result["refused"] else 0
+    if args.phase == "session1":
+        jobs, history_fn = cm.select(public["jobs"], "session1", []), None
+    else:
+        jobs, history_fn = cm.select(public["jobs"], "sessions", included), history()
+        missing = [cp.job_id(j) for j in jobs if j["arm"] in cp.RETRIEVERS
+                   and not (directory / "memory" / f"{j['family']}-{j['arm']}.json").exists()]  # fmt: skip
+        problems = cp.shim_problems(directory, cp.PROVIDER_STAGES[EVAL_STAGE]["shim_caps"])
+        if missing or problems:
+            parser.error(f"Sessions need every memory record and clean shims: {missing} {problems}")
+    outcome = asyncio.run(cp.live_run(directory, args.model, EVAL_STAGE, jobs, setup, history_fn=history_fn,
+                                      infra_continue=True, exclude_uncommitted=True))  # fmt: skip
+    print(json.dumps({"refused": outcome["refused"], "infra_events": outcome["infra_events"],
+                      "sessions_run": len(outcome["results"])}, indent=2))  # fmt: skip
+    return 1 if outcome["refused"] else 0
 
 
 def dev_main(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
@@ -386,8 +514,8 @@ def main() -> int:
     parser = argparse.ArgumentParser(
         description="Honcho Stage 3: dreaming, app-written facts, memory tool."
     )
-    parser.add_argument("--stage", choices=["dev"], default="dev")
-    parser.add_argument("--phase", choices=["providers", "sessions"])
+    parser.add_argument("--stage", choices=["dev", "eval"], default="dev")
+    parser.add_argument("--phase", choices=["session1", "providers", "sessions"])
     parser.add_argument("--approved-requests", type=int)
     parser.add_argument("--note", help="Provenance note recorded in the plan (required to run).")
     parser.add_argument("--model", default="claude-haiku-5.5")
@@ -397,7 +525,12 @@ def main() -> int:
         action="store_true",
         help="Only if the owner allows the dev check before the call notes are recorded.",
     )
-    return dev_main(parser, parser.parse_args())
+    args = parser.parse_args()
+    if args.stage == "dev" and args.phase == "session1":
+        parser.error(
+            "The dev check reuses frozen session-1 dialogues; use --phase providers|sessions."
+        )
+    return eval_main(parser, args) if args.stage == "eval" else dev_main(parser, args)
 
 
 if __name__ == "__main__":
