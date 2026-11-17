@@ -39,6 +39,7 @@ MEMORY_TOOL_CAP = 2
 # Customer-scope prefixes per arm; plain workspace = the stage's default workspace.
 PREFIXES = {"Hod": "cmp-h3d-", "Ht": "cmp-h3d-", "Hdr": "cmp-h3r-", "Hw": "cmp-h3w-"}
 APP_SHIM, APP_URL = "app", "http://127.0.0.1:8815/v1/chat/completions"
+TOKEN_FILE = Path(cp.__file__).resolve().parent / "providers" / "shim-token.txt"  # git-ignored
 # Filled from the owner's notes after the Plastic Labs call, before any tag (Lead, 2026-11-17).
 CALL_NOTES: str | None = None
 SUMMARIZER_PROMPT = (
@@ -85,7 +86,7 @@ def summarize(transcripts: str, token: str, model: str = "claude-haiku-5.5") -> 
 
 
 def _token() -> str:
-    return (cp.RUNS.parent / "providers" / "shim-token.txt").read_text(encoding="utf-8").strip()
+    return TOKEN_FILE.read_text(encoding="utf-8").strip()
 
 
 def memory_tool(directory: Path, stage: str) -> Any:

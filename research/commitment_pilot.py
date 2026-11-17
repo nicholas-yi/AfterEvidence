@@ -82,6 +82,9 @@ PROVIDER_STAGES: dict[str, dict[str, Any]] = {
     "hf-dev-v1": {"prefix": "cmp-hf-d1-", "workspace": "honcho-features-dev-v1",
                   "shim_caps": {"mem0": 12, "honcho": 40}, "episode_cap": 240,
                   "stop_on_ingest_error": False},
+    "m2-dev-v1": {"prefix": "cmp-m2-d1-", "workspace": "second-model-dev-v1",
+                  "shim_caps": {"mem0": 12, "honcho": 45}, "episode_cap": 192,
+                  "stop_on_ingest_error": False},
     "hf3-dev-v1": {"prefix": "cmp-h3d-", "workspace": "honcho-stage3-dev-v1",
                    "shim_caps": {"honcho": 180, "app": 10}, "episode_cap": 210,
                    "stop_on_ingest_error": False},
@@ -604,13 +607,15 @@ BUDGETS = {
     "hf-eval": {"stages": ("hf-eval-v1",), "cap": 3000, "credit_stop": 400.0},
     # Honcho Stage 3 dev check (owner, 2026-11-17; Lead cap): everything <= 400 requests, 50 credits.
     "hf3-dev": {"stages": ("hf3-dev-v1",), "cap": 400, "credit_stop": 50.0},
+    # Second-model (gpt-6-luna) dev check: episodes 192, Mem0 12, Honcho 45; <= 260 requests, 35 credits.
+    "m2-dev": {"stages": ("m2-dev-v1",), "cap": 260, "credit_stop": 35.0},
 }
 STAGE_BUDGET = {stage: name for name, b in BUDGETS.items() for stage in b["stages"]}
 PHASE1 = [{"session": 1, "family": "C1", "arm": "S1"}, {"session": 1, "family": "C2", "arm": "S1"},
           {"session": 2, "family": "C1", "arm": "R"}, {"session": 2, "family": "C2", "arm": "R"}]  # fmt: skip
 INFRA_RETRIES, ABORT_CHARGE = 1, 1.0
 # Dev (C1-C4) and evaluation (E01-E32) family IDs (the C-only pattern stopped eval-v1).
-ATTEMPT = re.compile(r"^([CDEFGKL]\d+-s\d+-\w+?)(?:-a(\d+))?\.json$")
+ATTEMPT = re.compile(r"^([CDEFGKLP]\d+-s\d+-\w+?)(?:-a(\d+))?\.json$")
 
 
 def journal_rows(*directories: Path) -> list[dict[str, Any]]:

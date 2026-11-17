@@ -2198,6 +2198,9 @@ class Stage3Tests(unittest.TestCase):
 
         return Policy
 
+    def test_token_file_is_the_shared_shim_token(self) -> None:
+        self.assertEqual(self.s3.TOKEN_FILE, RUNS.parent.parent / "providers" / "shim-token.txt")
+
     def test_summarizer_sees_only_dated_transcripts(self) -> None:
         from unittest import mock
 
@@ -2389,6 +2392,98 @@ class Stage3Tests(unittest.TestCase):
                     for f in families
                 )
             )
+
+
+class SecondModelTests(unittest.TestCase):
+    """Second-model replication (gpt-6-luna): generation, Mi record, dry pass and analysis."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        import datetime as dt
+
+        from research import second_model
+
+        cls.m2, cls.today = second_model, dt.date(2026, 11, 17)
+
+    def test_eval_families_are_fresh(self) -> None:
+        m2 = self.m2
+        families = list(m2.prepare(eval_seed("3" * 40))["families"].values())
+        self.assertEqual(sorted(f["family"] for f in families), [f"P{i:02d}" for i in range(1, 33)])
+        self.assertEqual(Counter(f["target_position"] for f in families), {0: 8, 1: 8, 2: 8, 3: 8})
+        others = [
+            *m2.hf.prepare(m2.HF_SEED)["families"].values(),
+            *m2.cm.prepare(m2.hf.DE_SEED, dated=True)["families"].values(),
+        ]
+        keys = {x for f in others for x in (f["user_id"], f["order_id"], (f["first"], f["last"]))}
+        self.assertFalse(
+            keys
+            & {x for f in families for x in (f["user_id"], f["order_id"], (f["first"], f["last"]))}
+        )
+
+    def test_dev_dry_pass_and_analysis(self) -> None:
+        from unittest import mock
+
+        from research.second_model_analysis import ARMS, analyse
+
+        m2, today = self.m2, self.today
+        setup = {**m2.prepare(), "today": m2.cm.today_sentence(today)}
+        families = setup["families"]
+        cfg = PROVIDER_STAGES[m2.DEV_STAGE]
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / "src").mkdir()
+            source, run = _first_session_source(Path(tmp) / "src", families), Path(tmp) / "run"
+            run.mkdir()
+            shim_journal(run, "mem0", 12)
+            shim_journal(run, "honcho", 45)
+
+            def gateway(
+                path: str, body: dict[str, Any], url: str = "", timeout: int = 0
+            ) -> dict[str, Any]:
+                if path == "/status":
+                    return {"state": str((run / "mem0").resolve()), "honcho_workspace": cfg["workspace"],
+                            "honcho_workspace_by_prefix": {}, "honcho_reasoning_level": None,
+                            "queue": {"total": 1, "completed": 1, "pending": 0, "in_progress": 0}}  # fmt: skip
+                if path == "/ingest":
+                    return {"result": {}}
+                f = families[body["scope"][-2:]]
+                return {"results": [f"Agreed {f['stale_id']}, then changed to {f['target_id']}."]}
+
+            with mock.patch("research.provider_ingest.post", side_effect=gateway):
+                result = m2.hf.providers(setup, run, source, today, m2.DEV_STAGE)
+            m2.mem0_record(run, sorted(families))
+            self.assertEqual(result["refused"], [])
+            mi = json.loads((run / "memory" / "D1-Mi.json").read_text(encoding="utf-8"))
+            mir = json.loads((run / "memory" / "D1-Mir.json").read_text(encoding="utf-8"))
+            self.assertEqual((mi["text"], mi["shared_from"]), (mir["text"], "Mir"))
+            public = m2.plan(setup, "dry", today, m2.DEV_STAGE, m2.hf.DEV_SEED, {})
+            self.assertEqual(
+                (public["model"], [j["arm"] for j in public["jobs"][::4]]),
+                ("gpt-6-luna", list(m2.ARMS)),
+            )
+            seen: list[dict[str, Any]] = []
+            systems: dict[str, str] = {}
+            Policy = _features_policy(
+                families, seen, systems, {"Hn": "Y", "Mi": "X", "Hod": "decline", "Hs": "Y"}
+            )
+            outcome = asyncio.run(run_jobs(setup, run, public["jobs"], lambda _: Policy([]), [run], 260, 35.0, 192,
+                                           exclude_uncommitted=True, history_fn=m2.hf.history(today, source),
+                                           infra_continue=True))  # fmt: skip
+            self.assertEqual(outcome["refused"], [])
+            summary = m2.summary(run, setup, outcome)
+            self.assertEqual(summary["verdict"], "PASS", summary["gates"])
+            rows = [
+                {"family": f, "session": 1, "arm": a, "commitment": True}
+                for f in families
+                for a in ("S1a", "S1b")
+            ]
+            rows += [{"family": r["family"], "session": 2, "arm": r["arm"], "success": r["success"],
+                      "stale_commitment": r["stale_commitment"], "declined": r["declined"]} for r in summary["rows"]]  # fmt: skip
+            result = analyse(rows, planned_families=4)
+            self.assertEqual(result["complete_arms"], list(ARMS))
+            self.assertEqual(
+                result["primary_success"]["tests"]["Hod vs Hn (success)"]["reference_only"], 4
+            )
+            self.assertEqual(result["secondary_stale"]["tests"]["Mi vs Hn (stale)"]["arm_only"], 4)
 
 
 if __name__ == "__main__":

@@ -36,7 +36,9 @@ FIELDS: tuple[str, ...] = (
 )  # fmt: skip
 
 
-def rows_from_runs(directory: Path) -> list[dict[str, Any]]:
+def rows_from_runs(
+    directory: Path, memory_arms: tuple[str, ...] = MEMORY_ARMS
+) -> list[dict[str, Any]]:
     """One public row per session (final attempt; requests and credits over all attempts)."""
     from research.commitment_pilot import final_reports, job_id, pilot_ledger
     from research.honcho_features import restated
@@ -76,13 +78,15 @@ def rows_from_runs(directory: Path) -> list[dict[str, Any]]:
                        unauthorized_attempts=r.get("unauthorized_attempts"), restated=restated(r),
                        proposals_before_consent=r.get("proposals_before_consent"), leakage=bool(r.get("leakage")))  # fmt: skip
             path = directory / "memory" / f"{r['family']}-{r['arm']}.json"
-            if r["arm"] in MEMORY_ARMS and path.exists():
+            if r["arm"] in memory_arms and path.exists():
                 record = json.loads(path.read_text(encoding="utf-8"))
                 text = record.get("text") or ""
                 row.update(memory_chars=record.get("chars"), memory_error=bool(record.get("error")),
                            memory_has_Y=family["target_id"] in text, memory_has_X=family["stale_id"] in text)  # fmt: skip
         rows.append(row)
-    order = {a: i for i, a in enumerate(("S1a", "S1b", *ARMS))}
+    names = ("S1a", "S1b", *ARMS)
+    names += tuple(a for a in (*memory_arms, "Hn") if a not in names)
+    order = {a: i for i, a in enumerate(names)}
     return sorted(rows, key=lambda x: (x["family"], x["session"], order.get(x["arm"], 99)))
 
 
