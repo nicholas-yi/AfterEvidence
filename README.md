@@ -304,13 +304,8 @@ transcripts, prompts, customer names or account data. CI fails if a published nu
 stops matching it:
 
 ```powershell
-python -m research.memory_analysis --csv research/data/memory-study-v1-episodes.csv
-python -m research.figures --check
-python -m research.commitment_analysis --csv research/data/commitment-eval-v1-episodes.csv
-python -m research.changed_mind_analysis --csv research/data/changed-mind-eval-v1-episodes.csv
-python -m research.changed_mind_dated_analysis --csv research/data/changed-mind-dated-eval-v1-episodes.csv
-python -m research.honcho_features_analysis --csv research/data/honcho-features-eval-v1-episodes.csv
-python -m unittest research.test_memory_csv research.test_commitment_csv research.test_changed_mind_csv research.test_changed_mind_dated_csv research.test_honcho_features_csv -v
+python -m research.benchmark verify   # every published table and both figures, from the CSVs
+python -m research.benchmark list     # each study's CSV and the command that recomputes its table
 ```
 
 Rerunning the episodes needs the pinned benchmark, Copilot access and a request budget; see the

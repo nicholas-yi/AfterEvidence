@@ -81,6 +81,9 @@ agent-learning evidence.
   (message search, restating customer) and its [analysis](honcho_features_analysis.py).
 - [Run status](run_status.py): `python -m research.run_status --root research\runs\commitment\<stage> --budget`
   shows planned versus reported job IDs from file names, plus the runner's ledger, without opening any report.
+- [Benchmark entry point](benchmark.py): `python -m research.benchmark list` names each study, its
+  public CSV and analysis; `python -m research.benchmark verify` recomputes every published table and
+  checks the figures (no model calls, no network).
 - Memory study: [protocol](PROTOCOL-MEMORY.md), [runbook](MEMORY-STUDY.md),
   [Copilot shim](copilot_shim.py), [provider gateway](memory_gateway.py),
   [memory builders](memory_bank.py), [retrievers](memory_retrievers.py),
@@ -120,6 +123,19 @@ overages; verify the account's stop-on-budget settings.
 The zero-inference preflight command deliberately exits nonzero for the pinned
 task 2 reference lookup failure. It reports every selected task; do not silently
 drop that result or treat a reference-control trajectory as agent success.
+
+### Add a memory system to the benchmark
+
+1. In [memory_gateway.py](memory_gateway.py), write a store with `ingest(scope, episode)`,
+   `search(scope, query) -> list[str]`, `delete(scope, episode_id)` and `dump(scope)`, and register
+   it in `store()`. Scopes are `customer:<prefix><family>`; an episode is
+   `{"id", "lines": [(speaker, text), ...], "times": [ISO time per line] (optional)}`.
+2. Add a retrieval arm to `RETRIEVERS` in [commitment_pilot.py](commitment_pilot.py) and to the
+   stage's arm list (for example in [honcho_features.py](honcho_features.py)).
+3. Run the fake-backend dry passes (`python -m unittest research.test_commitment_pilot`), then a
+   capped dev check; an evaluation needs an annotated protocol tag before its families are generated.
+4. Publish the per-session CSV, its analysis and a CSV test, and add the study to
+   [benchmark.py](benchmark.py) so `verify` covers it.
 
 ## Methodological boundaries
 
