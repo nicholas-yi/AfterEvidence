@@ -28,6 +28,12 @@ STUDIES = (
     ("7", "Does Honcho's message search beat its dialectic, and does memory harm a helpful customer?",
      "honcho-features-eval-v1-episodes.csv", "research.honcho_features_analysis",
      "research.test_honcho_features_csv"),
+    ("8", "Do Honcho's dreaming, an on-demand memory tool, or facts the app writes into Honcho help?",
+     "honcho-stage3-eval-v1-episodes.csv", "research.honcho_stage3_analysis",
+     "research.test_honcho_stage3_csv"),
+    ("9", "Do the change-of-mind results hold with a second model (gpt-6-luna) in every role?",
+     "second-model-eval-v1-episodes.csv", "research.second_model_analysis",
+     "research.test_second_model_csv"),
 )  # fmt: skip
 
 

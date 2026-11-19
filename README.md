@@ -75,7 +75,8 @@ reference outcome.
 
 The same model, Claude Haiku 5.5 (via GitHub Copilot), plays the agent, the simulated customer, and
 the internal LLM inside every memory system. Embeddings come from one local model. Differences
-between conditions therefore come from the memory, not from a different model.
+between conditions therefore come from the memory, not from a different model. Study 9 repeats the
+change-of-mind task with `gpt-6-luna` in every role.
 
 ### Nine memory designs on one budget
 
@@ -96,7 +97,7 @@ The sleep-style condition borrows the memory-level idea of replay, reweighting a
 [Language Models Need Sleep](https://arxiv.org/abs/2606.03979). That paper also trains model
 weights, which a hosted model cannot do, so only the memory-level idea is tested.
 
-### Seven studies
+### Nine studies
 
 | Study | Question | Design |
 |---|---|---|
@@ -107,6 +108,8 @@ weights, which a hosted model cannot do, so only the memory-level idea is tested
 | **5. A change of mind** | If the customer changed the agreement later, does memory make the agent act on the latest one? | 32 customers; agreement, then a changed agreement, then "go ahead"; 5 conditions |
 | **6. Dated memories** | With real time between those conversations, does dating them help each memory system act on the latest agreement? | 32 new customers; Study 5 with the agreements 3 and 1 days old; each system undated vs dated; 5 conditions |
 | **7. Honcho features** | Does Honcho's raw message search beat its summarized answer, and does memory cause harm when the customer helps? | 32 new customers; Study 6's dated task; 6 conditions, 3 of them with a customer who names the item when asked |
+| **8. More Honcho features** | Do Honcho's dreaming, an on-demand memory tool, or facts the app writes into Honcho help it act on the latest agreement? | 32 new customers; Study 6's dated task; 5 conditions, including the app's facts given directly without Honcho |
+| **9. A second model** | Do the change-of-mind results hold when another model plays every role? | 32 new customers; Study 6's dated task with `gpt-6-luna` instead of Claude Haiku 5.5; 4 conditions |
 
 ### An analysis fixed before the data
 
@@ -272,6 +275,43 @@ customers, p = 0.21). With a customer who names the item on request, no memory w
 mattered mainly through harm: Mem0's memory twice led the agent to the superseded item, Honcho's never
 did. Data: [per-conversation CSV](research/data/honcho-features-eval-v1-episodes.csv).
 
+### Study 8: what helps Honcho act on the latest agreement
+
+Study 6's dated setup with 30 new customers who never repeat the item (2 more were excluded because
+their first agreement failed):
+
+| What the agent was given | Carried out the latest agreement | Declined |
+|---|---:|---:|
+| Honcho's summarized answer | 8 of 30 | 22 |
+| The same, after Honcho "dreamed" over each customer | 12 of 30 | 18 |
+| No memory up front, but a tool to ask Honcho mid-conversation | 1 of 30 | 29 |
+| Facts our app wrote into Honcho, then Honcho's answer | 26 of 30 | 4 |
+| The same facts given directly, without Honcho | 29 of 30 | 1 |
+
+Only the app-written facts beat Honcho's plain answer significantly (adjusted p < 0.001), and giving
+those facts straight to the agent did as well, so the gain came from the app summarizing each
+conversation into "what was agreed last", not from Honcho itself. The agent rarely used the memory
+tool (5 of 30 conversations). No condition carried out the superseded item. Data:
+[per-conversation CSV](research/data/honcho-stage3-eval-v1-episodes.csv).
+
+### Study 9: a second model
+
+Study 6's dated setup with 32 new customers, `gpt-6-luna` playing the agent, the customer and the
+LLM inside each memory system, and a customer who never repeats the item:
+
+| What the agent was given | Carried out the latest agreement | Carried out the superseded one | Declined |
+|---|---:|---:|---:|
+| Both earlier conversations, dated | 30 of 32 | 0 | 0 |
+| Mem0, dates in the text | 20 of 32 | 10 | 1 |
+| Honcho's summarized answer | 27 of 32 | 0 | 2 |
+| Honcho's message search | 28 of 32 | 0 | 0 |
+
+Mem0 did significantly worse than the transcripts on both success and superseded actions (adjusted
+p = 0.04 and 0.006), as with Claude Haiku 5.5. Honcho's two conditions were close to the transcripts,
+unlike with Claude Haiku 5.5 (8 and 14 of 32), where the agent mostly declined to act. Both the agent
+and Honcho's internal model changed, so this cannot say which one mattered. Data:
+[per-conversation CSV](research/data/second-model-eval-v1-episodes.csv).
+
 ### Takeaways
 
 - **Measure memory on actions, not answers.** The revealing failures (wrong order, stale address)
@@ -289,17 +329,24 @@ did. Data: [per-conversation CSV](research/data/honcho-features-eval-v1-episodes
 - **A helpful customer covers most memory gaps; harm is what remains.** When the customer named the
   item on request, no memory succeeded every time, while a memory that recalled the old agreement could
   still steer the agent to it.
+- **Write down what was decided.** Having the app summarize each conversation into the latest
+  agreement fixed most failures (29 of 30 given directly, 26 of 30 through Honcho); what the memory
+  system stored on its own did not.
+- **Model choice can matter as much as the memory system.** With `gpt-6-luna` in every role, Honcho's
+  hesitation largely disappeared while Mem0's superseded-item harm remained.
 - **Deletion needs provenance.** Systems can only forget cleanly if they record where each memory
   came from.
 
 ## Verify the numbers
 
-Every Study 1, 2, 4, 5, 6 and 7 table and both figures are recomputed from public per-episode tables,
+Every Study 1, 2 and 4-9 table and both figures are recomputed from public per-episode tables,
 [memory-study-v1-episodes.csv](research/data/memory-study-v1-episodes.csv),
 [commitment-eval-v1-episodes.csv](research/data/commitment-eval-v1-episodes.csv),
 [changed-mind-eval-v1-episodes.csv](research/data/changed-mind-eval-v1-episodes.csv),
-[changed-mind-dated-eval-v1-episodes.csv](research/data/changed-mind-dated-eval-v1-episodes.csv) and
-[honcho-features-eval-v1-episodes.csv](research/data/honcho-features-eval-v1-episodes.csv), which contain no
+[changed-mind-dated-eval-v1-episodes.csv](research/data/changed-mind-dated-eval-v1-episodes.csv),
+[honcho-features-eval-v1-episodes.csv](research/data/honcho-features-eval-v1-episodes.csv),
+[honcho-stage3-eval-v1-episodes.csv](research/data/honcho-stage3-eval-v1-episodes.csv) and
+[second-model-eval-v1-episodes.csv](research/data/second-model-eval-v1-episodes.csv), which contain no
 transcripts, prompts, customer names or account data. CI fails if a published number or figure
 stops matching it:
 
@@ -328,11 +375,12 @@ python -m afterevidence serve
 
 ## Limitations
 
-- **One model, one domain.** Every role uses the same model on retail customer service; results may
-  differ for other models, retrieval styles or domains.
+- **Two models, one domain.** Studies 1-8 use Claude Haiku 5.5 in every role, on retail customer
+  service. Study 9 repeated the change-of-mind task with `gpt-6-luna`, and Honcho's results changed
+  markedly, so the findings depend on the model; other models, retrieval styles or domains may differ.
 - **Low power.** 26 tasks × 2 runs can detect only large effects (about 15-20 points).
-- **One retrieval per episode.** Memory was fetched once from the first message; agents that query
-  memory step by step were not tested.
+- **Mostly one retrieval per episode.** Memory was fetched once from the first message; only Study 8
+  tried an on-demand memory tool, with one model and one tool design.
 - **Default pipelines.** Each memory system ran its default configuration on a substituted model;
   their published results use other models.
 - **Simulated customers and narrow scoring.** The customer is an LLM whose fidelity has not been
@@ -343,8 +391,8 @@ python -m afterevidence serve
 | Question | Status |
 |---|---|
 | Does labelling memories with when they were written, and whether they were later corrected, stop an agent from acting on stale ones? | A first small synthetic run could not separate the conditions: the agent checked the live account every time, ignoring stale and valid memories alike. No comparison result. |
-| Would provider memory that records when each fact was agreed, or retrieval that asks for the latest agreement, close the gap to transcripts in Study 5? | Dates tested in Study 6: dated memories reported the right dates (Mem0 28, Honcho 31 of 31) but did not significantly change the outcome for either system. Study 7: Honcho's raw message search instead of its summary carried exact IDs every time but did not significantly change success (14 vs 8 of 32). Retrieval that asks for the latest agreement is not yet tested. |
-| Do agents that query memory step by step, rather than once up front, benefit more? | Not yet tested. |
+| Would provider memory that records when each fact was agreed, or retrieval that asks for the latest agreement, close the gap to transcripts in Study 5? | Dates tested in Study 6: dated memories reported the right dates (Mem0 28, Honcho 31 of 31) but did not significantly change the outcome for either system. Study 7: Honcho's raw message search instead of its summary carried exact IDs every time but did not significantly change success (14 vs 8 of 32). Study 8: facts the app writes into Honcho did (26 vs 8 of 30), as did the same facts without Honcho (29 of 30). Retrieval that asks for the latest agreement is not yet tested. |
+| Do agents that query memory step by step, rather than once up front, benefit more? | Study 8 gave the agent an on-demand Honcho memory tool instead of up-front memory: it called it in 5 of 30 conversations and succeeded once. Other tool designs and models are not yet tested. |
 
 Designs: [research design](research/DESIGN.md).
 

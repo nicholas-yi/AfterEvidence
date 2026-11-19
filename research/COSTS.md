@@ -121,6 +121,10 @@ feasibility gate and on a frozen, committed/tagged protocol.
   is 30. The pilot used that explicit minimum, not an unbounded session.
 - A per-session credit limit is not a cash prepayment. It also does not replace
   the account's overage/budget settings.
+- Since 2026-11-17 every live run and every shim refuses to start if Copilot reports
+  no premium quota, any overage use, or less than 50% of the monthly allowance left
+  ([copilot_backend.py](copilot_backend.py) `quota_problem`). It checks at start, not
+  per call; a spending limit in the account's GitHub billing settings is the backstop.
 - Older incompatible SDK/runtime, unavailable-model, relative-path, and
   too-small-limit attempts failed before inference. Their started journals
   remain, but they are not counted as completed successful model calls.
@@ -284,3 +288,12 @@ credits.
   (episodes 2,031, Mem0 shim 64, Honcho shim 191) of 3,000, **259.08 AI credits** recorded,
   260.08 charged with one abort at 1.0 (max single call 0.22). Cumulative: **21,848
   requests**, about **2,475.08 credits** recorded.
+- Honcho Stage 3 and second-model replication (owner "do them all", 2026-11-17; 1,200-credit
+  ceiling, quota guard on): Stage 3 dev check **309 requests**, **32.75 credits**; second-model
+  dev check (`gpt-6-luna`) **140 requests**, **10.31 credits**; second-model evaluation (tag
+  `second-model-eval-v1`) **1,451 of 1,880 requests** (episodes 1,227, Mem0 shim 64, Honcho shim
+  160), **100.61 credits**, no aborts (max single call 0.15); Stage 3 evaluation (tag
+  `honcho-stage3-eval-v1`) **2,656 of 3,742 requests** (episodes 1,734, Honcho shim 862, app shim
+  60), **266.90 credits** recorded, 273.90 charged with 7 aborts at 1.0 (max single call 0.22).
+  Together 410.57 recorded of the 1,200 ceiling. Cumulative: **26,404 requests**, about
+  **2,885.65 credits** recorded.

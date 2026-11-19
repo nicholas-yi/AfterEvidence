@@ -13,6 +13,84 @@ account data, and provider state. Earlier feasibility work is under
 [Development history](#development-history). Environment: unmodified
 MIT-licensed tau2-bench retail at `c06b07dd7c4d4ec61ba6ff9bcdf0b15dd7ef36d4`.
 
+## Second-model replication
+
+Protocol: [design](DESIGN.md#second-model-replication-owner-2026-11-17-just-use-cheap-stuff), tag
+`second-model-eval-v1` (`d5638f5`). The [dated changed-mind task](#dated-changed-mind-evaluation)
+(T = 2026-11-17) with 32 fresh families and `gpt-6-luna` in every role: actor, simulated customer
+(including session 1) and the substituted LLM inside Mem0 and Honcho. The customer never restates the
+item. Every first-session agreement succeeded; all 128 follow-up sessions ran.
+
+| Arm | Successes / n | Wilson 95% | Executed superseded X (harmful) | Declined | Hit the 12-request cap | Credits / session |
+|---|---|---|---|---|---|---|
+| Hn: both transcripts, dated labels | 30 / 32 | 0.80-0.98 | 0 | 0 | 2 | 0.56 |
+| Mi: Mem0, in-band dates | 20 / 32 | 0.45-0.77 | 10 | 1 | 2 | 0.54 |
+| Hod: Honcho dialectic, backdated | 27 / 32 | 0.68-0.93 | 0 | 2 | 3 | 0.56 |
+| Hs: Honcho message search | 28 / 32 | 0.72-0.95 | 0 | 0 | 4 | 0.58 |
+
+Primary (success; exact family-paired McNemar, Holm across three), each vs Hn: Mi 2 / 12 discordant
+families, p = 0.013, Holm 0.039; Hod 2 / 5, Holm 0.91; Hs 1 / 3, Holm 0.91. Secondary (X executed):
+Mi 10 / 0, Holm 0.006; Hod and Hs 0 / 0. Mem0 is the only memory significantly worse than
+transcripts, on both endpoints; non-significance for Honcho is not equivalence. Ingestion and
+retrieval added 2.79 (Mem0) and 7.55 (Honcho) credits.
+
+- Against the Claude Haiku 5.5 studies (different families; descriptive only): Mem0's harm
+  replicated (Study 6 Mi: 17 / 31, X 5), but Honcho's declines largely disappeared (dialectic 27 / 32
+  with 2 declines, against 8 / 31 with 22 in Study 6 and 8 / 32 with 24 in Study 7; search 28 / 32
+  against 14 / 32). The model changed for the actor and for Honcho's own LLM at once, so this design
+  cannot say which change mattered. Honcho's dialectic answers named Y's ID in 24 of 32 and X's in 1
+  (Haiku-served, Study 7: 21 and 17).
+- Mem0's memory held both IDs in 32 of 32; the agent proposed X and the customer consented in 10.
+- Of the 11 sessions that hit the request cap (a cap sized for Haiku), two Hod sessions had attempted
+  a write before the customer's consent.
+- Scope: one more model, one synthetic retail task, default pipelines, Honcho at its server default
+  level. These describe this setup, not product quality.
+- Data: [per-session CSV](data/second-model-eval-v1-episodes.csv) (no transcripts, names or memory
+  text); `python -m research.second_model_analysis --csv research/data/second-model-eval-v1-episodes.csv`;
+  CI test `research.test_second_model_csv`.
+
+## Honcho Stage 3 evaluation
+
+Protocol: [design](DESIGN.md#honcho-features-owner-decision-staged_auto-2026-11-16) (Stage 3 rows), tag
+`honcho-stage3-eval-v1` (`7b02b28`). The dated changed-mind task (T = 2026-11-17), customer who never
+restates, 32 fresh families. L03 and L04 had no 1a agreement (the agent's malformed tool call) and
+are excluded; 30 families, all 150 follow-up sessions ran. Built offline before the Plastic Labs
+call, whose notes recorded no configuration recommendation.
+
+| Arm | Successes / n | Wilson 95% | Executed superseded X | Declined | Credits / session |
+|---|---|---|---|---|---|
+| Hod: Honcho dialectic, backdated (baseline) | 8 / 30 | 0.14-0.44 | 0 | 22 | 1.25 |
+| Hdr: Hod after one Honcho dream per customer | 12 / 30 | 0.25-0.58 | 0 | 18 | 1.16 |
+| Ht: no memory block; on-demand Honcho memory tool | 1 / 30 | 0.01-0.17 | 0 | 29 | 1.51 |
+| Hw: app writes summarized facts into Honcho, then the dialectic | 26 / 30 | 0.70-0.95 | 0 | 4 | 0.88 |
+| Fd: the same facts given directly, no Honcho (control) | 29 / 30 | 0.83-0.99 | 0 | 1 | 0.87 |
+
+Primary (success; exact family-paired McNemar, Holm across three), each vs Hod: Hw 18 / 0 discordant
+families, Holm p < 0.001; Hdr 8 / 4, Holm 0.39; Ht 1 / 8, p = 0.039, Holm 0.078. Secondary (Holm
+across two): Fd vs Hod 21 / 0, p < 0.001; Hw vs Fd 1 / 4, p = 0.38. No arm executed X. Only Hw
+differs significantly from the dialectic, and Fd shows the gain comes from the app's facts: Honcho's
+storage and retrieval of them neither added nor detectably lost success (non-significance is not
+equivalence).
+
+- App-written facts: a frozen summarizer prompt (the same model, transcripts only, no labels) wrote the
+  latest agreement as structured facts after each first session; this is the application writing into
+  Honcho, not a Honcho capability. Both Hw's dialectic answers and Fd held Y's and X's IDs in 30 of 30
+  (Hod: Y 25, X 16).
+- Dreaming: one dream per customer was triggered and drained in 30 of 30; Hdr's answers held Y's ID in
+  19 (Hod 25). Honcho also ran its own threshold dreams on the shared agent peer once per workspace
+  during the sessions phase (24 extra Honcho calls; customer peers untouched).
+- Memory tool: the agent called it in only 5 of 30 sessions (5 calls, 1 success); without a memory
+  block it mostly declined.
+- Interruptions (design unchanged, owner decisions recorded): a ledger stop at 37 sessions caught
+  one of those dream calls in flight (it completed; resumed); the host later killed the runner with
+  one call in flight, journaled as an abort and re-attempted under the infra rule. L07-Hw timed out
+  twice and counts as a failure; L12-Hw recovered on its re-attempt.
+- Scope: one model (Copilot Claude Haiku 5.5) as actor, summarizer and Honcho's substituted LLM,
+  server default level, one synthetic retail task. These describe this setup, not product quality.
+- Data: [per-session CSV](data/honcho-stage3-eval-v1-episodes.csv) (no transcripts, names, facts or
+  memory text); `python -m research.honcho_stage3_analysis --csv research/data/honcho-stage3-eval-v1-episodes.csv`;
+  CI test `research.test_honcho_stage3_csv`.
+
 ## Honcho features evaluation
 
 Protocol: [design](DESIGN.md#honcho-features-owner-decision-staged_auto-2026-11-16), tag
