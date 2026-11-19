@@ -48,14 +48,32 @@ def run_family(family: list[dict], root: Path, cap: int, gateway: str) -> None:
             spec_path.write_text(
                 json.dumps({"kind": "text", "text": session_text(history)}), encoding="utf-8"
             )
-            jobs.append({"task": task, "condition": "session", "seed": 1, "memory_spec": str(spec_path),
-                         "output": str(root / "session" / f"task-{task}.json")})  # fmt: skip
+            jobs.append(
+                {
+                    "task": task,
+                    "condition": "session",
+                    "seed": 1,
+                    "memory_spec": str(spec_path),
+                    "output": str(root / "session" / f"task-{task}.json"),
+                }
+            )
             for provider in PROVIDERS:
                 spec = root / "specs" / f"{provider}-{task}.json"
-                spec.write_text(json.dumps({"kind": "gateway", "url": gateway, "provider": provider,
-                                            "scope": scope}), encoding="utf-8")  # fmt: skip
-                jobs.append({"task": task, "condition": provider, "seed": 1, "memory_spec": str(spec),
-                             "output": str(root / provider / f"task-{task}.json")})  # fmt: skip
+                spec.write_text(
+                    json.dumps(
+                        {"kind": "gateway", "url": gateway, "provider": provider, "scope": scope}
+                    ),
+                    encoding="utf-8",
+                )
+                jobs.append(
+                    {
+                        "task": task,
+                        "condition": provider,
+                        "seed": 1,
+                        "memory_spec": str(spec),
+                        "output": str(root / provider / f"task-{task}.json"),
+                    }
+                )
         run_jobs(jobs, root.parent, cap, workers=len(jobs))
         if index == len(family) - 1 or not baseline.exists():
             continue

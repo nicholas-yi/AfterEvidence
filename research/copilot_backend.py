@@ -5,14 +5,15 @@ import dataclasses
 import json
 import os
 from pathlib import Path
-from typing import Any, TextIO
+from typing import TYPE_CHECKING, Any, TextIO
 
-from copilot import CopilotClient
-from copilot.client import RuntimeConnection
-from copilot.generated.session_events import AssistantMessageData
-from copilot.generated.rpc import AccountGetQuotaRequest, PermissionDecisionReject
-from copilot.session import PermissionInvocation, PermissionRequest
 from pydantic import BaseModel
+
+if (
+    TYPE_CHECKING
+):  # the vendored SDK is imported where used, so the ledger logic tests run without it
+    from copilot import CopilotClient
+    from copilot.session import PermissionInvocation, PermissionRequest
 
 
 def data_value(value: object) -> object:
@@ -50,6 +51,9 @@ def isolated_client() -> CopilotClient:
         raise RuntimeError(
             "The pinned, checksum-verified Copilot 1.0.111-0 runtime is not installed."
         )
+    from copilot import CopilotClient
+    from copilot.client import RuntimeConnection
+
     base = Path(__file__).parent / "cache" / "copilot-isolated"
     base.mkdir(parents=True, exist_ok=True)
     return CopilotClient(
@@ -62,6 +66,8 @@ def isolated_client() -> CopilotClient:
 
 
 async def quota_snapshot(client: CopilotClient):
+    from copilot.generated.rpc import AccountGetQuotaRequest
+
     return await client.rpc.account.get_quota(AccountGetQuotaRequest())
 
 
@@ -134,6 +140,9 @@ class CopilotBackend:
             prompt=prompt,
             response_schema=schema,
         )
+
+        from copilot.generated.rpc import PermissionDecisionReject
+        from copilot.generated.session_events import AssistantMessageData
 
         def deny_permission(
             _request: PermissionRequest, _invocation: PermissionInvocation

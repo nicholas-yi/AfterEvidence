@@ -51,8 +51,15 @@ def provider_lifecycle(provider: str, trio: list[dict[str, Any]], gateway: str) 
     only_deleted = identifiers(deleted)
     only_kept = set().union(*(identifiers(e) for e in kept))
     for episode in trio:
-        post("/ingest", {"provider": provider, "scope": scope, "episode": dict(episode, id="life-" + episode["id"])},
-             url=gateway)  # fmt: skip
+        post(
+            "/ingest",
+            {
+                "provider": provider,
+                "scope": scope,
+                "episode": dict(episode, id="life-" + episode["id"]),
+            },
+            url=gateway,
+        )
     before = post("/dump", {"provider": provider, "scope": scope}, url=gateway)["results"]
     post(
         "/delete",

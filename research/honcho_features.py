@@ -49,9 +49,11 @@ RETRIEVALS = {
     "Mir": ("mem0", "search"),
 }
 SHARED = {"Hodr": "Hod"}
-OWNER = ('Owner decision "staged_auto" (ask_user, relayed by Lead, 2026-11-16 ~11:30 ET): Stage 1 '
-         "<= 350 requests / 40 credits; Stage 2 starts only if every Stage 1 gate passes, <= 3,000 "
-         "requests / 400 credits; Stage 3 (dream, conclusions, memory tool) deferred.")  # fmt: skip
+OWNER = (
+    'Owner decision "staged_auto" (ask_user, relayed by Lead, 2026-11-16 ~11:30 ET): Stage 1 '
+    "<= 350 requests / 40 credits; Stage 2 starts only if every Stage 1 gate passes, <= 3,000 "
+    "requests / 400 credits; Stage 3 (dream, conclusions, memory tool) deferred."
+)
 SOURCES = (*cm.SOURCES, "honcho_features.py", "honcho_features_analysis.py")
 # Measured Study 6 rates (credits per request) for the caps; replaced by Stage 1 rates if higher.
 RATES = {"episode": 0.122, "mem0": 0.098, "honcho": 0.087}
@@ -66,8 +68,16 @@ RESTATE_MAX = 2
 # Independent, deliberately broad audit of the restating customer (not the detector it uses).
 WHICH_AUDIT = re.compile(r"\b(?:which|choose|pick|select)\b")
 K_FIRST = ("Alaric", "Bettina", "Corwin", "Dagny", "Emrys", "Freya", "Gareth", "Hollis")
-K_LAST = ("Ashdown", "Blackwood", "Carrow", "Davenport", "Ellery", "Fairweather", "Greenhalgh",
-          "Hartigan")  # fmt: skip
+K_LAST = (
+    "Ashdown",
+    "Blackwood",
+    "Carrow",
+    "Davenport",
+    "Ellery",
+    "Fairweather",
+    "Greenhalgh",
+    "Hartigan",
+)
 DE_SEED = 1103969526  # changed-mind-dated-eval-v1 G families are avoided (names and IDs)
 
 
@@ -82,8 +92,12 @@ class RestatingCustomer(cm.ChangedMindCustomer):
         text = super().reply(agent_text)
         # The base script returns ASK_ITEM exactly when the agent named zero or several items,
         # outside the opening, consent, payment and turn-limit branches.
-        if (self.phase == "2" and self.arm in cp.RESTATING_ARMS and text == ASK_ITEM
-                and self.restated < RESTATE_MAX):  # fmt: skip
+        if (
+            self.phase == "2"
+            and self.arm in cp.RESTATING_ARMS
+            and text == ASK_ITEM
+            and self.restated < RESTATE_MAX
+        ):
             self.restated += 1
             f = self.family
             return f"{cp.RESTATEMENT}the {cp._option(f, f['target_id'])}, item {f['target_id']}."
@@ -130,11 +144,23 @@ def _validate(setup: dict[str, Any]) -> dict[str, Any]:
 
 def build_eval(base: dict[str, Any], pool: list[str], seed: int) -> list[dict[str, Any]]:
     """32 K families from the tag-derived seed, disjoint from the C, D, E, F and G families."""
-    avoid = (cp.build_eval_families(base, cm.EVAL_SEED, pool) + cm.build(base, pool)
-             + cm.build_eval(base, pool, cm.CM_EVAL_SEED) + cm.build_dated_eval(base, pool, DE_SEED))  # fmt: skip
-    families = cp.build_eval_families(base, seed, pool, count=32, prefix="K", width=2,
-                                      namespace=f"AE-HONCHO-FEATURES-EVAL-v1-{seed}", avoid=avoid,
-                                      names=[(a, b) for a in K_FIRST for b in K_LAST])  # fmt: skip
+    avoid = (
+        cp.build_eval_families(base, cm.EVAL_SEED, pool)
+        + cm.build(base, pool)
+        + cm.build_eval(base, pool, cm.CM_EVAL_SEED)
+        + cm.build_dated_eval(base, pool, DE_SEED)
+    )
+    families = cp.build_eval_families(
+        base,
+        seed,
+        pool,
+        count=32,
+        prefix="K",
+        width=2,
+        namespace=f"AE-HONCHO-FEATURES-EVAL-v1-{seed}",
+        avoid=avoid,
+        names=[(a, b) for a in K_FIRST for b in K_LAST],
+    )
     for f in families:
         alternatives = f["alternatives"]
         f["stale_id"] = alternatives[(f["target_position"] + 2) % len(alternatives)]["item_id"]
@@ -180,8 +206,12 @@ def retrieve(
         for arm, (provider, mode) in RETRIEVALS.items():
             path = directory / "memory" / f"{name}-{arm}.json"
             if not path.exists():
-                body = {"provider": provider, "scope": scope, "query": query,
-                        **({"mode": mode} if mode == "messages" else {})}  # fmt: skip
+                body = {
+                    "provider": provider,
+                    "scope": scope,
+                    "query": query,
+                    **({"mode": mode} if mode == "messages" else {}),
+                }
                 try:
                     results = list(_post("/search", body)["results"])
                     text, ids = pack(
@@ -189,10 +219,21 @@ def retrieve(
                     )
                     record = {"text": text, "ids": ids, "raw_count": len(results), "error": None}
                 except Exception as error:  # recorded; the session runs without memory
-                    record = {"text": "", "ids": [], "raw_count": 0,
-                              "error": f"{type(error).__name__}: {error}"[:300]}  # fmt: skip
-                record.update(provider=provider, mode=mode, reasoning_level=None, query=query, scope=scope,
-                              chars=len(record["text"]), **cp.target_mentions(family, record["text"]))  # fmt: skip
+                    record = {
+                        "text": "",
+                        "ids": [],
+                        "raw_count": 0,
+                        "error": f"{type(error).__name__}: {error}"[:300],
+                    }
+                record.update(
+                    provider=provider,
+                    mode=mode,
+                    reasoning_level=None,
+                    query=query,
+                    scope=scope,
+                    chars=len(record["text"]),
+                    **cp.target_mentions(family, record["text"]),
+                )
                 path.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
             records.append(json.loads(path.read_text(encoding="utf-8")))
         for arm, base in SHARED.items():
@@ -217,8 +258,11 @@ def providers(
     problems = cp.shim_problems(directory, cfg["shim_caps"])
     if Path(status["state"]) != (directory / "mem0").resolve():
         problems.append("gateway Mem0 state is not this stage's fresh directory")
-    if (status["honcho_workspace"] != cfg["workspace"] or status.get("honcho_workspace_by_prefix")
-            or status["honcho_reasoning_level"] is not None):  # fmt: skip
+    if (
+        status["honcho_workspace"] != cfg["workspace"]
+        or status.get("honcho_workspace_by_prefix")
+        or status["honcho_reasoning_level"] is not None
+    ):
         problems.append("gateway Honcho workspace or level is not this stage's setting")
     problems += cp.pilot_ledger(cp.journal_rows(directory), budget["cap"], budget["credit_stop"])[
         "reasons"
@@ -242,8 +286,12 @@ def providers(
     queue = _post("/status", {"provider": "honcho"})["queue"]
     (directory / "honcho-queue.json").write_text(json.dumps(queue) + "\n", encoding="utf-8")
     records = retrieve(setup, directory, sorted(inputs), cfg["prefix"])
-    return {"refused": cp.shim_problems(directory, cfg["shim_caps"]), "ingestion_errors": errors,
-            "honcho_queue": queue, "retrievals": [cp.memory_meta(r) for r in records]}  # fmt: skip
+    return {
+        "refused": cp.shim_problems(directory, cfg["shim_caps"]),
+        "ingestion_errors": errors,
+        "honcho_queue": queue,
+        "retrievals": [cp.memory_meta(r) for r in records],
+    }
 
 
 def schedule(families: list[str], arms: tuple[str, ...], seed: int) -> list[dict[str, Any]]:
@@ -259,10 +307,18 @@ def schedule(families: list[str], arms: tuple[str, ...], seed: int) -> list[dict
 def caps(stage: str) -> dict[str, Any]:
     cfg, budget = cp.PROVIDER_STAGES[stage], cp.BUDGETS[cp.STAGE_BUDGET[stage]]
     limits = {"episodes": cfg["episode_cap"], **cfg["shim_caps"]}
-    at_caps = (limits["episodes"] * RATES["episode"] + limits.get("mem0", 0) * RATES["mem0"]
-               + limits.get("honcho", 0) * RATES["honcho"])  # fmt: skip
-    return {"caps": limits, "hard_cap": budget["cap"], "credit_stop": budget["credit_stop"],
-            "rates": RATES, "conservative_at_caps": round(at_caps, 1)}  # fmt: skip
+    at_caps = (
+        limits["episodes"] * RATES["episode"]
+        + limits.get("mem0", 0) * RATES["mem0"]
+        + limits.get("honcho", 0) * RATES["honcho"]
+    )
+    return {
+        "caps": limits,
+        "hard_cap": budget["cap"],
+        "credit_stop": budget["credit_stop"],
+        "rates": RATES,
+        "conservative_at_caps": round(at_caps, 1),
+    }
 
 
 def _common(setup: dict[str, Any], today: dt.date, stage: str) -> dict[str, Any]:
@@ -270,24 +326,50 @@ def _common(setup: dict[str, Any], today: dt.date, stage: str) -> dict[str, Any]
     sources = {
         n: hashlib.sha256((Path(cp.__file__).parent / n).read_bytes()).hexdigest() for n in SOURCES
     }
-    return {"stage": stage, "owner": OWNER, "today_utc": today.isoformat(), "today_sentence": cm.today_sentence(today),
-            "sessions": {o: {"start_utc": cm.session_start(today, o).isoformat(), "label": cm.session_label(today, o)}
-                         for o in cm.DATED_SESSIONS}, "message_gap_seconds": cm.MESSAGE_GAP_SECONDS,
-            "arms": {"Hod": "Honcho dialectic, backdated, server default level (Ho)",
-                     "Hs": "Honcho message search over the customer's own sessions (Ho-search); Honcho's order",
-                     "Nr": "restating customer, no memory", "Hnr": "restating customer, dated transcripts",
-                     "Hodr": "restating customer, the Hod retrieval (identical text)",
-                     "Mir": "restating customer, Mem0 with in-band dates (Study 6 Mi)"},
-            "restating_rule": {"restatement_prefix": cp.RESTATEMENT, "replaces": ASK_ITEM, "max_per_session": RESTATE_MAX,
-                               "trigger": "after the opening, an agent text naming zero or several alternative item "
-                                          "IDs (exactly one gets the target-blind consent)",
-                               "content": "Y's options and item ID; never X"},
-            "retrieval_query": "the customer's first session-2 message", "retrievals": RETRIEVALS, "shared": SHARED,
-            "prefix": cfg["prefix"], "honcho": {"workspace": cfg["workspace"], "reasoning_level": "server default"},
-            "budget": caps(stage), "call_max": cp.CALL_MAX, "session_requests": cp.SESSION_REQUESTS,
-            "session_tools": cp.SESSION_TOOLS, "header": cp.NEUTRAL_HEADER, "memory_max_chars": cp.HISTORY_MAX,
-            "infra_rule": "second infrastructure failure: that session failed (infra); the run continues",
-            "manifest_sha256": setup["manifest_sha256"], "sources": sources}  # fmt: skip
+    return {
+        "stage": stage,
+        "owner": OWNER,
+        "today_utc": today.isoformat(),
+        "today_sentence": cm.today_sentence(today),
+        "sessions": {
+            o: {
+                "start_utc": cm.session_start(today, o).isoformat(),
+                "label": cm.session_label(today, o),
+            }
+            for o in cm.DATED_SESSIONS
+        },
+        "message_gap_seconds": cm.MESSAGE_GAP_SECONDS,
+        "arms": {
+            "Hod": "Honcho dialectic, backdated, server default level (Ho)",
+            "Hs": "Honcho message search over the customer's own sessions (Ho-search); Honcho's order",
+            "Nr": "restating customer, no memory",
+            "Hnr": "restating customer, dated transcripts",
+            "Hodr": "restating customer, the Hod retrieval (identical text)",
+            "Mir": "restating customer, Mem0 with in-band dates (Study 6 Mi)",
+        },
+        "restating_rule": {
+            "restatement_prefix": cp.RESTATEMENT,
+            "replaces": ASK_ITEM,
+            "max_per_session": RESTATE_MAX,
+            "trigger": "after the opening, an agent text naming zero or several alternative item "
+            "IDs (exactly one gets the target-blind consent)",
+            "content": "Y's options and item ID; never X",
+        },
+        "retrieval_query": "the customer's first session-2 message",
+        "retrievals": RETRIEVALS,
+        "shared": SHARED,
+        "prefix": cfg["prefix"],
+        "honcho": {"workspace": cfg["workspace"], "reasoning_level": "server default"},
+        "budget": caps(stage),
+        "call_max": cp.CALL_MAX,
+        "session_requests": cp.SESSION_REQUESTS,
+        "session_tools": cp.SESSION_TOOLS,
+        "header": cp.NEUTRAL_HEADER,
+        "memory_max_chars": cp.HISTORY_MAX,
+        "infra_rule": "second infrastructure failure: that session failed (infra); the run continues",
+        "manifest_sha256": setup["manifest_sha256"],
+        "sources": sources,
+    }
 
 
 def dev_plan(
@@ -296,12 +378,19 @@ def dev_plan(
     inputs = {}
     for f in sorted(setup["families"]):
         a, b = cm._first_sessions(source, f)
-        inputs[f] = {x: hashlib.sha256(cp.transcript(r["messages"]).encode()).hexdigest()
-                     for x, r in (("1a", a), ("1b", b))}  # fmt: skip
-    return {**_common(setup, today, DEV_STAGE), "source_stage": SOURCE_STAGE, "inputs": inputs,
-            "gates": "retrieval OK >= 3/4 per provider arm (Hs, Hod for Hodr, Mir); zero leakage (Y only in "
-                     "the restatement, after the agent asks); no harness defect. Outcomes descriptive.",
-            "note": note, "jobs": schedule(list(setup["families"]), DEV_ARMS, DEV_SEED)}  # fmt: skip
+        inputs[f] = {
+            x: hashlib.sha256(cp.transcript(r["messages"]).encode()).hexdigest()
+            for x, r in (("1a", a), ("1b", b))
+        }
+    return {
+        **_common(setup, today, DEV_STAGE),
+        "source_stage": SOURCE_STAGE,
+        "inputs": inputs,
+        "gates": "retrieval OK >= 3/4 per provider arm (Hs, Hod for Hodr, Mir); zero leakage (Y only in "
+        "the restatement, after the agent asks); no harness defect. Outcomes descriptive.",
+        "note": note,
+        "jobs": schedule(list(setup["families"]), DEV_ARMS, DEV_SEED),
+    }
 
 
 def reuse_retrievals(directory: Path) -> dict[str, str]:
@@ -321,11 +410,18 @@ def dev2_plan(
     setup: dict[str, Any], note: str | None, today: dt.date, source: Path
 ) -> dict[str, Any]:
     first = dev_plan(setup, note, today, source)
-    reused = {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted((DEV_DIRECTORY / "memory").glob("*.json"))
-              if p.stem.rsplit("-", 1)[1] in ("Hod", "Hodr", "Mir")}  # fmt: skip
-    return {**first, **{k: v for k, v in _common(setup, today, DEV2_STAGE).items() if k in ("stage", "budget")},
-            "rerun_of": "hf-dev-v1 restating arms (invalid: keyword trigger missed imperative which-item requests)",
-            "reused_retrievals": reused, "jobs": schedule(list(setup["families"]), RESTATING_DEV_ARMS, DEV_SEED)}  # fmt: skip
+    reused = {
+        p.name: hashlib.sha256(p.read_bytes()).hexdigest()
+        for p in sorted((DEV_DIRECTORY / "memory").glob("*.json"))
+        if p.stem.rsplit("-", 1)[1] in ("Hod", "Hodr", "Mir")
+    }
+    return {
+        **first,
+        **{k: v for k, v in _common(setup, today, DEV2_STAGE).items() if k in ("stage", "budget")},
+        "rerun_of": "hf-dev-v1 restating arms (invalid: keyword trigger missed imperative which-item requests)",
+        "reused_retrievals": reused,
+        "jobs": schedule(list(setup["families"]), RESTATING_DEV_ARMS, DEV_SEED),
+    }
 
 
 def eval_plan(
@@ -333,15 +429,23 @@ def eval_plan(
 ) -> dict[str, Any]:
     names = sorted(setup["families"])
     first = [{"session": 1, "family": f, "arm": a} for f in names for a in ("S1a", "S1b")]
-    return {**_common(setup, today, EVAL_STAGE), "tag": tag["tag"], "tag_commit": tag["commit"],
-            "seed": tag["seed"], "seed_rule": "int(first 8 hex of SHA-256(tag commit SHA))",
-            "namespace": f"AE-HONCHO-FEATURES-EVAL-v1-{tag['seed']}", "template_pool": setup["pool"],
-            "arm_priority": EVAL_ARMS, "dev_check": tag.get("dev_check"),
-            "exclusion": "no explicit 1a or 1b agreement: excluded from every arm, reported, not replaced",
-            "analysis": "research/honcho_features_analysis.py: only arms complete for every included family; "
-                        "the rest are reported as not run",
-            "deadline": "publish by 2026-11-17 11:00 ET; anything incomplete then is published as partial",
-            "note": note, "jobs": first + schedule(names, EVAL_ARMS, tag["seed"])}  # fmt: skip
+    return {
+        **_common(setup, today, EVAL_STAGE),
+        "tag": tag["tag"],
+        "tag_commit": tag["commit"],
+        "seed": tag["seed"],
+        "seed_rule": "int(first 8 hex of SHA-256(tag commit SHA))",
+        "namespace": f"AE-HONCHO-FEATURES-EVAL-v1-{tag['seed']}",
+        "template_pool": setup["pool"],
+        "arm_priority": EVAL_ARMS,
+        "dev_check": tag.get("dev_check"),
+        "exclusion": "no explicit 1a or 1b agreement: excluded from every arm, reported, not replaced",
+        "analysis": "research/honcho_features_analysis.py: only arms complete for every included family; "
+        "the rest are reported as not run",
+        "deadline": "publish by 2026-11-17 11:00 ET; anything incomplete then is published as partial",
+        "note": note,
+        "jobs": first + schedule(names, EVAL_ARMS, tag["seed"]),
+    }
 
 
 def tag_state(tag: str = TAG) -> dict[str, Any] | None:
@@ -363,9 +467,12 @@ def tag_state(tag: str = TAG) -> dict[str, Any] | None:
 
 
 def dev_summary(
-    directory: Path, setup: dict[str, Any], outcome: dict[str, Any] | None = None,
-    stage: str = DEV_STAGE, arms: tuple[str, ...] = DEV_ARMS,
-) -> dict[str, Any]:  # fmt: skip
+    directory: Path,
+    setup: dict[str, Any],
+    outcome: dict[str, Any] | None = None,
+    stage: str = DEV_STAGE,
+    arms: tuple[str, ...] = DEV_ARMS,
+) -> dict[str, Any]:
     """Per family x arm (booleans and counts only), integration gates and ledger."""
     rows, records = [], {}
     for path in sorted((directory / "memory").glob("*.json")):
@@ -375,32 +482,66 @@ def dev_summary(
         record = records.get(f"{r['family']}-{r['arm']}", {})
         text = record.get("text") or ""
         stale = cm.stale_attempts(f, r.get("messages") or [])
-        rows.append({"family": r["family"], "arm": r["arm"], "status": r.get("status"), "success": bool(r.get("success")),
-                     "stale_commitment": stale, "declined": r.get("mutations") == 0,
-                     "wrong_variant_other": int(r.get("wrong_variant_attempts") or 0) - stale,
-                     "restated": restated(r), "unanswered_which": unanswered(r),
-                     "memory_error": bool(record.get("error")),
-                     "memory_has_Y": f["target_id"] in text, "memory_has_X": f["stale_id"] in text,
-                     "proposals_before_consent": r.get("proposals_before_consent"),
-                     "requests": r.get("requests_started"), "attempt": r.get("attempt"),
-                     "leakage": bool(r.get("leakage"))})  # fmt: skip
+        rows.append(
+            {
+                "family": r["family"],
+                "arm": r["arm"],
+                "status": r.get("status"),
+                "success": bool(r.get("success")),
+                "stale_commitment": stale,
+                "declined": r.get("mutations") == 0,
+                "wrong_variant_other": int(r.get("wrong_variant_attempts") or 0) - stale,
+                "restated": restated(r),
+                "unanswered_which": unanswered(r),
+                "memory_error": bool(record.get("error")),
+                "memory_has_Y": f["target_id"] in text,
+                "memory_has_X": f["stale_id"] in text,
+                "proposals_before_consent": r.get("proposals_before_consent"),
+                "requests": r.get("requests_started"),
+                "attempt": r.get("attempt"),
+                "leakage": bool(r.get("leakage")),
+            }
+        )
     needed = [a for a in RETRIEVALS if a in {SHARED.get(x, x) for x in arms}]
-    retrieved = {arm: sum(not records.get(f"{f}-{arm}", {"error": "missing"}).get("error")
-                          for f in setup["families"]) for arm in needed}  # fmt: skip
+    retrieved = {
+        arm: sum(
+            not records.get(f"{f}-{arm}", {"error": "missing"}).get("error")
+            for f in setup["families"]
+        )
+        for arm in needed
+    }
     expected = len(setup["families"]) * len(arms)
-    gates = {**{f"{arm}_retrieval_3of4": retrieved[arm] >= 3 for arm in needed},
-             "zero_leakage": not any(r["leakage"] for r in rows),
-             "restating_customer_answered_every_which": not any(r["unanswered_which"] for r in rows),
-             "no_harness_defect": len(rows) == expected and not (outcome or {}).get("refused")}  # fmt: skip
+    gates = {
+        **{f"{arm}_retrieval_3of4": retrieved[arm] >= 3 for arm in needed},
+        "zero_leakage": not any(r["leakage"] for r in rows),
+        "restating_customer_answered_every_which": not any(r["unanswered_which"] for r in rows),
+        "no_harness_defect": len(rows) == expected and not (outcome or {}).get("refused"),
+    }
     rows_all = cp.journal_rows(directory)
     budget = cp.BUDGETS[cp.STAGE_BUDGET[stage]]
-    groups = {"total": rows_all, "episodes": [r for r in rows_all if Path(r["_journal"]).parent.name != "shims"],
-              **{lb: [r for r in rows_all if Path(r["_journal"]).name == f"{lb}.calls.jsonl"]
-                 for lb in cp.PROVIDER_STAGES[stage]["shim_caps"]}}  # fmt: skip
-    ledger = {k: {x: y for x, y in cp.pilot_ledger(v, budget["cap"], budget["credit_stop"]).items() if x != "reasons"}
-              for k, v in groups.items()}  # fmt: skip
-    return {"rows": sorted(rows, key=lambda r: (r["family"], arms.index(r["arm"]))), "retrievals_ok": retrieved,
-            "gates": gates, "verdict": "PASS" if all(gates.values()) else "FAIL", "ledger": ledger}  # fmt: skip
+    groups = {
+        "total": rows_all,
+        "episodes": [r for r in rows_all if Path(r["_journal"]).parent.name != "shims"],
+        **{
+            lb: [r for r in rows_all if Path(r["_journal"]).name == f"{lb}.calls.jsonl"]
+            for lb in cp.PROVIDER_STAGES[stage]["shim_caps"]
+        },
+    }
+    ledger = {
+        k: {
+            x: y
+            for x, y in cp.pilot_ledger(v, budget["cap"], budget["credit_stop"]).items()
+            if x != "reasons"
+        }
+        for k, v in groups.items()
+    }
+    return {
+        "rows": sorted(rows, key=lambda r: (r["family"], arms.index(r["arm"]))),
+        "retrievals_ok": retrieved,
+        "gates": gates,
+        "verdict": "PASS" if all(gates.values()) else "FAIL",
+        "ledger": ledger,
+    }
 
 
 def _live(parser: argparse.ArgumentParser, args: argparse.Namespace, stage: str) -> None:
@@ -440,15 +581,36 @@ def shim_problems(directory: Path, stage: str) -> list[str]:
     return cp.shim_problems(directory, caps)
 
 
-def _sessions(args: argparse.Namespace, parser: argparse.ArgumentParser, directory: Path, stage: str,
-              jobs: list[dict[str, Any]], setup: dict[str, Any], source: Path) -> dict[str, Any]:  # fmt: skip
-    missing = [cp.job_id(j) for j in jobs if j["arm"] in cp.RETRIEVERS
-               and not (directory / "memory" / f"{j['family']}-{j['arm']}.json").exists()]  # fmt: skip
+def _sessions(
+    args: argparse.Namespace,
+    parser: argparse.ArgumentParser,
+    directory: Path,
+    stage: str,
+    jobs: list[dict[str, Any]],
+    setup: dict[str, Any],
+    source: Path,
+) -> dict[str, Any]:
+    missing = [
+        cp.job_id(j)
+        for j in jobs
+        if j["arm"] in cp.RETRIEVERS
+        and not (directory / "memory" / f"{j['family']}-{j['arm']}.json").exists()
+    ]
     if missing or shim_problems(directory, stage):
         parser.error(f"Sessions need every retrieval and clean shims: {missing}")
     today = _today(directory)
-    return asyncio.run(cp.live_run(directory, args.model, stage, jobs, setup, history_fn=history(today, source),
-                                   infra_continue=True, exclude_uncommitted=True))  # fmt: skip
+    return asyncio.run(
+        cp.live_run(
+            directory,
+            args.model,
+            stage,
+            jobs,
+            setup,
+            history_fn=history(today, source),
+            infra_continue=True,
+            exclude_uncommitted=True,
+        )
+    )
 
 
 def dev_main(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
@@ -481,8 +643,17 @@ def dev_main(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
     (directory / "summary.json").write_text(
         json.dumps(summary, indent=2, default=str) + "\n", encoding="utf-8"
     )
-    print(json.dumps({"refused": outcome["refused"], "infra_events": outcome["infra_events"],
-                      **{k: v for k, v in summary.items() if k != "rows"}}, indent=2, default=str))  # fmt: skip
+    print(
+        json.dumps(
+            {
+                "refused": outcome["refused"],
+                "infra_events": outcome["infra_events"],
+                **{k: v for k, v in summary.items() if k != "rows"},
+            },
+            indent=2,
+            default=str,
+        )
+    )
     return 1 if outcome["refused"] else 0
 
 
@@ -493,8 +664,10 @@ def stage_one_passed() -> bool:
         return False
     gates = json.loads(first.read_text(encoding="utf-8"))["gates"]
     superseded = {"restating_customer_answered_every_which"}  # rerun in Stage 1b
-    return (all(v for k, v in gates.items() if k not in superseded)
-            and json.loads(rerun.read_text(encoding="utf-8"))["verdict"] == "PASS")  # fmt: skip
+    return (
+        all(v for k, v in gates.items() if k not in superseded)
+        and json.loads(rerun.read_text(encoding="utf-8"))["verdict"] == "PASS"
+    )
 
 
 def eval_main(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
@@ -508,8 +681,11 @@ def eval_main(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
     if tag["changed"]:
         parser.error(f"Frozen sources differ from {TAG}: {tag['changed']} (a deviation; not run).")
     checks = [DEV_DIRECTORY / "summary-audited.json", DEV2_DIRECTORY / "summary.json"]
-    tag["dev_check"] = {p.parent.name + "/" + p.name: hashlib.sha256(p.read_bytes()).hexdigest()
-                        for p in checks if p.exists()}  # fmt: skip
+    tag["dev_check"] = {
+        p.parent.name + "/" + p.name: hashlib.sha256(p.read_bytes()).hexdigest()
+        for p in checks
+        if p.exists()
+    }
     setup = prepare(tag["seed"])
     today = _today(directory)
     setup["today"] = cm.today_sentence(today)
@@ -552,13 +728,37 @@ def eval_main(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
         print(json.dumps(result, indent=2))
         return 1 if result["refused"] else 0
     if args.phase == "session1":
-        outcome = asyncio.run(cp.live_run(directory, args.model, EVAL_STAGE, cm.select(public["jobs"], "session1", []),
-                                          setup, infra_continue=True, exclude_uncommitted=True))  # fmt: skip
+        outcome = asyncio.run(
+            cp.live_run(
+                directory,
+                args.model,
+                EVAL_STAGE,
+                cm.select(public["jobs"], "session1", []),
+                setup,
+                infra_continue=True,
+                exclude_uncommitted=True,
+            )
+        )
     else:
-        outcome = _sessions(args, parser, directory, EVAL_STAGE, cm.select(public["jobs"], "sessions", included),
-                            setup, directory)  # fmt: skip
-    print(json.dumps({"refused": outcome["refused"], "infra_events": outcome["infra_events"],
-                      "sessions_run": len(outcome["results"])}, indent=2))  # fmt: skip
+        outcome = _sessions(
+            args,
+            parser,
+            directory,
+            EVAL_STAGE,
+            cm.select(public["jobs"], "sessions", included),
+            setup,
+            directory,
+        )
+    print(
+        json.dumps(
+            {
+                "refused": outcome["refused"],
+                "infra_events": outcome["infra_events"],
+                "sessions_run": len(outcome["results"]),
+            },
+            indent=2,
+        )
+    )
     return 1 if outcome["refused"] else 0
 
 

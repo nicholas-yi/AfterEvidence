@@ -112,12 +112,25 @@ class StalenessTests(unittest.TestCase):
                         "plain": "correct",
                         "annotated": annotated_current,
                     }
-                    out.append({"family": str(family), "regime": "current", "condition": condition,
-                                "outcome": current[condition], "looked_up_before_submit": True})  # fmt: skip
+                    out.append(
+                        {
+                            "family": str(family),
+                            "regime": "current",
+                            "condition": condition,
+                            "outcome": current[condition],
+                            "looked_up_before_submit": True,
+                        }
+                    )
                     for regime in ("reset", "corrected"):
                         stale = condition == "plain" and family % 2 == 0
-                        out.append({"family": str(family), "regime": regime, "condition": condition,
-                                    "outcome": plain_stale if stale else "correct"})  # fmt: skip
+                        out.append(
+                            {
+                                "family": str(family),
+                                "regime": regime,
+                                "condition": condition,
+                                "outcome": plain_stale if stale else "correct",
+                            }
+                        )
             return out
 
         result = decide(rows("obsolete", "correct"))

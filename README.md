@@ -124,7 +124,22 @@ weights, which a hosted model cannot do, so only the memory-level idea is tested
 
 ## Results
 
-### Study 1: memory from other customers
+| Study | Question | Headline | Data |
+|---|---|---|---|
+| 1 | Does memory of other customers help? | No condition changed success detectably (73-83% vs 75% without memory) | [CSV](research/data/memory-study-v1-episodes.csv) |
+| 2 | Does memory of the same customer help? | Slightly worse, not significant; stale memory caused one wrong-address action | [CSV](research/data/memory-study-v1-episodes.csv) |
+| 3 | Does deleting a conversation remove it? | Every system removed its literal identifiers (Honcho after a delay) | — |
+| 4 | When a task needs memory, does memory deliver? | No memory 0/28; transcripts 26/26; Mem0 24/24; Honcho 19/23 | [CSV](research/data/commitment-eval-v1-episodes.csv) |
+| 5 | After a change of mind, does memory follow the latest agreement? | Transcripts 30/31; Mem0 13/31 (13 acted on the superseded item); Honcho 3/31 (mostly declined) | [CSV](research/data/changed-mind-eval-v1-episodes.csv) |
+| 6 | Does dating the memories help? | No significant change for Mem0 or Honcho | [CSV](research/data/changed-mind-dated-eval-v1-episodes.csv) |
+| 7 | Honcho's search vs its answer; a customer who repeats the item | Search 14/32 vs answer 8/32 (n.s.); with a helpful customer no memory 32/32, Mem0 twice harmful | [CSV](research/data/honcho-features-eval-v1-episodes.csv) |
+| 8 | Do dreaming, a memory tool or app-written facts help Honcho? | App-written facts 26/30 vs 8/30 (significant); the same facts without Honcho 29/30 | [CSV](research/data/honcho-stage3-eval-v1-episodes.csv) |
+| 9 | Do Studies 6-7 hold with another model? | `gpt-6-luna`: Honcho 27/32, transcripts 30/32, Mem0 20/32 with 10 superseded | [CSV](research/data/second-model-eval-v1-episodes.csv) |
+
+Each study's details:
+
+<details>
+<summary><b>Study 1: memory from other customers</b></summary>
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/figures/study1-success-cost-dark.svg">
@@ -158,7 +173,10 @@ useless, only that any benefit here is smaller than that.
 - Memory from Mem0, Graphiti, Hindsight and raw transcripts carried other customers' order numbers
   (1.6-7.2 per episode), but no agent ever used another customer's identifier in a tool call.
 
-### Study 2: memory of the same customer
+</details>
+
+<details>
+<summary><b>Study 2: memory of the same customer</b></summary>
 
 | Condition | Success on later sessions | Change vs. no memory (95% CI) |
 |---|---:|---:|
@@ -180,7 +198,10 @@ in the first three requests rather than anything its memory said. The clearest f
 
 This is a single task (n = 1), so it illustrates a failure mode rather than measuring its frequency.
 
-### Study 3: deleting a conversation
+</details>
+
+<details>
+<summary><b>Study 3: deleting a conversation</b></summary>
 
 | System | Deleted conversation's identifiers after delete | Other memories kept |
 |---|---|---:|
@@ -196,7 +217,10 @@ exact identifiers only, not paraphrased or derived facts, so it shows deletion w
 surface, not that the information is fully erased. Lessons that track how many episodes support
 them degrade gracefully when one source is withdrawn; lessons that depend on every source collapse.
 
-### Study 4: remembering an agreement
+</details>
+
+<details>
+<summary><b>Study 4: remembering an agreement</b></summary>
 
 Some tasks cannot be done without memory. 32 synthetic customers each agreed an exact replacement
 item with the agent, then came back in a new conversation and said only "please go ahead with the
@@ -218,7 +242,10 @@ memory designs are not statistically significant at this size. 125 of 160 planne
 the run stopped early after a repeated service timeout. Data:
 [per-conversation CSV](research/data/commitment-eval-v1-episodes.csv).
 
-### Study 5: a change of mind
+</details>
+
+<details>
+<summary><b>Study 5: a change of mind</b></summary>
 
 32 synthetic customers agreed a replacement item, then in a later conversation changed their mind and
 agreed a different one, then came back and said only "please go ahead with the exchange we agreed last
@@ -239,7 +266,10 @@ condition did significantly worse than the plain transcripts. These results come
 system's default pipeline and one synthetic task, so they describe this setup, not the products. Data:
 [per-conversation CSV](research/data/changed-mind-eval-v1-episodes.csv).
 
-### Study 6: dating the memories
+</details>
+
+<details>
+<summary><b>Study 6: dating the memories</b></summary>
 
 Study 5 again with 32 new customers (31 completed both agreements), the agreements dated 3 and 1 days
 before the follow-up, and every agent told today's date.
@@ -256,7 +286,10 @@ Declining is a safe failure here only because the scripted customer never repeat
 one would likely say it when asked. Data:
 [per-conversation CSV](research/data/changed-mind-dated-eval-v1-episodes.csv).
 
-### Study 7: Honcho's features and a helpful customer
+</details>
+
+<details>
+<summary><b>Study 7: Honcho's features and a helpful customer</b></summary>
 
 32 new customers, Study 6's dated setup. Honcho's raw message search, rather than its summarized
 answer, gave the agent both items' exact IDs every time:
@@ -275,7 +308,10 @@ customers, p = 0.21). With a customer who names the item on request, no memory w
 mattered mainly through harm: Mem0's memory twice led the agent to the superseded item, Honcho's never
 did. Data: [per-conversation CSV](research/data/honcho-features-eval-v1-episodes.csv).
 
-### Study 8: what helps Honcho act on the latest agreement
+</details>
+
+<details>
+<summary><b>Study 8: what helps Honcho act on the latest agreement</b></summary>
 
 Study 6's dated setup with 30 new customers who never repeat the item (2 more were excluded because
 their first agreement failed):
@@ -294,7 +330,10 @@ conversation into "what was agreed last", not from Honcho itself. The agent rare
 tool (5 of 30 conversations). No condition carried out the superseded item. Data:
 [per-conversation CSV](research/data/honcho-stage3-eval-v1-episodes.csv).
 
-### Study 9: a second model
+</details>
+
+<details>
+<summary><b>Study 9: a second model</b></summary>
 
 Study 6's dated setup with 32 new customers, `gpt-6-luna` playing the agent, the customer and the
 LLM inside each memory system, and a customer who never repeats the item:
@@ -311,6 +350,8 @@ p = 0.04 and 0.006), as with Claude Haiku 5.5. Honcho's two conditions were clos
 unlike with Claude Haiku 5.5 (8 and 14 of 32), where the agent mostly declined to act. Both the agent
 and Honcho's internal model changed, so this cannot say which one mattered. Data:
 [per-conversation CSV](research/data/second-model-eval-v1-episodes.csv).
+
+</details>
 
 ### Takeaways
 
@@ -382,7 +423,8 @@ python -m afterevidence serve
 - **Mostly one retrieval per episode.** Memory was fetched once from the first message; only Study 8
   tried an on-demand memory tool, with one model and one tool design.
 - **Default pipelines.** Each memory system ran its default configuration on a substituted model;
-  their published results use other models.
+  their published results use other models. Builders can propose tuned configurations as separate
+  arms ([fairness rules](research/README.md#fairness-to-memory-system-builders)).
 - **Simulated customers and narrow scoring.** The customer is an LLM whose fidelity has not been
   human-reviewed, and scoring checks the database, not conversational quality.
 
@@ -425,10 +467,26 @@ pyright
 
 ## Related work
 
-[ExpeL](https://arxiv.org/abs/2308.10144) and [Agent Workflow Memory](https://arxiv.org/abs/2409.07429)
-inspired two of the memory conditions. Related studies of agent memory and forgetting include
-[Memora](https://arxiv.org/abs/2604.20006), [Bemula](https://arxiv.org/abs/2610.18052),
-[GateMem](https://arxiv.org/abs/2606.18829) and
+Most memory benchmarks score answers to questions about past conversations:
+[LoCoMo](https://arxiv.org/abs/2402.17753), [LongMemEval](https://arxiv.org/abs/2410.10813) (including
+knowledge updates) and [MemoryAgentBench](https://arxiv.org/abs/2507.05257) (including selective
+forgetting). A newer line scores memory by what an agent does:
+
+| Benchmark | What memory is | How it is scored | Systems compared |
+|---|---|---|---|
+| [MemoryArena](https://arxiv.org/abs/2602.16313) (ICML 2026) | Across interdependent sessions (web, planning, search, reasoning) | Task success | Memory agents and long-context baselines |
+| [Mem2ActBench](https://aclanthology.org/2026.acl-long.370/) (ACL 2026) | Preferences and task state from long interrupted chats | Tool and parameter choice | Seven memory frameworks |
+| [MemGym](https://arxiv.org/abs/2605.20833) | Within one long episode: compressing the agent's own trajectory (its tau2-bench track runs all four domains) | Paired success with vs without memory, plus memory-isolated scores | Summary, A-Mem, MemoryBank, LightMem, SimpleMem |
+| **Forget-Me-Not** | Across conversations with the same or other customers, including an agreement later superseded | Final store database vs a reference, with the analysis tagged before the data | Mem0, Graphiti, Hindsight and Honcho default pipelines, transcripts, lessons; deletion through each system's API |
+
+What this repository adds is harm and deletion: whether remembered agreements lead to the *wrong*
+action once superseded (Studies 5-9), and whether deleting a conversation removes what was derived
+from it (Study 3), scored without an LLM judge. Vendor-reported results on the QA benchmarks use
+each vendor's own model and settings and often disagree with each other; these studies hold the
+model and task fixed and run each system's open-source default. [ExpeL](https://arxiv.org/abs/2308.10144)
+and [Agent Workflow Memory](https://arxiv.org/abs/2409.07429) inspired two memory conditions; other
+studies of agent memory and forgetting include [Memora](https://arxiv.org/abs/2604.20006),
+[Bemula](https://arxiv.org/abs/2610.18052), [GateMem](https://arxiv.org/abs/2606.18829) and
 [execution-state unlearning](https://arxiv.org/abs/2609.04875).
 
 ## License

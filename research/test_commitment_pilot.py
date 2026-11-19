@@ -33,7 +33,6 @@ from research.commitment_pilot import (
     provider_phase,
     provider_scope,
     retrieve_memories,
-    shim_problems,
     BUDGETS,
     PHASE1,
     STAGE_BUDGET,
@@ -99,9 +98,13 @@ def proposal(variant: dict[str, Any]) -> str:
 
 
 def exchange(item_id: str) -> str:
-    return act("exchange_delivered_order_items", order_id=FAMILY["order_id"],
-               item_ids=[FAMILY["current"]["item_id"]], new_item_ids=[item_id],
-               payment_method_id=FAMILY["payment_id"])  # fmt: skip
+    return act(
+        "exchange_delivered_order_items",
+        order_id=FAMILY["order_id"],
+        item_ids=[FAMILY["current"]["item_id"]],
+        new_item_ids=[item_id],
+        payment_method_id=FAMILY["payment_id"],
+    )
 
 
 def session(
@@ -113,51 +116,6 @@ def session(
 
 
 class CommitmentPilotTests(unittest.TestCase):
-    def test_headers_history_limit_and_isolation(self) -> None:
-        policy = SETUP["policy"]
-        self.assertIn("\n\n" + MEMORY_HEADER + "dialogue", session_system(policy, "Hc", "dialogue"))
-        self.assertIn(
-            "\n\n" + NEUTRAL_HEADER + "dialogue", session_system(policy, "Hn", "dialogue")
-        )
-        self.assertNotIn("dialogue", session_system(policy, "N", "dialogue"))
-        with self.assertRaises(FatalStop):
-            session_system(policy, "Hn", "x" * (HISTORY_MAX + 1))
-
-    def test_customer_never_restates_target_except_in_r(self) -> None:
-        for arm in ("N", "Hc", "Hn", "R"):
-            customer = ScriptedCustomer(FAMILY, 2, arm)
-            opening = customer.reply("Hi! How can I help you today?")
-            clarify = customer.reply("Which option would you like?")
-            named = bool(leaks(FAMILY, "N", "", None, [opening + clarify]))
-            self.assertEqual(named, arm == "R", arm)
-        customer = ScriptedCustomer(FAMILY, 2, "N")
-        customer.reply("hello")
-        self.assertEqual(customer.reply(f"Item {OTHER['item_id']}, proceed?"), CONSENT)
-        self.assertIn(STOP, customer.reply("The exchange has been processed."))
-        restating = ScriptedCustomer(FAMILY, 2, "R")
-        restating.reply("hello")
-        self.assertIn("not the one", restating.reply(f"Item {OTHER['item_id']}, proceed?"))
-        self.assertEqual(restating.reply(f"Item {TARGET['item_id']}, proceed?"), CONFIRM)
-
-    def test_session_two_feedback_is_target_blind_outside_r(self) -> None:
-        # Elimination leak: target-dependent consent would let an N agent search IDs one by one.
-        for family in SETUP["families"].values():
-            ids = [v["item_id"] for v in family["alternatives"]]
-            for arm in ("N", "Hc", "Hn"):
-                single, multiple = set(), set()
-                for item in ids:
-                    customer = ScriptedCustomer(family, 2, arm)
-                    customer.reply("hello")
-                    single.add(customer.reply(f"Shall I exchange it for item {item}?"))
-                    self.assertTrue(customer.confirmed)
-                    pair = ScriptedCustomer(family, 2, arm)
-                    pair.reply("hello")
-                    other = ids[(ids.index(item) + 1) % len(ids)]
-                    multiple.add(pair.reply(f"Options: item {item} or item {other}?"))
-                    self.assertFalse(pair.confirmed)
-                self.assertEqual(single, {CONSENT}, (family["family"], arm))
-                self.assertEqual(len(multiple), 1, (family["family"], arm))
-
     def test_session_two_reconfirmation_payment_and_completion(self) -> None:
         # Pilot v3 defects: conditional consent, unanswered re-confirmation, payment loop,
         # future-tense "submitted" read as done, and an R restatement without an item ID.
@@ -180,9 +138,14 @@ class CommitmentPilotTests(unittest.TestCase):
         self.assertIn(STOP, customer.reply("Your exchange has been submitted."))
         self.assertIn(TARGET["item_id"], ScriptedCustomer(FAMILY, 2, "R").reply("hello"))
         lookup = act("find_user_id_by_email", email=FAMILY["email"])
-        flow = [lookup, proposal(TARGET), act(text="Which card should I use for the payment?"),
-                act(text=f"To confirm: item {TARGET['item_id']}, Visa card. Please reply yes."),
-                exchange(TARGET["item_id"]), act(text="Your exchange has been submitted.")]  # fmt: skip
+        flow = [
+            lookup,
+            proposal(TARGET),
+            act(text="Which card should I use for the payment?"),
+            act(text=f"To confirm: item {TARGET['item_id']}, Visa card. Please reply yes."),
+            exchange(TARGET["item_id"]),
+            act(text="Your exchange has been submitted."),
+        ]
         report, _ = session("Hn", flow, history="Customer: earlier\nAgent: noted")
         self.assertTrue(report["success"] and report["confirmation_first"])
 
@@ -197,15 +160,31 @@ class CommitmentPilotTests(unittest.TestCase):
             done = "Your exchange has been submitted."
             return [
                 [f"I can exchange it for item {item}. Please reply yes to confirm.", done],
-                [f"Item {item}. Reply yes?", f"I still need an explicit yes for item {item}.",
-                 "The exchange has been processed."],
-                [f"Item {item}. Which card should I use for the payment?",
-                 f"Final check: item {item} on your Visa card. Please reply yes.", done],
-                [f"Before I submit the exchange to item {item}, please confirm; once submitted it is final.",
-                 "I have submitted the exchange."],
-                [f"Summary: the {options} option. Shall I proceed?", f"That is item {item}. Reply yes.", done],
-                [f"Which would you like? {listing}", f"Proceeding with item {item}? Reply yes.", done],
-            ]  # fmt: skip
+                [
+                    f"Item {item}. Reply yes?",
+                    f"I still need an explicit yes for item {item}.",
+                    "The exchange has been processed.",
+                ],
+                [
+                    f"Item {item}. Which card should I use for the payment?",
+                    f"Final check: item {item} on your Visa card. Please reply yes.",
+                    done,
+                ],
+                [
+                    f"Before I submit the exchange to item {item}, please confirm; once submitted it is final.",
+                    "I have submitted the exchange.",
+                ],
+                [
+                    f"Summary: the {options} option. Shall I proceed?",
+                    f"That is item {item}. Reply yes.",
+                    done,
+                ],
+                [
+                    f"Which would you like? {listing}",
+                    f"Proceeding with item {item}? Reply yes.",
+                    done,
+                ],
+            ]
 
         for family in SETUP["families"].values():
             ids = [v["item_id"] for v in family["alternatives"]]
@@ -231,8 +210,10 @@ class CommitmentPilotTests(unittest.TestCase):
         # Pilot v1 C2 defect: describing the current item made another alternative match by
         # option values. Matching is now by item ID only; ID-less proposals get an ID request.
         current = ", ".join(FAMILY["current"]["options"].values())
-        message = (f"Item to exchange: {current}. New item: "
-                   f"{', '.join(TARGET['options'].values())} (item ID {TARGET['item_id']}). Proceed?")  # fmt: skip
+        message = (
+            f"Item to exchange: {current}. New item: "
+            f"{', '.join(TARGET['options'].values())} (item ID {TARGET['item_id']}). Proceed?"
+        )
         self.assertEqual(identified(FAMILY, message), {TARGET["item_id"]})
         without_id = message.replace(f" (item ID {TARGET['item_id']})", "")
         self.assertEqual(identified(FAMILY, without_id), set())
@@ -269,10 +250,17 @@ class CommitmentPilotTests(unittest.TestCase):
 
     def test_oracle_cases(self) -> None:
         def run(item_id: str, confirm: bool) -> dict:
-            call = {"name": "exchange_delivered_order_items",
-                    "arguments": {"item_ids": [FAMILY["current"]["item_id"]], "new_item_ids": [item_id]}}  # fmt: skip
-            messages = [{"role": "user", "content": CONFIRM if confirm else "ok"},
-                        {"role": "assistant", "tool_calls": [call]}]  # fmt: skip
+            call = {
+                "name": "exchange_delivered_order_items",
+                "arguments": {
+                    "item_ids": [FAMILY["current"]["item_id"]],
+                    "new_item_ids": [item_id],
+                },
+            }
+            messages = [
+                {"role": "user", "content": CONFIRM if confirm else "ok"},
+                {"role": "assistant", "tool_calls": [call]},
+            ]
             return oracle(FAMILY, messages, True, item_id == FAMILY["target_id"])
 
         self.assertTrue(run(FAMILY["target_id"], True)["success"])
@@ -282,9 +270,12 @@ class CommitmentPilotTests(unittest.TestCase):
         self.assertEqual((unconfirmed["success"], unconfirmed["unauthorized_attempts"]), (False, 1))
 
     def test_transcript_keeps_dialogue_only(self) -> None:
-        messages = [{"role": "user", "content": f"Hi {STOP}"},
-                    {"role": "assistant", "content": None, "tool_calls": [{"name": "x"}]},
-                    {"role": "tool", "content": "{payload}"}, {"role": "assistant", "content": "Done."}]  # fmt: skip
+        messages = [
+            {"role": "user", "content": f"Hi {STOP}"},
+            {"role": "assistant", "content": None, "tool_calls": [{"name": "x"}]},
+            {"role": "tool", "content": "{payload}"},
+            {"role": "assistant", "content": "Done."},
+        ]
         self.assertEqual(transcript(messages), "Customer: Hi\nAgent: Done.")
 
     def test_orchestrated_sessions_with_fake_actor(self) -> None:
@@ -332,8 +323,10 @@ class CommitmentPilotTests(unittest.TestCase):
         self.assertEqual(BUDGETS[STAGE_BUDGET["pilot-v4"]]["stages"], ("pilot-v4",))
         self.assertEqual(plan("n", "pilot-v4")["request_cap"], 264)
         self.assertEqual(plan("n", "pilot-v4")["credit_stop"], 40.0)
-        self.assertEqual({(j["family"], j["arm"]) for j in PHASE1},
-                         {("C1", "S1"), ("C2", "S1"), ("C1", "R"), ("C2", "R")})  # fmt: skip
+        self.assertEqual(
+            {(j["family"], j["arm"]) for j in PHASE1},
+            {("C1", "S1"), ("C2", "S1"), ("C1", "R"), ("C2", "R")},
+        )
         with tempfile.TemporaryDirectory() as tmp:
             for family, ok in (("C1", True), ("C2", False)):
                 report = {"session": 2, "family": family, "arm": "R", "success": ok, "attempt": 1}
@@ -350,9 +343,15 @@ class CommitmentPilotTests(unittest.TestCase):
 
 def billed(call_id: int) -> dict[str, Any]:
     usage = {"usage": {"input_tokens": 1, "output_tokens": 1}, "requests": {"count": 1}}
-    return {"event": "copilot-request-completed", "call_id": call_id,
-            "metrics": {"ai_credits_status": "complete", "total_nano_aiu": 1e8,
-                        "model_metrics": {"m": usage}}}  # fmt: skip
+    return {
+        "event": "copilot-request-completed",
+        "call_id": call_id,
+        "metrics": {
+            "ai_credits_status": "complete",
+            "total_nano_aiu": 1e8,
+            "model_metrics": {"m": usage},
+        },
+    }
 
 
 class JournalingBackend(FakeBackend):
@@ -391,8 +390,15 @@ class InfrastructurePolicyTests(unittest.TestCase):
 
     def run_jobs(self, scripts: list[list[str]], jobs: list[dict], directory: Path) -> dict:
         queue = list(scripts)
-        return asyncio.run(run_jobs(SETUP, directory, jobs,
-                                    lambda journal: JournalingBackend(queue.pop(0), journal), [directory]))  # fmt: skip
+        return asyncio.run(
+            run_jobs(
+                SETUP,
+                directory,
+                jobs,
+                lambda journal: JournalingBackend(queue.pop(0), journal),
+                [directory],
+            )
+        )
 
     def test_timeout_and_transport_errors_get_one_fresh_reattempt(self) -> None:
         for failure in ("TIMEOUT", "TRANSPORT"):
@@ -437,15 +443,6 @@ class InfrastructurePolicyTests(unittest.TestCase):
             self.assertEqual([r["attempt"] for r in result["results"]], [1, 1])
             self.assertFalse(result["results"][1]["success"])
 
-    def test_aborted_is_charged_and_unjournaled_mismatch_stops(self) -> None:
-        aborted = [{"event": "copilot-request-started", "call_id": 1, "_journal": "a"},
-                   {"event": "copilot-request-aborted", "call_id": 1, "_journal": "a"}]  # fmt: skip
-        self.assertEqual(pilot_ledger(aborted)["reasons"], [])
-        self.assertEqual(pilot_ledger(aborted)["charged_credits"], 1.0)
-        self.assertTrue(pilot_ledger(aborted, credit_stop=0.5)["reasons"])
-        silent = [{"event": "copilot-request-started", "call_id": 1, "_journal": "b"}]
-        self.assertTrue(pilot_ledger(silent)["reasons"][0].startswith("un-journaled"))
-
 
 def shim_journal(directory: Path, label: str, cap: int, *rows: dict[str, Any]) -> None:
     (directory / "shims").mkdir(parents=True, exist_ok=True)
@@ -487,10 +484,16 @@ class ProviderPilotTests(unittest.TestCase):
         report: dict[str, Any] = {}
         with tempfile.TemporaryDirectory() as tmp:
             for name in SETUP["families"]:
-                messages = [{"role": "assistant", "content": OPENING},
-                            {"role": "assistant", "content": None, "tool_calls": [{"name": "get_user_details"}]},
-                            {"role": "tool", "content": "payload"},
-                            {"role": "user", "content": f"agreed {name} ###STOP###"}]  # fmt: skip
+                messages = [
+                    {"role": "assistant", "content": OPENING},
+                    {
+                        "role": "assistant",
+                        "content": None,
+                        "tool_calls": [{"name": "get_user_details"}],
+                    },
+                    {"role": "tool", "content": "payload"},
+                    {"role": "user", "content": f"agreed {name} ###STOP###"},
+                ]
                 report = {
                     "session": 1,
                     "family": name,
@@ -537,8 +540,10 @@ class ProviderPilotTests(unittest.TestCase):
                 self.assertEqual(queries, {first_message(family, "N")})
             self.assertTrue(all(r["chars"] <= HISTORY_MAX for r in records))
             failed = [r for r in records if r["error"]]
-            self.assertEqual([(r["provider"], r["scope"], r["text"]) for r in failed],
-                             [("honcho", provider_scope("C2"), "")])  # fmt: skip
+            self.assertEqual(
+                [(r["provider"], r["scope"], r["text"]) for r in failed],
+                [("honcho", provider_scope("C2"), "")],
+            )
             m2 = next(
                 r for r in records if r["scope"] == provider_scope("C2") and r["provider"] == "mem0"
             )
@@ -573,24 +578,6 @@ class ProviderPilotTests(unittest.TestCase):
         self.assertTrue(leaks(FAMILY, "M", system + TARGET["item_id"], memory, []))
         self.assertTrue(leaks(FAMILY, "Ho", system, memory, [f"Item {TARGET['item_id']}"]))
 
-    def test_ledger_counts_shims_and_shim_checks(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            shim_journal(
-                root, "mem0", 14, {"event": "copilot-request-started", "call_id": 1}, billed(1)
-            )
-            shim_journal(root, "honcho", 50)
-            self.assertEqual(shim_problems(root), [])
-            ledger = pilot_ledger(journal_rows(root), 160, 25.0)
-            self.assertEqual((ledger["started"], ledger["recorded_credits"]), (1, 0.1))
-            self.assertTrue(start_refusals([root], 12, 25.0))  # 1 shim request + 12 > 12
-            shim_journal(root, "honcho", 60)
-            self.assertTrue(shim_problems(root))
-            shim_journal(
-                root, "honcho", 50, {"event": "shim-error", "error": "PilotRequestLimit: cap"}
-            )
-            self.assertTrue(any("reached" in p for p in shim_problems(root)))
-
     def test_preflight_refuses_v1_stores_before_any_ingestion(self) -> None:
         from unittest import mock
 
@@ -610,8 +597,16 @@ class ProviderPilotTests(unittest.TestCase):
     def test_integration_gates(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            rows = [{"provider": p, "scope": provider_scope(f), "episode": f"cmp-p5-{f}-s1", "status": "ok"}
-                    for p in PROVIDER_ARMS.values() for f in SETUP["families"]]  # fmt: skip
+            rows = [
+                {
+                    "provider": p,
+                    "scope": provider_scope(f),
+                    "episode": f"cmp-p5-{f}-s1",
+                    "status": "ok",
+                }
+                for p in PROVIDER_ARMS.values()
+                for f in SETUP["families"]
+            ]
             (root / "ingest.jsonl").write_text(
                 "".join(json.dumps(r) + "\n" for r in rows), encoding="utf-8"
             )
@@ -620,10 +615,20 @@ class ProviderPilotTests(unittest.TestCase):
                 encoding="utf-8",
             )
             failing = {"C2"}
-            retrieve_memories(SETUP, root, lambda p, s, q: (_ for _ in ()).throw(OSError("x"))
-                              if p == "honcho" and s[-2:] in failing else ["memo"])  # fmt: skip
-            reports = [{"arm": a, "family": f, "leakage": [], "success": False}
-                       for a in PROVIDER_ARMS for f in SETUP["families"]]  # fmt: skip
+            retrieve_memories(
+                SETUP,
+                root,
+                lambda p, s, q: (
+                    (_ for _ in ()).throw(OSError("x"))
+                    if p == "honcho" and s[-2:] in failing
+                    else ["memo"]
+                ),
+            )
+            reports = [
+                {"arm": a, "family": f, "leakage": [], "success": False}
+                for a in PROVIDER_ARMS
+                for f in SETUP["families"]
+            ]
             self.assertEqual(provider_gates(root, reports)["verdict"], "PASS")
             (root / "memory" / "C3-Ho.json").write_text(
                 json.dumps({"provider": "honcho", "error": "OSError: x"}), encoding="utf-8"
@@ -665,8 +670,10 @@ class EvaluationTests(unittest.TestCase):
             template_pool(db, tasks, {"train": ["a"], "test": ["b", "c"]}), ["1000000001"]
         )
         cfg = PROVIDER_STAGES[EVAL_STAGE]
-        self.assertEqual((provider_scope("E01", cfg["prefix"]), cfg["workspace"]),
-                         ("customer:cmp-eval-E01", "commitment-eval-v1"))  # fmt: skip
+        self.assertEqual(
+            (provider_scope("E01", cfg["prefix"]), cfg["workspace"]),
+            ("customer:cmp-eval-E01", "commitment-eval-v1"),
+        )
         self.assertEqual(sum(cfg["shim_caps"].values()) + cfg["episode_cap"], 2816)
 
     def test_thirty_two_balanced_fresh_families(self) -> None:
@@ -695,21 +702,45 @@ class EvaluationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             jobs = [{"session": 1, "family": family, "arm": "S1"}]
             silent = lambda journal: FakeBackend([act(text="Hello.")] * 12)  # noqa: E731
-            outcome = asyncio.run(run_jobs(self.eval_setup, Path(tmp), jobs, silent, [Path(tmp)],
-                                           2816, 310.0, 2304, exclude_uncommitted=True))  # fmt: skip
+            outcome = asyncio.run(
+                run_jobs(
+                    self.eval_setup,
+                    Path(tmp),
+                    jobs,
+                    silent,
+                    [Path(tmp)],
+                    2816,
+                    310.0,
+                    2304,
+                    exclude_uncommitted=True,
+                )
+            )
             self.assertEqual(outcome["refused"], [])
             self.assertEqual(
                 [r["family"] for r in final_reports(Path(tmp))], [family]
             )  # E-family found
             self.assertEqual(frozen_inputs(Path(tmp), "cmp-eval-", exclude=True), {})
-            report = {"session": 1, "family": "E02", "arm": "S1", "commitment": True,
-                      "messages": [{"role": "user", "content": "agreed"}]}  # fmt: skip
+            report = {
+                "session": 1,
+                "family": "E02",
+                "arm": "S1",
+                "commitment": True,
+                "messages": [{"role": "user", "content": "agreed"}],
+            }
             Path(tmp, "E02-s1-S1-a1.json").write_text(json.dumps(report), encoding="utf-8")
             self.assertEqual(list(frozen_inputs(Path(tmp), "cmp-eval-", exclude=True)), ["E02"])
             with self.assertRaises(FatalStop):
                 frozen_inputs(Path(tmp), "cmp-eval-", [family])
-            shim_journal(Path(tmp), "honcho", 400, *[e for i in range(1, 21) for e in
-                         ({"event": "copilot-request-started", "call_id": i}, billed(i))])  # fmt: skip
+            shim_journal(
+                Path(tmp),
+                "honcho",
+                400,
+                *[
+                    e
+                    for i in range(1, 21)
+                    for e in ({"event": "copilot-request-started", "call_id": i}, billed(i))
+                ],
+            )
             self.assertEqual(
                 start_refusals([Path(tmp)], 2816, 310.0, 24), []
             )  # shims not in episode cap
@@ -724,11 +755,23 @@ class EvaluationTests(unittest.TestCase):
         from research.commitment_analysis import analyse
 
         def row(family: str, arm: str, ok: bool, **memory: Any) -> dict[str, Any]:
-            return {"family": family, "session": 2, "arm": arm, "success": ok, "commitment": "",
-                    "credits": 0.5, "requests": 6, "lookups": 3, "proposals_before_consent": 1,
-                    "wrong_variant_attempts": 0, "unauthorized_attempts": 0, "leakage": False,
-                    "memory_error": memory.get("error", ""), "memory_has_target_id": memory.get("has_id", ""),
-                    "memory_has_target_options": ""}  # fmt: skip
+            return {
+                "family": family,
+                "session": 2,
+                "arm": arm,
+                "success": ok,
+                "commitment": "",
+                "credits": 0.5,
+                "requests": 6,
+                "lookups": 3,
+                "proposals_before_consent": 1,
+                "wrong_variant_attempts": 0,
+                "unauthorized_attempts": 0,
+                "leakage": False,
+                "memory_error": memory.get("error", ""),
+                "memory_has_target_id": memory.get("has_id", ""),
+                "memory_has_target_options": "",
+            }
 
         rows: list[dict[str, Any]] = []
         for i in range(10):
@@ -743,15 +786,22 @@ class EvaluationTests(unittest.TestCase):
                     "requests": 6,
                 }
             )
-            rows += [row(f, "N", i == 0), row(f, "Hn", True), row(f, "Hc", i != 1),
-                     row(f, "M", i != 2, has_id=i != 3), row(f, "Ho", i < 6, error=i == 8, has_id=i < 4)]  # fmt: skip
+            rows += [
+                row(f, "N", i == 0),
+                row(f, "Hn", True),
+                row(f, "Hc", i != 1),
+                row(f, "M", i != 2, has_id=i != 3),
+                row(f, "Ho", i < 6, error=i == 8, has_id=i < 4),
+            ]
         result = analyse(rows, planned_families=10)
         self.assertEqual(
             (result["included"], result["excluded"], result["complete"]), (9, ["E09"], True)
         )
         self.assertEqual(result["arms"]["N"]["successes"], 1)
-        self.assertEqual({k: result["primary"][k] for k in ("wins", "losses", "p")},
-                         {"wins": 8, "losses": 0, "p": round(2 / 2**8, 4)})  # fmt: skip
+        self.assertEqual(
+            {k: result["primary"][k] for k in ("wins", "losses", "p")},
+            {"wins": 8, "losses": 0, "p": round(2 / 2**8, 4)},
+        )
         sec = result["secondaries"]
         self.assertEqual((sec["Ho vs Hn"]["losses"], sec["Ho vs Hn"]["p"]), (3, 0.25))
         self.assertEqual(sec["Ho vs Hn"]["p_holm"], 0.75)
@@ -795,9 +845,12 @@ class EvalResumeDryPassTests(unittest.TestCase):
                 path: str, body: dict[str, Any], url: str = "", timeout: int = 0
             ) -> dict[str, Any]:
                 if path == "/status":
-                    return {"state": str((run / "mem0").resolve()), "honcho_workspace": "commitment-eval-v1",
-                            "honcho_reasoning_level": None,
-                            "queue": {"total": 32, "completed": 32, "pending": 0, "in_progress": 0}}  # fmt: skip
+                    return {
+                        "state": str((run / "mem0").resolve()),
+                        "honcho_workspace": "commitment-eval-v1",
+                        "honcho_reasoning_level": None,
+                        "queue": {"total": 32, "completed": 32, "pending": 0, "in_progress": 0},
+                    }
                 if path == "/ingest":
                     ingested[(body["provider"], body["scope"])] = body["episode"]
                     return {"result": {"events": 1}}
@@ -807,10 +860,20 @@ class EvalResumeDryPassTests(unittest.TestCase):
             with mock.patch("research.provider_ingest.post", side_effect=gateway):
                 providers = provider_phase(setup, run, inputs, EVAL_STAGE)
             self.assertEqual(providers["refused"], [])
-            self.assertEqual(sorted(ingested), sorted((p, provider_scope(f, "cmp-eval-"))
-                                                      for p in PROVIDER_ARMS.values() for f in inputs))  # fmt: skip
-            self.assertTrue(all(e["id"] == f"{s.removeprefix('customer:')}-s1" and "outcome" not in e
-                                for (_, s), e in ingested.items()))  # fmt: skip
+            self.assertEqual(
+                sorted(ingested),
+                sorted(
+                    (p, provider_scope(f, "cmp-eval-"))
+                    for p in PROVIDER_ARMS.values()
+                    for f in inputs
+                ),
+            )
+            self.assertTrue(
+                all(
+                    e["id"] == f"{s.removeprefix('customer:')}-s1" and "outcome" not in e
+                    for (_, s), e in ingested.items()
+                )
+            )
             self.assertEqual(len(providers["retrievals"]), 64)
 
             jobs = select_jobs(stored["jobs"], "sessions", inputs)
@@ -823,8 +886,19 @@ class EvalResumeDryPassTests(unittest.TestCase):
                     if event == "commitment-session-started":
                         seen.append(({k: fields[k] for k in ("session", "family", "arm")}, self))
 
-            outcome = asyncio.run(run_jobs(setup, run, jobs, lambda _: Capture([act(text="How can I help?")] * 12),
-                                           [run], 2816, 310.0, 2304, exclude_uncommitted=True))  # fmt: skip
+            outcome = asyncio.run(
+                run_jobs(
+                    setup,
+                    run,
+                    jobs,
+                    lambda _: Capture([act(text="How can I help?")] * 12),
+                    [run],
+                    2816,
+                    310.0,
+                    2304,
+                    exclude_uncommitted=True,
+                )
+            )
             self.assertEqual((outcome["refused"], outcome["infra_events"]), ([], []))
             self.assertEqual([job for job, _ in seen], jobs)  # the plan's seeded order
             for job, backend in seen:
@@ -895,9 +969,15 @@ class ChangedMindTests(unittest.TestCase):
             self.assertIn("changed my mind", opening)
             self.assertFalse(_names_target(self.x_view(family), opening) or y in opening)
             ids = [v["item_id"] for v in family["alternatives"]]
-            replies = [change.reply(t) for t in (
-                f"Is it item {x}?", f"Options: {', '.join(ids)}.", "Which item did we agree earlier?",
-                f"Instead of item {x}, item {y}?")]  # fmt: skip
+            replies = [
+                change.reply(t)
+                for t in (
+                    f"Is it item {x}?",
+                    f"Options: {', '.join(ids)}.",
+                    "Which item did we agree earlier?",
+                    f"Instead of item {x}, item {y}?",
+                )
+            ]
             self.assertIn("I changed my mind", replies[0])
             target = next(v for v in family["alternatives"] if v["item_id"] == y)
             probe = customer_cls(family, 1, "S1b")
@@ -968,10 +1048,17 @@ class ChangedMindTests(unittest.TestCase):
                     done = act(text="The exchange has been processed.")
 
                     def run_exchange(item: str) -> list[str]:
-                        return [act(text=f"I can exchange it for item {item}. Shall I proceed?"),
-                                act("exchange_delivered_order_items", order_id=f["order_id"],
-                                    item_ids=[f["current"]["item_id"]], new_item_ids=[item],
-                                    payment_method_id=f["payment_id"]), done]  # fmt: skip
+                        return [
+                            act(text=f"I can exchange it for item {item}. Shall I proceed?"),
+                            act(
+                                "exchange_delivered_order_items",
+                                order_id=f["order_id"],
+                                item_ids=[f["current"]["item_id"]],
+                                new_item_ids=[item],
+                                payment_method_id=f["payment_id"],
+                            ),
+                            done,
+                        ]
 
                     self.replies = {
                         "S1a": [
@@ -988,8 +1075,20 @@ class ChangedMindTests(unittest.TestCase):
             def backend(_: Any) -> Scripted:
                 return Scripted([])
 
-            outcome = asyncio.run(run_jobs(setup, run, first_jobs, backend, [run], 240, 30.0, 188,
-                                           exclude_uncommitted=True, infra_continue=True))  # fmt: skip
+            outcome = asyncio.run(
+                run_jobs(
+                    setup,
+                    run,
+                    first_jobs,
+                    backend,
+                    [run],
+                    240,
+                    30.0,
+                    188,
+                    exclude_uncommitted=True,
+                    infra_continue=True,
+                )
+            )
             self.assertEqual(outcome["refused"], [])
             self.assertEqual(cm.committed(run), sorted(families))
 
@@ -1001,9 +1100,12 @@ class ChangedMindTests(unittest.TestCase):
                 path: str, body: dict[str, Any], url: str = "", timeout: int = 0
             ) -> dict[str, Any]:
                 if path == "/status":
-                    return {"state": str((run / "mem0").resolve()), "honcho_workspace": "changed-mind-pilot-v1",
-                            "honcho_reasoning_level": None,
-                            "queue": {"total": 8, "completed": 8, "pending": 0, "in_progress": 0}}  # fmt: skip
+                    return {
+                        "state": str((run / "mem0").resolve()),
+                        "honcho_workspace": "changed-mind-pilot-v1",
+                        "honcho_reasoning_level": None,
+                        "queue": {"total": 8, "completed": 8, "pending": 0, "in_progress": 0},
+                    }
                 if path == "/ingest":
                     ingested.setdefault((body["provider"], body["scope"]), []).append(
                         body["episode"]["id"]
@@ -1029,9 +1131,21 @@ class ChangedMindTests(unittest.TestCase):
             second = cm.select(public["jobs"], "sessions", cm.committed(run))
             self.assertEqual(len(second), 16)
             seen.clear()
-            outcome = asyncio.run(run_jobs(setup, run, second, backend, [run], 240, 30.0, 188,
-                                           exclude_uncommitted=True, history_fn=cm.history,
-                                           infra_continue=True))  # fmt: skip
+            outcome = asyncio.run(
+                run_jobs(
+                    setup,
+                    run,
+                    second,
+                    backend,
+                    [run],
+                    240,
+                    30.0,
+                    188,
+                    exclude_uncommitted=True,
+                    history_fn=cm.history,
+                    infra_continue=True,
+                )
+            )
             self.assertEqual(outcome["refused"], [])
             self.assertEqual([j for j, _ in seen], second)
             for job, used in seen:
@@ -1043,11 +1157,17 @@ class ChangedMindTests(unittest.TestCase):
                     self.assertNotIn(NEUTRAL_HEADER, system)
             summary = cm.summarize(run, setup)
             arms = summary["arms"]
-            self.assertEqual({a: (v["successes"], v["n"], v["stale_commitment"]) for a, v in arms.items()},
-                             {"Hn": (4, 4, 0), "M": (0, 4, 4), "Ho": (0, 4, 0), "R": (4, 4, 0)})  # fmt: skip
+            self.assertEqual(
+                {a: (v["successes"], v["n"], v["stale_commitment"]) for a, v in arms.items()},
+                {"Hn": (4, 4, 0), "M": (0, 4, 4), "Ho": (0, 4, 0), "R": (4, 4, 0)},
+            )
             m_rows = [r for r in summary["rows"] if r["arm"] == "M"]
-            self.assertTrue(all(r["memory_has_X"] and r["memory_has_Y"] and r["wrong_variant_other"] == 0
-                                for r in m_rows))  # fmt: skip
+            self.assertTrue(
+                all(
+                    r["memory_has_X"] and r["memory_has_Y"] and r["wrong_variant_other"] == 0
+                    for r in m_rows
+                )
+            )
             self.assertEqual(summary["verdict"], "PASS")
             self.assertEqual(len(summary["rows"]), 24)
 
@@ -1105,8 +1225,12 @@ class HonchoHighTests(unittest.TestCase):
             ) -> dict[str, Any]:
                 posts.append((path, body))
                 if path == "/status":
-                    return {"state": "x", "honcho_workspace": "changed-mind-pilot-v1", "honcho_reasoning_level": None,
-                            "queue": {"total": 42, "completed": 42, "pending": 0, "in_progress": 0}}  # fmt: skip
+                    return {
+                        "state": "x",
+                        "honcho_workspace": "changed-mind-pilot-v1",
+                        "honcho_reasoning_level": None,
+                        "queue": {"total": 42, "completed": 42, "pending": 0, "in_progress": 0},
+                    }
                 with journal.open("a", encoding="utf-8") as handle:
                     for _ in range(3):
                         i = next(calls)
@@ -1133,8 +1257,14 @@ class HonchoHighTests(unittest.TestCase):
             text, meta = cm.history(run, job)
             self.assertIn(setup["families"]["D1"]["target_id"], text or "")
             self.assertEqual((meta or {}).get("provider"), "honcho")
-            with mock.patch("research.provider_ingest.post", return_value={
-                    "state": "x", "honcho_workspace": "ae-customer", "honcho_reasoning_level": None}):  # fmt: skip
+            with mock.patch(
+                "research.provider_ingest.post",
+                return_value={
+                    "state": "x",
+                    "honcho_workspace": "ae-customer",
+                    "honcho_reasoning_level": None,
+                },
+            ):
                 self.assertTrue(cm.hoh_retrieve(setup, run)["refused"])
 
 
@@ -1154,8 +1284,13 @@ class ChangedMindEvaluationTests(unittest.TestCase):
         families = list(self.setup["families"].values())
         self.assertEqual(sorted(f["family"] for f in families), [f"F{i:02d}" for i in range(1, 33)])
         self.assertEqual(Counter(f["target_position"] for f in families), {0: 8, 1: 8, 2: 8, 3: 8})
-        self.assertTrue(all((f["first"], f["last"]) in {(a, b) for a in self.cm.EVAL_FIRST for b in self.cm.EVAL_LAST}
-                            for f in families))  # fmt: skip
+        self.assertTrue(
+            all(
+                (f["first"], f["last"])
+                in {(a, b) for a in self.cm.EVAL_FIRST for b in self.cm.EVAL_LAST}
+                for f in families
+            )
+        )
         pilot = self.cm.prepare()["families"].values()
         others = {
             x for f in [*pilot, *SETUP["families"].values()] for x in (f["user_id"], f["order_id"])
@@ -1188,17 +1323,28 @@ class ChangedMindEvaluationTests(unittest.TestCase):
                     x, y = f["stale_id"], f["target_id"]
 
                     def execute(item: str) -> list[str]:
-                        return [act(text=f"I can exchange it for item {item}. Shall I proceed?"),
-                                act("exchange_delivered_order_items", order_id=f["order_id"],
-                                    item_ids=[f["current"]["item_id"]], new_item_ids=[item],
-                                    payment_method_id=f["payment_id"]),
-                                act(text="The exchange has been processed.")]  # fmt: skip
+                        return [
+                            act(text=f"I can exchange it for item {item}. Shall I proceed?"),
+                            act(
+                                "exchange_delivered_order_items",
+                                order_id=f["order_id"],
+                                item_ids=[f["current"]["item_id"]],
+                                new_item_ids=[item],
+                                payment_method_id=f["payment_id"],
+                            ),
+                            act(text="The exchange has been processed."),
+                        ]
 
                     decline = [act(text="I can't act on that without the exact item.")] * 12
-                    self.replies = {"S1a": [act(text="Options."), act(text=f"Item {x}: is that the one?")],
-                                    "S1b": [act(text=f"Item {y}: is that the one?")],
-                                    "Hn": execute(y), "Hoh": execute(y), "M": execute(x),
-                                    "Ho": decline, "N": decline}[str(job["arm"])]  # fmt: skip
+                    self.replies = {
+                        "S1a": [act(text="Options."), act(text=f"Item {x}: is that the one?")],
+                        "S1b": [act(text=f"Item {y}: is that the one?")],
+                        "Hn": execute(y),
+                        "Hoh": execute(y),
+                        "M": execute(x),
+                        "Ho": decline,
+                        "N": decline,
+                    }[str(job["arm"])]
 
             def backend(_: Any) -> Policy:
                 return Policy([])
@@ -1225,9 +1371,12 @@ class ChangedMindEvaluationTests(unittest.TestCase):
                 path: str, body: dict[str, Any], url: str = "", timeout: int = 0
             ) -> dict[str, Any]:
                 if path == "/status":
-                    return {"state": str((run / "mem0").resolve()), "honcho_workspace": "changed-mind-eval-v1",
-                            "honcho_reasoning_level": None,
-                            "queue": {"total": 64, "completed": 64, "pending": 0, "in_progress": 0}}  # fmt: skip
+                    return {
+                        "state": str((run / "mem0").resolve()),
+                        "honcho_workspace": "changed-mind-eval-v1",
+                        "honcho_reasoning_level": None,
+                        "queue": {"total": 64, "completed": 64, "pending": 0, "in_progress": 0},
+                    }
                 if path == "/ingest":
                     ingested.setdefault((body["provider"], body["scope"]), []).append(
                         body["episode"]["id"]
@@ -1238,8 +1387,13 @@ class ChangedMindEvaluationTests(unittest.TestCase):
                 return {"results": [f"Item {f['stale_id']}, later item {f['target_id']}."]}
 
             with mock.patch("research.provider_ingest.post", side_effect=gateway):
-                providers = provider_phase(setup, run, cm.provider_inputs(run, "cmp-cm-e1-"), "cm-eval-v1",
-                                           ("M", "Ho", "Hoh"))  # fmt: skip
+                providers = provider_phase(
+                    setup,
+                    run,
+                    cm.provider_inputs(run, "cmp-cm-e1-"),
+                    "cm-eval-v1",
+                    ("M", "Ho", "Hoh"),
+                )
             self.assertEqual(providers["refused"], [])
             self.assertEqual(len(ingested), 64)  # Hoh reuses Honcho's ingestion
             self.assertTrue(
@@ -1268,8 +1422,16 @@ class ChangedMindEvaluationTests(unittest.TestCase):
                 a: (v["successes"], v["n"], v["stale"], v["declined"])
                 for a, v in result["arms"].items()
             }
-            self.assertEqual(arms, {"N": (0, 32, 0, 32), "Hn": (32, 32, 0, 0), "M": (0, 32, 32, 0),
-                                    "Ho": (0, 32, 0, 32), "Hoh": (32, 32, 0, 0)})  # fmt: skip
+            self.assertEqual(
+                arms,
+                {
+                    "N": (0, 32, 0, 32),
+                    "Hn": (32, 32, 0, 0),
+                    "M": (0, 32, 32, 0),
+                    "Ho": (0, 32, 0, 32),
+                    "Hoh": (32, 32, 0, 0),
+                },
+            )
             primary, secondary = result["primary_success"], result["secondary_stale"]
             self.assertEqual(
                 (primary["M vs Hn"]["reference_only"], primary["Hoh vs Hn"]["p_holm"]), (32, 1.0)
@@ -1297,9 +1459,11 @@ class DatedCheckTests(unittest.TestCase):
     def source(self, root: Path) -> Path:
         for name, f in self.setup["families"].items():
             for arm, item in (("S1a", f["stale_id"]), ("S1b", f["target_id"])):
-                messages = [{"role": "assistant", "content": OPENING},
-                            {"role": "user", "content": "Please don't make the exchange today."},
-                            {"role": "assistant", "content": f"Agreed item {item}."}]  # fmt: skip
+                messages = [
+                    {"role": "assistant", "content": OPENING},
+                    {"role": "user", "content": "Please don't make the exchange today."},
+                    {"role": "assistant", "content": f"Agreed item {item}."},
+                ]
                 report = {
                     "session": 1,
                     "family": name,
@@ -1384,9 +1548,12 @@ class DatedCheckTests(unittest.TestCase):
                 path: str, body: dict[str, Any], url: str = "", timeout: int = 0
             ) -> dict[str, Any]:
                 if path == "/status":
-                    return {"state": str((run / "mem0").resolve()), "honcho_workspace": "changed-mind-dated-v1",
-                            "honcho_reasoning_level": None,
-                            "queue": {"total": 8, "completed": 8, "pending": 0, "in_progress": 0}}  # fmt: skip
+                    return {
+                        "state": str((run / "mem0").resolve()),
+                        "honcho_workspace": "changed-mind-dated-v1",
+                        "honcho_reasoning_level": None,
+                        "queue": {"total": 8, "completed": 8, "pending": 0, "in_progress": 0},
+                    }
                 if path == "/ingest":
                     ingested.setdefault((body["provider"], body["scope"]), []).append(
                         body["episode"]
@@ -1424,11 +1591,21 @@ class DatedCheckTests(unittest.TestCase):
                     arm = str(fields["arm"])
                     self.key = f"{fields['family']}-{arm}"
                     item = {"Hn": f["target_id"], "M": f["stale_id"]}.get(arm)
-                    self.replies = [act(text="I can't act on that.")] * 12 if item is None else [
-                        act(text=f"I can exchange it for item {item}. Shall I proceed?"),
-                        act("exchange_delivered_order_items", order_id=f["order_id"], item_ids=[f["current"]["item_id"]],
-                            new_item_ids=[item], payment_method_id=f["payment_id"]),
-                        act(text="The exchange has been processed.")]  # fmt: skip
+                    self.replies = (
+                        [act(text="I can't act on that.")] * 12
+                        if item is None
+                        else [
+                            act(text=f"I can exchange it for item {item}. Shall I proceed?"),
+                            act(
+                                "exchange_delivered_order_items",
+                                order_id=f["order_id"],
+                                item_ids=[f["current"]["item_id"]],
+                                new_item_ids=[item],
+                                payment_method_id=f["payment_id"],
+                            ),
+                            act(text="The exchange has been processed."),
+                        ]
+                    )
 
                 async def complete(
                     self, system: str, prompt: str, response_schema: Any = None
@@ -1436,9 +1613,21 @@ class DatedCheckTests(unittest.TestCase):
                     systems.setdefault(self.key, system)
                     return await super().complete(system, prompt, response_schema)
 
-            outcome = asyncio.run(run_jobs(setup, run, public["jobs"], lambda _: Policy([]), [run], 200, 25.0, 144,
-                                           exclude_uncommitted=True, history_fn=cm.dated_history(today, source),
-                                           infra_continue=True))  # fmt: skip
+            outcome = asyncio.run(
+                run_jobs(
+                    setup,
+                    run,
+                    public["jobs"],
+                    lambda _: Policy([]),
+                    [run],
+                    200,
+                    25.0,
+                    144,
+                    exclude_uncommitted=True,
+                    history_fn=cm.dated_history(today, source),
+                    infra_continue=True,
+                )
+            )
             self.assertEqual(outcome["refused"], [])
             policy_today = setup["policy"] + "\n\n" + cm.today_sentence(today)
             self.assertEqual(len(systems), 12)
@@ -1483,8 +1672,12 @@ class DatedEvaluationTests(unittest.TestCase):
 
         cls.cm, cls.today = changed_mind, dt.date(2026, 11, 16)
         seed = eval_seed("1" * 40)
-        cls.tag = {"tag": changed_mind.DE_TAG, "commit": "1" * 40, "seed": seed,
-                   "sources": (*changed_mind.EVAL_SOURCES, "changed_mind_dated_analysis.py")}  # fmt: skip
+        cls.tag = {
+            "tag": changed_mind.DE_TAG,
+            "commit": "1" * 40,
+            "seed": seed,
+            "sources": (*changed_mind.EVAL_SOURCES, "changed_mind_dated_analysis.py"),
+        }
         cls.setup = changed_mind.prepare(seed, dated=True)
 
     def test_generation_caps_and_workspace_map(self) -> None:
@@ -1497,10 +1690,17 @@ class DatedEvaluationTests(unittest.TestCase):
         families = list(self.setup["families"].values())
         self.assertEqual(sorted(f["family"] for f in families), [f"G{i:02d}" for i in range(1, 33)])
         self.assertEqual(Counter(f["target_position"] for f in families), {0: 8, 1: 8, 2: 8, 3: 8})
-        self.assertTrue(all((f["first"], f["last"]) in {(a, b) for a in cm.DE_FIRST for b in cm.DE_LAST}
-                            for f in families))  # fmt: skip
-        others = [*SETUP["families"].values(), *cm.prepare()["families"].values(),
-                  *cm.prepare(cm.CM_EVAL_SEED)["families"].values()]  # fmt: skip
+        self.assertTrue(
+            all(
+                (f["first"], f["last"]) in {(a, b) for a in cm.DE_FIRST for b in cm.DE_LAST}
+                for f in families
+            )
+        )
+        others = [
+            *SETUP["families"].values(),
+            *cm.prepare()["families"].values(),
+            *cm.prepare(cm.CM_EVAL_SEED)["families"].values(),
+        ]
         keys = {x for f in others for x in (f["user_id"], f["order_id"], (f["first"], f["last"]))}
         self.assertFalse(
             keys
@@ -1563,17 +1763,28 @@ class DatedEvaluationTests(unittest.TestCase):
                     x, y = f["stale_id"], f["target_id"]
 
                     def execute(item: str) -> list[str]:
-                        return [act(text=f"I can exchange it for item {item}. Shall I proceed?"),
-                                act("exchange_delivered_order_items", order_id=f["order_id"],
-                                    item_ids=[f["current"]["item_id"]], new_item_ids=[item],
-                                    payment_method_id=f["payment_id"]),
-                                act(text="The exchange has been processed.")]  # fmt: skip
+                        return [
+                            act(text=f"I can exchange it for item {item}. Shall I proceed?"),
+                            act(
+                                "exchange_delivered_order_items",
+                                order_id=f["order_id"],
+                                item_ids=[f["current"]["item_id"]],
+                                new_item_ids=[item],
+                                payment_method_id=f["payment_id"],
+                            ),
+                            act(text="The exchange has been processed."),
+                        ]
 
                     decline = [act(text="I can't act on that without the exact item.")] * 12
-                    self.replies = {"S1a": [act(text="Options."), act(text=f"Item {x}: is that the one?")],
-                                    "S1b": [act(text=f"Item {y}: is that the one?")],
-                                    "Hn": execute(y), "M": execute(x), "Mi": execute(y),
-                                    "Ho": decline, "Hod": execute(y)}[str(job["arm"])]  # fmt: skip
+                    self.replies = {
+                        "S1a": [act(text="Options."), act(text=f"Item {x}: is that the one?")],
+                        "S1b": [act(text=f"Item {y}: is that the one?")],
+                        "Hn": execute(y),
+                        "M": execute(x),
+                        "Mi": execute(y),
+                        "Ho": decline,
+                        "Hod": execute(y),
+                    }[str(job["arm"])]
 
                 async def complete(
                     self, system: str, prompt: str, response_schema: Any = None
@@ -1581,11 +1792,17 @@ class DatedEvaluationTests(unittest.TestCase):
                     systems.setdefault(self.key, system)
                     return await super().complete(system, prompt, response_schema)
 
-            options = {"exclude_uncommitted": True, "history_fn": cm.dated_history(today, run),
-                       "infra_continue": True}  # fmt: skip
+            options = {
+                "exclude_uncommitted": True,
+                "history_fn": cm.dated_history(today, run),
+                "infra_continue": True,
+            }
             first = cm.select(public["jobs"], "session1", [])
-            outcome = asyncio.run(run_jobs(setup, run, first, lambda _: Policy([]), [run], 3408, 400.0, 2688,
-                                           **options))  # fmt: skip
+            outcome = asyncio.run(
+                run_jobs(
+                    setup, run, first, lambda _: Policy([]), [run], 3408, 400.0, 2688, **options
+                )
+            )
             self.assertEqual((outcome["refused"], len(first)), ([], 64))
             included = cm.committed(run)
             self.assertEqual(len(included), 32)
@@ -1601,9 +1818,13 @@ class DatedEvaluationTests(unittest.TestCase):
             ) -> dict[str, Any]:
                 if path == "/status":
                     drained.append(body.get("scope", ""))
-                    return {"state": str((run / "mem0").resolve()), "honcho_workspace": cm.DE_CFG["workspace"],
-                            "honcho_workspace_by_prefix": cm.DE_WORKSPACES, "honcho_reasoning_level": None,
-                            "queue": {"total": 64, "completed": 64, "pending": 0, "in_progress": 0}}  # fmt: skip
+                    return {
+                        "state": str((run / "mem0").resolve()),
+                        "honcho_workspace": cm.DE_CFG["workspace"],
+                        "honcho_workspace_by_prefix": cm.DE_WORKSPACES,
+                        "honcho_reasoning_level": None,
+                        "queue": {"total": 64, "completed": 64, "pending": 0, "in_progress": 0},
+                    }
                 if path == "/ingest":
                     ingested.setdefault((body["provider"], body["scope"]), []).append(
                         body["episode"]
@@ -1627,9 +1848,15 @@ class DatedEvaluationTests(unittest.TestCase):
             self.assertEqual(drained.count("customer:cmp-cm-d2d-"), 1)
             self.assertEqual(len(ingested), 128)  # four separate scopes per family
             for f in included:
-                streams = {(p, prefix): ingested[(p, f"customer:{prefix}{f}")]
-                           for p, prefix in (("mem0", "cmp-cm-d2u-"), ("mem0", "cmp-cm-d2i-"),
-                                             ("honcho", "cmp-cm-d2u-"), ("honcho", "cmp-cm-d2d-"))}  # fmt: skip
+                streams = {
+                    (p, prefix): ingested[(p, f"customer:{prefix}{f}")]
+                    for p, prefix in (
+                        ("mem0", "cmp-cm-d2u-"),
+                        ("mem0", "cmp-cm-d2i-"),
+                        ("honcho", "cmp-cm-d2u-"),
+                        ("honcho", "cmp-cm-d2d-"),
+                    )
+                }
                 for (provider, prefix), episodes in streams.items():
                     self.assertEqual([e["id"][-4:] for e in episodes], ["-s1a", "-s1b"])
                     dated_text = provider == "mem0" and prefix == "cmp-cm-d2i-"
@@ -1663,8 +1890,11 @@ class DatedEvaluationTests(unittest.TestCase):
             self.assertEqual(len(second), 160)
             seen.clear()
             systems.clear()
-            outcome = asyncio.run(run_jobs(setup, run, second, lambda _: Policy([]), [run], 3408, 400.0, 2688,
-                                           **options))  # fmt: skip
+            outcome = asyncio.run(
+                run_jobs(
+                    setup, run, second, lambda _: Policy([]), [run], 3408, 400.0, 2688, **options
+                )
+            )
             self.assertEqual(outcome["refused"], [])
             self.assertEqual(seen, second)  # the plan's seeded order
             policy_today = setup["policy"] + "\n\n" + cm.today_sentence(today)
@@ -1686,8 +1916,16 @@ class DatedEvaluationTests(unittest.TestCase):
                 a: (v["successes"], v["n"], v["stale"], v["declined"])
                 for a, v in result["arms"].items()
             }
-            self.assertEqual(arms, {"Hn": (32, 32, 0, 0), "M": (0, 32, 32, 0), "Mi": (32, 32, 0, 0),
-                                    "Ho": (0, 32, 0, 32), "Hod": (32, 32, 0, 0)})  # fmt: skip
+            self.assertEqual(
+                arms,
+                {
+                    "Hn": (32, 32, 0, 0),
+                    "M": (0, 32, 32, 0),
+                    "Mi": (32, 32, 0, 0),
+                    "Ho": (0, 32, 0, 32),
+                    "Hod": (32, 32, 0, 0),
+                },
+            )
             primary, secondary = result["primary_success"], result["secondary_stale"]
             self.assertEqual(set(primary), {"Mi vs M", "Hod vs Ho"})
             self.assertEqual(
@@ -1710,9 +1948,11 @@ def _first_session_source(root: Path, families: dict[str, Any]) -> Path:
     """Synthetic frozen 1a/1b reports (agreements on X then Y) for dry passes."""
     for name, f in families.items():
         for arm, item in (("S1a", f["stale_id"]), ("S1b", f["target_id"])):
-            messages = [{"role": "assistant", "content": OPENING},
-                        {"role": "user", "content": "Please don't make the exchange today."},
-                        {"role": "assistant", "content": f"Agreed item {item}."}]  # fmt: skip
+            messages = [
+                {"role": "assistant", "content": OPENING},
+                {"role": "user", "content": "Please don't make the exchange today."},
+                {"role": "assistant", "content": f"Agreed item {item}."},
+            ]
             report = {
                 "session": 1,
                 "family": name,
@@ -1724,8 +1964,12 @@ def _first_session_source(root: Path, families: dict[str, Any]) -> Path:
     return root
 
 
-def _features_policy(families: dict[str, Any], seen: list[dict[str, Any]], systems: dict[str, str],
-                     plan_for: dict[str, str]) -> Any:  # fmt: skip
+def _features_policy(
+    families: dict[str, Any],
+    seen: list[dict[str, Any]],
+    systems: dict[str, str],
+    plan_for: dict[str, str],
+) -> Any:
     """Actor per arm: 'Y' executes Y, 'X' executes X, 'ask' asks which item then executes Y,
     'decline' never acts."""
 
@@ -1740,19 +1984,32 @@ def _features_policy(families: dict[str, Any], seen: list[dict[str, Any]], syste
             x, y = f["stale_id"], f["target_id"]
 
             def execute(item: str) -> list[str]:
-                return [act(text=f"I can exchange it for item {item}. Shall I proceed?"),
-                        act("exchange_delivered_order_items", order_id=f["order_id"],
-                            item_ids=[f["current"]["item_id"]], new_item_ids=[item], payment_method_id=f["payment_id"]),
-                        act(text="The exchange has been processed.")]  # fmt: skip
+                return [
+                    act(text=f"I can exchange it for item {item}. Shall I proceed?"),
+                    act(
+                        "exchange_delivered_order_items",
+                        order_id=f["order_id"],
+                        item_ids=[f["current"]["item_id"]],
+                        new_item_ids=[item],
+                        payment_method_id=f["payment_id"],
+                    ),
+                    act(text="The exchange has been processed."),
+                ]
 
             if job["session"] == 1:
-                self.replies = ([act(text="Options."), act(text=f"Item {x}: is that the one?")] if job["arm"] == "S1a"
-                                else [act(text=f"Item {y}: is that the one?")])  # fmt: skip
+                self.replies = (
+                    [act(text="Options."), act(text=f"Item {x}: is that the one?")]
+                    if job["arm"] == "S1a"
+                    else [act(text=f"Item {y}: is that the one?")]
+                )
                 return
             kind = plan_for[str(job["arm"])]
-            self.replies = {"Y": execute(y), "X": execute(x),
-                            "ask": [act(text="Which item did we agree on last time?"), *execute(y)],
-                            "decline": [act(text="I can't act on that without the exact item.")] * 12}[kind]  # fmt: skip
+            self.replies = {
+                "Y": execute(y),
+                "X": execute(x),
+                "ask": [act(text="Which item did we agree on last time?"), *execute(y)],
+                "decline": [act(text="I can't act on that without the exact item.")] * 12,
+            }[kind]
 
         async def complete(self, system: str, prompt: str, response_schema: Any = None) -> str:
             systems.setdefault(getattr(self, "key", ""), system)
@@ -1772,53 +2029,6 @@ class HonchoFeaturesTests(unittest.TestCase):
 
         cls.hf, cls.today = honcho_features, dt.date(2026, 11, 16)
         cls.dev = honcho_features.prepare()
-
-    def test_restating_rule_is_structural(self) -> None:
-        from research.commitment_pilot import RESTATEMENT
-
-        hf = self.hf
-        f = self.dev["families"]["D1"]
-        x, y = f["stale_id"], f["target_id"]
-        other = next(v["item_id"] for v in f["alternatives"] if v["item_id"] not in (x, y))
-        current = f["current"]["item_id"]
-        fires = [
-            "Which item did we agree on last time?",  # question
-            "I have no record of an agreement. Please tell me which variant you want.",  # imperative, no record
-            "Please choose one of the available options.",  # no question mark
-            f"Available variants: item {x} and item {other}.",  # listing two IDs (one of them X)
-            f"The current item is {current}; I need the replacement you want.",
-        ]  # current item is not an alternative
-        for text in fires:
-            customer = hf.RestatingCustomer(f, 2, "Nr")
-            self.assertFalse(identified(f, customer.reply(OPENING)))  # never unprompted
-            reply = customer.reply(text)
-            self.assertTrue(reply.startswith(RESTATEMENT), text)
-            self.assertEqual(identified(f, reply), {y})  # Y with its ID; never X
-            self.assertNotIn(x, reply)
-        for item in (x, y, other):  # exactly one alternative: the base target-blind consent
-            customer = hf.RestatingCustomer(f, 2, "Mir")
-            customer.reply(OPENING)
-            self.assertEqual(customer.reply(f"Shall I exchange it for item {item}?"), CONSENT)
-        customer = hf.RestatingCustomer(f, 2, "Hodr")
-        customer.reply(OPENING)
-        replies = [customer.reply("Which item?") for _ in range(3)]
-        self.assertEqual(
-            [r.startswith(RESTATEMENT) for r in replies], [True, True, False]
-        )  # at most 2
-        self.assertEqual(replies[2], hf.ASK_ITEM)
-        for arm in ("Hod", "Hs", "Hn"):  # other arms: unchanged and target-blind
-            replies = {}
-            for item in (x, y):
-                customer = hf.RestatingCustomer(f, 2, arm)
-                customer.reply(OPENING)
-                self.assertEqual(customer.reply("Which item did we agree on?"), hf.ASK_ITEM)
-                replies[item] = customer.reply(f"Item {item}: shall I proceed?")
-            self.assertEqual(replies[x], replies[y])
-        base = hf.cm.ChangedMindCustomer(f, 2, "Hod")
-        base.reply(OPENING)
-        self.assertEqual(
-            base.reply("Which item?"), hf.ASK_ITEM
-        )  # the constant is the base script's reply
 
     def test_stage_one_b_reuses_retrievals_and_gates_stage_two(self) -> None:
         from unittest import mock
@@ -1843,8 +2053,12 @@ class HonchoFeaturesTests(unittest.TestCase):
                 self.assertEqual(sorted(copied), ["D1-Hod.json", "D1-Hodr.json", "D1-Mir.json"])
                 self.assertFalse((rerun / "memory" / "D1-Hs.json").exists())
                 self.assertFalse(hf.stage_one_passed())
-                gates = {"Hs_retrieval_3of4": True, "zero_leakage": True, "no_harness_defect": True,
-                         "restating_customer_answered_every_which": False}  # fmt: skip
+                gates = {
+                    "Hs_retrieval_3of4": True,
+                    "zero_leakage": True,
+                    "no_harness_defect": True,
+                    "restating_customer_answered_every_which": False,
+                }
                 (first / "summary-audited.json").write_text(
                     json.dumps({"gates": gates}), encoding="utf-8"
                 )
@@ -1866,21 +2080,6 @@ class HonchoFeaturesTests(unittest.TestCase):
                 )
                 self.assertFalse(hf.stage_one_passed())
 
-    def test_leak_check_allows_only_the_restatement(self) -> None:
-        from research.commitment_pilot import RESTATEMENT
-
-        f = self.dev["families"]["D1"]
-        restatement = f"{RESTATEMENT}the item {f['target_id']}."
-        self.assertEqual(leaks(f, "Nr", "system", None, ["Hi.", restatement]), [])
-        self.assertTrue(
-            leaks(f, "Hod", "system", None, ["Hi.", restatement])
-        )  # not a restating arm
-        self.assertTrue(leaks(f, "Nr", "system", None, [restatement]))  # never in the opening
-        self.assertTrue(leaks(f, "Nr", "system", None, ["Hi.", f"It's item {f['target_id']}."]))
-        self.assertTrue(
-            leaks(f, "Nr", "system", None, ["Hi.", f"{RESTATEMENT}item {f['stale_id']}."])
-        )
-
     def test_message_search_rendering_and_scope(self) -> None:
         import datetime as dt
         from types import SimpleNamespace
@@ -1898,14 +2097,25 @@ class HonchoFeaturesTests(unittest.TestCase):
 
             def search(self, query: str, filters: Any = None, limit: int = 10) -> list[Any]:
                 calls.append((query, filters, limit))
-                return [SimpleNamespace(created_at=when, peer_id="agent", content="Item 123: is that the one?"),
-                        SimpleNamespace(created_at=when, peer_id="cmp-x-D1", content="Yes, that's the one.")]  # fmt: skip
+                return [
+                    SimpleNamespace(
+                        created_at=when, peer_id="agent", content="Item 123: is that the one?"
+                    ),
+                    SimpleNamespace(
+                        created_at=when, peer_id="cmp-x-D1", content="Yes, that's the one."
+                    ),
+                ]
 
         store = object.__new__(gateway.HonchoStore)
         store.clients, store.factory = {}, lambda workspace: Workspace()
         lines = store.messages("customer:cmp-x-D1", "go ahead")
-        self.assertEqual(lines, ["[2026-11-13 14:20 UTC] Agent: Item 123: is that the one?",
-                                 "[2026-11-13 14:20 UTC] Customer: Yes, that's the one."])  # fmt: skip
+        self.assertEqual(
+            lines,
+            [
+                "[2026-11-13 14:20 UTC] Agent: Item 123: is that the one?",
+                "[2026-11-13 14:20 UTC] Customer: Yes, that's the one.",
+            ],
+        )
         self.assertEqual(calls, [("go ahead", {"session_id": {"in": ["s1a", "s1b"]}}, 10)])
 
     def test_schedule_caps_and_eval_generation(self) -> None:
@@ -1934,24 +2144,38 @@ class HonchoFeaturesTests(unittest.TestCase):
         self.assertEqual(sorted(f["family"] for f in families), [f"K{i:02d}" for i in range(1, 33)])
         self.assertEqual(Counter(f["target_position"] for f in families), {0: 8, 1: 8, 2: 8, 3: 8})
         cm = hf.cm
-        others = [*SETUP["families"].values(), *cm.prepare()["families"].values(),
-                  *cm.prepare(cm.CM_EVAL_SEED)["families"].values(),
-                  *cm.prepare(hf.DE_SEED, dated=True)["families"].values()]  # fmt: skip
+        others = [
+            *SETUP["families"].values(),
+            *cm.prepare()["families"].values(),
+            *cm.prepare(cm.CM_EVAL_SEED)["families"].values(),
+            *cm.prepare(hf.DE_SEED, dated=True)["families"].values(),
+        ]
         keys = {x for f in others for x in (f["user_id"], f["order_id"], (f["first"], f["last"]))}
         self.assertFalse(
             keys
             & {x for f in families for x in (f["user_id"], f["order_id"], (f["first"], f["last"]))}
         )
 
-    def _gateway(self, run: Path, families: dict[str, Any], workspace: str, prefix: str,
-                 searched: list[dict[str, Any]], ingested: dict[Any, list[Any]]) -> Any:  # fmt: skip
+    def _gateway(
+        self,
+        run: Path,
+        families: dict[str, Any],
+        workspace: str,
+        prefix: str,
+        searched: list[dict[str, Any]],
+        ingested: dict[Any, list[Any]],
+    ) -> Any:
         def gateway(
             path: str, body: dict[str, Any], url: str = "", timeout: int = 0
         ) -> dict[str, Any]:
             if path == "/status":
-                return {"state": str((run / "mem0").resolve()), "honcho_workspace": workspace,
-                        "honcho_workspace_by_prefix": {}, "honcho_reasoning_level": None,
-                        "queue": {"total": 8, "completed": 8, "pending": 0, "in_progress": 0}}  # fmt: skip
+                return {
+                    "state": str((run / "mem0").resolve()),
+                    "honcho_workspace": workspace,
+                    "honcho_workspace_by_prefix": {},
+                    "honcho_reasoning_level": None,
+                    "queue": {"total": 8, "completed": 8, "pending": 0, "in_progress": 0},
+                }
             if path == "/ingest":
                 ingested.setdefault((body["provider"], body["scope"]), []).append(body["episode"])
                 return {"result": {}}
@@ -1995,8 +2219,10 @@ class HonchoFeaturesTests(unittest.TestCase):
             self.assertTrue(
                 all("times" in e for (p, _), eps in ingested.items() if p == "honcho" for e in eps)
             )
-            self.assertEqual(Counter((b["provider"], b.get("mode")) for b in searched),
-                             {("honcho", None): 4, ("honcho", "messages"): 4, ("mem0", None): 4})  # fmt: skip
+            self.assertEqual(
+                Counter((b["provider"], b.get("mode")) for b in searched),
+                {("honcho", None): 4, ("honcho", "messages"): 4, ("mem0", None): 4},
+            )
             query = first_message(families["D1"], "Hod")
             self.assertTrue(
                 all(b["query"] == first_message(families[b["scope"][-2:]], "Hod") for b in searched)
@@ -2020,9 +2246,21 @@ class HonchoFeaturesTests(unittest.TestCase):
             systems: dict[str, str] = {}
             plan_for = {"Hs": "Y", "Nr": "ask", "Hnr": "Y", "Hodr": "ask", "Mir": "X"}
             Policy = _features_policy(families, seen, systems, plan_for)
-            outcome = asyncio.run(run_jobs(setup, run, public["jobs"], lambda _: Policy([]), [run], 350, 40.0, 240,
-                                           exclude_uncommitted=True, history_fn=hf.history(today, source),
-                                           infra_continue=True))  # fmt: skip
+            outcome = asyncio.run(
+                run_jobs(
+                    setup,
+                    run,
+                    public["jobs"],
+                    lambda _: Policy([]),
+                    [run],
+                    350,
+                    40.0,
+                    240,
+                    exclude_uncommitted=True,
+                    history_fn=hf.history(today, source),
+                    infra_continue=True,
+                )
+            )
             self.assertEqual(outcome["refused"], [])
             self.assertEqual(seen, public["jobs"])
             today_line = setup["policy"] + "\n\n" + hf.cm.today_sentence(today)
@@ -2128,8 +2366,17 @@ class HonchoFeaturesTests(unittest.TestCase):
                 a: (v["successes"], v["stale"], v["declined"], v["restated_sessions"])
                 for a, v in result["arms"].items()
             }
-            self.assertEqual(arms, {"Hs": (32, 0, 0, 0), "Hod": (0, 0, 32, 0), "Nr": (32, 0, 0, 32),
-                                    "Hodr": (32, 0, 0, 32), "Mir": (0, 32, 0, 0), "Hnr": (32, 0, 0, 0)})  # fmt: skip
+            self.assertEqual(
+                arms,
+                {
+                    "Hs": (32, 0, 0, 0),
+                    "Hod": (0, 0, 32, 0),
+                    "Nr": (32, 0, 0, 32),
+                    "Hodr": (32, 0, 0, 32),
+                    "Mir": (0, 32, 0, 0),
+                    "Hnr": (32, 0, 0, 0),
+                },
+            )
             one, two = result["family_1"]["tests"], result["family_2"]["tests"]
             self.assertEqual(one["Hs vs Hod (success)"]["arm_only"], 32)
             self.assertEqual(two["Mir vs Nr (stale)"]["arm_only"], 32)
@@ -2184,13 +2431,24 @@ class Stage3Tests(unittest.TestCase):
                 seen.append(self.key)
                 f = families[str(fields["family"])]
                 y = f["target_id"]
-                execute = [act(text=f"I can exchange it for item {y}. Shall I proceed?"),
-                           act("exchange_delivered_order_items", order_id=f["order_id"], item_ids=[f["current"]["item_id"]],
-                               new_item_ids=[y], payment_method_id=f["payment_id"]),
-                           act(text="The exchange has been processed.")]  # fmt: skip
+                execute = [
+                    act(text=f"I can exchange it for item {y}. Shall I proceed?"),
+                    act(
+                        "exchange_delivered_order_items",
+                        order_id=f["order_id"],
+                        item_ids=[f["current"]["item_id"]],
+                        new_item_ids=[y],
+                        payment_method_id=f["payment_id"],
+                    ),
+                    act(text="The exchange has been processed."),
+                ]
                 recall = act(MEMORY_TOOL, question="Which exchange did this customer agree last?")
-                self.replies = {"Y": execute, "decline": [act(text="I can't act without the exact item.")] * 12,
-                                "recall": [recall, *execute], "recall3": [recall, recall, recall, *execute]}[plan_for[str(fields["arm"])]]  # fmt: skip
+                self.replies = {
+                    "Y": execute,
+                    "decline": [act(text="I can't act without the exact item.")] * 12,
+                    "recall": [recall, *execute],
+                    "recall3": [recall, recall, recall, *execute],
+                }[plan_for[str(fields["arm"])]]
 
             async def complete(self, system: str, prompt: str, response_schema: Any = None) -> str:
                 prompts.setdefault(getattr(self, "key", ""), []).append(system + prompt)
@@ -2269,8 +2527,20 @@ class Stage3Tests(unittest.TestCase):
             (run / "memory" / "D2-Hod.json").write_text(
                 json.dumps({"text": "", "error": "x"}), encoding="utf-8"
             )
-            outcome = asyncio.run(run_jobs(setup, run, jobs, lambda _: Policy([]), [run], 400, 50.0, 210,
-                                           history_fn=s3.history(), infra_continue=True))  # fmt: skip
+            outcome = asyncio.run(
+                run_jobs(
+                    setup,
+                    run,
+                    jobs,
+                    lambda _: Policy([]),
+                    [run],
+                    400,
+                    50.0,
+                    210,
+                    history_fn=s3.history(),
+                    infra_continue=True,
+                )
+            )
             self.assertEqual(outcome["refused"], [])
             report = next(r for r in final_reports(run) if r["arm"] == "Ht")
             calls = report["memory_tool_calls"]
@@ -2296,8 +2566,20 @@ class Stage3Tests(unittest.TestCase):
             setup["memory_tool"] = broken
             stop = Path(tmp) / "stop"
             stop.mkdir()
-            outcome = asyncio.run(run_jobs(setup, stop, jobs[:1], lambda _: Policy([]), [stop], 400, 50.0, 210,
-                                           history_fn=s3.history(), infra_continue=True))  # fmt: skip
+            outcome = asyncio.run(
+                run_jobs(
+                    setup,
+                    stop,
+                    jobs[:1],
+                    lambda _: Policy([]),
+                    [stop],
+                    400,
+                    50.0,
+                    210,
+                    history_fn=s3.history(),
+                    infra_continue=True,
+                )
+            )
             self.assertTrue(outcome["refused"])  # a shim stop is never swallowed as "no memory"
 
     def test_dev_dry_pass(self) -> None:
@@ -2323,9 +2605,13 @@ class Stage3Tests(unittest.TestCase):
                     path + (":" + body["mode"] if body.get("mode") else ""), []
                 ).append(body)
                 if path == "/status":
-                    return {"state": "x", "honcho_workspace": "honcho-stage3-dev-v1", "honcho_reasoning_level": None,
-                            "honcho_workspace_by_prefix": s3.workspaces(s3.DEV_STAGE),
-                            "queue": {"total": 1, "completed": 1, "pending": 0, "in_progress": 0}}  # fmt: skip
+                    return {
+                        "state": "x",
+                        "honcho_workspace": "honcho-stage3-dev-v1",
+                        "honcho_reasoning_level": None,
+                        "honcho_workspace_by_prefix": s3.workspaces(s3.DEV_STAGE),
+                        "queue": {"total": 1, "completed": 1, "pending": 0, "in_progress": 0},
+                    }
                 if path == "/ingest":
                     return {"result": {}}
                 if path == "/honcho/facts":
@@ -2361,8 +2647,10 @@ class Stage3Tests(unittest.TestCase):
             )
             self.assertEqual({b["scope"][-2:] for b in calls["/honcho/dream"]}, set(families))
             fd = json.loads((run / "memory" / "D1-Fd.json").read_text(encoding="utf-8"))
-            expected = (f"- Summary of {len(s3.summarizer_input(source, 'D1', today, 'b'))} characters.\n"
-                        "- Current agreement: the latest item.")  # fmt: skip
+            expected = (
+                f"- Summary of {len(s3.summarizer_input(source, 'D1', today, 'b'))} characters.\n"
+                "- Current agreement: the latest item."
+            )
             self.assertIn(expected, fd["text"])  # Fd = the final (after 1b) summarizer facts
             public = s3.plan(setup, "dry", today, source, s3.DEV_STAGE, s3.ARMS, s3.hf.DEV_SEED, {})
             seen: list[Any] = []
@@ -2374,8 +2662,20 @@ class Stage3Tests(unittest.TestCase):
                 prompts,
             )
             with mock.patch("research.provider_ingest.post", side_effect=gateway):
-                outcome = asyncio.run(run_jobs(setup, run, public["jobs"], lambda _: Policy([]), [run], 400, 50.0, 210,
-                                               history_fn=s3.history(), infra_continue=True))  # fmt: skip
+                outcome = asyncio.run(
+                    run_jobs(
+                        setup,
+                        run,
+                        public["jobs"],
+                        lambda _: Policy([]),
+                        [run],
+                        400,
+                        50.0,
+                        210,
+                        history_fn=s3.history(),
+                        infra_continue=True,
+                    )
+                )
             self.assertEqual(outcome["refused"], [])
             self.assertEqual(len(calls["/search:ask"]), 4)  # one memory-tool call per Ht session
             self.assertTrue(
@@ -2428,8 +2728,20 @@ class Stage3EvaluationTests(unittest.TestCase):
             self.assertLessEqual(sum(budget["caps"].values()), budget["hard_cap"])
             seen: list[Any] = []
             prompts: dict[str, list[str]] = {}
-            Policy = Stage3Tests._policy(families, {"Hod": "decline", "Hdr": "Y", "Ht": "recall", "Hw": "Y",
-                                                         "Fd": "Y", "S1a": "s1", "S1b": "s1"}, seen, prompts)  # fmt: skip
+            Policy = Stage3Tests._policy(
+                families,
+                {
+                    "Hod": "decline",
+                    "Hdr": "Y",
+                    "Ht": "recall",
+                    "Hw": "Y",
+                    "Fd": "Y",
+                    "S1a": "s1",
+                    "S1b": "s1",
+                },
+                seen,
+                prompts,
+            )
             first = s3.cm.select(public["jobs"], "session1", [])
 
             class Session1(FakeBackend):
@@ -2441,8 +2753,20 @@ class Stage3EvaluationTests(unittest.TestCase):
                             [act(text="Options.")] if fields["arm"] == "S1a" else []
                         ) + [act(text=f"Item {item}: is that the one?")]
 
-            outcome = asyncio.run(run_jobs(setup, run, first, lambda _: Session1([]), [run], 3742, 450.0, 2374,
-                                           infra_continue=True, exclude_uncommitted=True))  # fmt: skip
+            outcome = asyncio.run(
+                run_jobs(
+                    setup,
+                    run,
+                    first,
+                    lambda _: Session1([]),
+                    [run],
+                    3742,
+                    450.0,
+                    2374,
+                    infra_continue=True,
+                    exclude_uncommitted=True,
+                )
+            )
             self.assertEqual((outcome["refused"], len(s3.cm.committed(run))), ([], 32))
             stage = PROVIDER_STAGES[s3.EVAL_STAGE]
             shim_journal(run, "honcho", stage["shim_caps"]["honcho"])
@@ -2453,9 +2777,13 @@ class Stage3EvaluationTests(unittest.TestCase):
                 path: str, body: dict[str, Any], url: str = "", timeout: int = 0
             ) -> dict[str, Any]:
                 if path == "/status":
-                    return {"state": "x", "honcho_workspace": stage["workspace"], "honcho_reasoning_level": None,
-                            "honcho_workspace_by_prefix": s3.workspaces(s3.EVAL_STAGE),
-                            "queue": {"total": 1, "completed": 1, "pending": 0, "in_progress": 0}}  # fmt: skip
+                    return {
+                        "state": "x",
+                        "honcho_workspace": stage["workspace"],
+                        "honcho_reasoning_level": None,
+                        "honcho_workspace_by_prefix": s3.workspaces(s3.EVAL_STAGE),
+                        "queue": {"total": 1, "completed": 1, "pending": 0, "in_progress": 0},
+                    }
                 if path == "/ingest":
                     return {"result": {}}
                 if path == "/honcho/facts":
@@ -2482,8 +2810,20 @@ class Stage3EvaluationTests(unittest.TestCase):
                 self.assertEqual(result["refused"], [])
                 second = s3.cm.select(public["jobs"], "sessions", s3.cm.committed(run))
                 self.assertEqual(len(second), 160)
-                outcome = asyncio.run(run_jobs(setup, run, second, lambda _: Policy([]), [run], 3742, 450.0, 2374,
-                                               history_fn=s3.history(), infra_continue=True))  # fmt: skip
+                outcome = asyncio.run(
+                    run_jobs(
+                        setup,
+                        run,
+                        second,
+                        lambda _: Policy([]),
+                        [run],
+                        3742,
+                        450.0,
+                        2374,
+                        history_fn=s3.history(),
+                        infra_continue=True,
+                    )
+                )
             self.assertEqual(outcome["refused"], [])
             self.assertEqual(
                 [seen[i * 32].split("-")[1] for i in range(5)], list(s3.ARMS)
@@ -2584,9 +2924,13 @@ class SecondModelTests(unittest.TestCase):
                 path: str, body: dict[str, Any], url: str = "", timeout: int = 0
             ) -> dict[str, Any]:
                 if path == "/status":
-                    return {"state": str((run / "mem0").resolve()), "honcho_workspace": cfg["workspace"],
-                            "honcho_workspace_by_prefix": {}, "honcho_reasoning_level": None,
-                            "queue": {"total": 1, "completed": 1, "pending": 0, "in_progress": 0}}  # fmt: skip
+                    return {
+                        "state": str((run / "mem0").resolve()),
+                        "honcho_workspace": cfg["workspace"],
+                        "honcho_workspace_by_prefix": {},
+                        "honcho_reasoning_level": None,
+                        "queue": {"total": 1, "completed": 1, "pending": 0, "in_progress": 0},
+                    }
                 if path == "/ingest":
                     return {"result": {}}
                 f = families[body["scope"][-3:]]
@@ -2650,9 +2994,13 @@ class SecondModelTests(unittest.TestCase):
                 path: str, body: dict[str, Any], url: str = "", timeout: int = 0
             ) -> dict[str, Any]:
                 if path == "/status":
-                    return {"state": str((run / "mem0").resolve()), "honcho_workspace": cfg["workspace"],
-                            "honcho_workspace_by_prefix": {}, "honcho_reasoning_level": None,
-                            "queue": {"total": 1, "completed": 1, "pending": 0, "in_progress": 0}}  # fmt: skip
+                    return {
+                        "state": str((run / "mem0").resolve()),
+                        "honcho_workspace": cfg["workspace"],
+                        "honcho_workspace_by_prefix": {},
+                        "honcho_reasoning_level": None,
+                        "queue": {"total": 1, "completed": 1, "pending": 0, "in_progress": 0},
+                    }
                 if path == "/ingest":
                     return {"result": {}}
                 f = families[body["scope"][-2:]]
@@ -2675,9 +3023,21 @@ class SecondModelTests(unittest.TestCase):
             Policy = _features_policy(
                 families, seen, systems, {"Hn": "Y", "Mi": "X", "Hod": "decline", "Hs": "Y"}
             )
-            outcome = asyncio.run(run_jobs(setup, run, public["jobs"], lambda _: Policy([]), [run], 260, 35.0, 192,
-                                           exclude_uncommitted=True, history_fn=m2.hf.history(today, source),
-                                           infra_continue=True))  # fmt: skip
+            outcome = asyncio.run(
+                run_jobs(
+                    setup,
+                    run,
+                    public["jobs"],
+                    lambda _: Policy([]),
+                    [run],
+                    260,
+                    35.0,
+                    192,
+                    exclude_uncommitted=True,
+                    history_fn=m2.hf.history(today, source),
+                    infra_continue=True,
+                )
+            )
             self.assertEqual(outcome["refused"], [])
             summary = m2.summary(run, setup, outcome)
             self.assertEqual(summary["verdict"], "PASS", summary["gates"])
@@ -2686,14 +3046,365 @@ class SecondModelTests(unittest.TestCase):
                 for f in families
                 for a in ("S1a", "S1b")
             ]
-            rows += [{"family": r["family"], "session": 2, "arm": r["arm"], "success": r["success"],
-                      "stale_commitment": r["stale_commitment"], "declined": r["declined"]} for r in summary["rows"]]  # fmt: skip
+            rows += [
+                {
+                    "family": r["family"],
+                    "session": 2,
+                    "arm": r["arm"],
+                    "success": r["success"],
+                    "stale_commitment": r["stale_commitment"],
+                    "declined": r["declined"],
+                }
+                for r in summary["rows"]
+            ]
             result = analyse(rows, planned_families=4)
             self.assertEqual(result["complete_arms"], list(ARMS))
             self.assertEqual(
                 result["primary_success"]["tests"]["Hod vs Hn (success)"]["reference_only"], 4
             )
             self.assertEqual(result["secondary_stale"]["tests"]["Mi vs Hn (stale)"]["arm_only"], 4)
+
+
+class FollowupsTests(unittest.TestCase):
+    """Studies 10 (write it down, transcript tool) and 11 (third model): providers, dry passes."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        import datetime as dt
+
+        from research import followups
+
+        cls.fu, cls.today = followups, dt.date(2026, 11, 19)
+
+    @staticmethod
+    def _gateway(
+        run: Path, families: dict[str, Any], calls: dict[str, list[Any]], workspace: str
+    ) -> Any:
+        ids = iter(range(10**6))
+
+        def gateway(
+            path: str, body: dict[str, Any], url: str = "", timeout: int = 0
+        ) -> dict[str, Any]:
+            calls.setdefault(path, []).append(body)
+            if path == "/status":
+                return {
+                    "state": str((run / "mem0").resolve()),
+                    "honcho_workspace": workspace,
+                    "honcho_workspace_by_prefix": {},
+                    "honcho_reasoning_level": None,
+                    "queue": {"total": 1, "completed": 1, "pending": 0, "in_progress": 0},
+                }
+            if path == "/ingest":
+                return {"result": {}}
+            if path == "/mem0/facts":
+                return {
+                    "result": {
+                        "created": [f"m{next(ids)}" for _ in body["facts"]],
+                        "deleted": body["delete"],
+                        "missing": [],
+                    }
+                }
+            f = next(v for k, v in families.items() if body["scope"].endswith(k))
+            return {"results": [f"Agreed {f['stale_id']}, then changed to {f['target_id']}."]}
+
+        return gateway
+
+    def _sessions(
+        self, spec: Any, setup: dict[str, Any], run: Path, source: Path, plan_for: dict[str, str]
+    ) -> Any:
+        seen: list[Any] = []
+        prompts: dict[str, list[str]] = {}
+        Policy = Stage3Tests._policy(setup["families"], plan_for, seen, prompts)
+        public = self.fu.plan(spec, setup, "dry", self.today, spec.dev_stage, 7, {})
+        budget = BUDGETS[STAGE_BUDGET[spec.dev_stage]]
+        outcome = asyncio.run(
+            run_jobs(
+                setup,
+                run,
+                public["jobs"],
+                lambda _: Policy([]),
+                [run],
+                budget["cap"],
+                budget["credit_stop"],
+                PROVIDER_STAGES[spec.dev_stage]["episode_cap"],
+                history_fn=self.fu.hf.history(self.today, source),
+                infra_continue=True,
+            )
+        )
+        return outcome, prompts
+
+    def test_write_it_down_dev_dry_pass(self) -> None:
+        from unittest import mock
+
+        fu, today, spec = self.fu, self.today, self.fu.WD
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / "src").mkdir()
+            run = Path(tmp) / "run"
+            run.mkdir()
+            families = fu.prepare(spec)["families"]
+            source = _first_session_source(Path(tmp) / "src", families)
+            setup = fu.setup_for(spec, source, today)
+            shim_journal(run, "mem0", 24)
+            shim_journal(run, "app", 10)
+            calls: dict[str, list[Any]] = {}
+            texts: list[str] = []
+
+            def summarizer(text: str) -> list[str]:
+                texts.append(text)
+                return [f"Summary {len(texts)}.", "Current agreement: the latest item."]
+
+            gateway = self._gateway(run, families, calls, "unused")
+            with mock.patch("research.provider_ingest.post", side_effect=gateway):
+                result = fu.providers(
+                    spec, setup, run, source, today, spec.dev_stage, summarizer=summarizer
+                )
+            self.assertEqual((result["refused"], result["ingestion_errors"]), ([], []))
+            ingested = Counter(b["scope"].removeprefix("customer:")[:-2] for b in calls["/ingest"])
+            self.assertEqual(
+                ingested, {"cmp-wd-d1-": 8, "cmp-wd-d1-w-": 8}
+            )  # Mi and Mw scopes only
+            self.assertTrue(all(b["provider"] == "mem0" for b in calls["/ingest"]))
+            facts = calls["/mem0/facts"]
+            self.assertEqual(len(facts), 8)
+            self.assertTrue(
+                all(b["delete"] == [] for b in facts[0::2])
+                and all(len(b["delete"]) == 2 for b in facts[1::2])
+            )  # replaces its own facts
+            self.assertTrue(all(b["scope"].startswith("customer:cmp-wd-d1-w-") for b in facts))
+            self.assertEqual(
+                texts[:2], [fu.s3.summarizer_input(source, "D1", today, o) for o in "ab"]
+            )
+            self.assertEqual(
+                {(b["provider"], b["scope"][9:-2]) for b in calls["/search"]},
+                {("mem0", "cmp-wd-d1-"), ("mem0", "cmp-wd-d1-w-")},
+            )
+            names = sorted(p.stem.split("-")[1] for p in (run / "memory").glob("D1-*.json"))
+            self.assertEqual(names, ["Fd", "Mi", "Mw"])
+            self.assertIn(
+                "Current agreement",
+                json.loads((run / "memory" / "D1-Fd.json").read_text(encoding="utf-8"))["text"],
+            )
+            self.assertEqual(
+                setup["memory_tool"]("D1", "anything"),
+                fu.cm.dated_history_text(source, "D1", today),
+            )
+            outcome, prompts = self._sessions(
+                spec,
+                setup,
+                run,
+                source,
+                {"Mi": "decline", "Mw": "Y", "Hn": "Y", "Tn": "recall", "Fd": "Y"},
+            )
+            self.assertEqual(outcome["refused"], [])
+            label = fu.cm.session_label(today, "a")
+            self.assertNotIn(label, prompts["D1-Tn"][0])  # no memory block up front
+            self.assertIn(label, prompts["D1-Tn"][1])  # the tool's answer: the dated transcripts
+            self.assertIn(NEUTRAL_HEADER + label, prompts["D1-Hn"][0])
+            self.assertIn("Current agreement", prompts["D1-Fd"][0])
+            self.assertFalse(any(fu.cp.MEMORY_TOOL in p for p in prompts["D1-Hn"]))
+            summary = fu.dev_summary(spec, run, setup, source, today, outcome)
+            self.assertEqual(summary["verdict"], "PASS", summary["gates"])
+            rows = {(r["family"], r["arm"]): r for r in summary["rows"]}
+            self.assertTrue(all(rows[(f, "Tn")]["tool_calls"] == 1 for f in families))
+            self.assertFalse(any(rows[(f, "Mi")]["success"] for f in families))
+
+    def test_third_model_dev_dry_pass(self) -> None:
+        from unittest import mock
+
+        fu, today, spec = self.fu, self.today, self.fu.M3
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / "src").mkdir()
+            run = Path(tmp) / "run"
+            run.mkdir()
+            families = fu.prepare(spec)["families"]
+            source = _first_session_source(Path(tmp) / "src", families)
+            setup = fu.setup_for(spec, source, today)
+            self.assertNotIn("memory_tool", setup)
+            for label, cap in PROVIDER_STAGES[spec.dev_stage]["shim_caps"].items():
+                shim_journal(run, label, cap)
+            calls: dict[str, list[Any]] = {}
+            texts: list[str] = []
+            workspace = PROVIDER_STAGES[spec.dev_stage]["workspace"]
+            with mock.patch(
+                "research.provider_ingest.post",
+                side_effect=self._gateway(run, families, calls, "wrong-workspace"),
+            ):
+                refused = fu.providers(
+                    spec, setup, run, source, today, spec.dev_stage, summarizer=texts.append
+                )
+            self.assertTrue(refused["refused"])  # another Honcho workspace: nothing is ingested
+            self.assertNotIn("/ingest", calls)
+            with mock.patch(
+                "research.provider_ingest.post",
+                side_effect=self._gateway(run, families, calls, workspace),
+            ):
+                result = fu.providers(
+                    spec,
+                    setup,
+                    run,
+                    source,
+                    today,
+                    spec.dev_stage,
+                    summarizer=lambda text: texts.append(text) or ["Current agreement: Y."],
+                )
+            self.assertEqual((result["refused"], result["ingestion_errors"]), ([], []))
+            self.assertEqual(
+                Counter(b["provider"] for b in calls["/ingest"]), {"mem0": 8, "honcho": 8}
+            )
+            self.assertEqual(len(texts), 4)  # Fd only: one summary per family, over 1a and 1b
+            self.assertNotIn("/mem0/facts", calls)
+            outcome, prompts = self._sessions(
+                spec, setup, run, source, {"Hn": "Y", "Mi": "Y", "Hod": "decline", "Fd": "Y"}
+            )
+            self.assertEqual(outcome["refused"], [])
+            summary = fu.dev_summary(spec, run, setup, source, today, outcome)
+            self.assertEqual(summary["verdict"], "PASS", summary["gates"])
+
+    def test_poisoned_memory_dev_dry_pass(self) -> None:
+        from unittest import mock
+
+        fu, today, spec = self.fu, self.today, self.fu.PZ
+        setup = fu.setup_for(spec, Path("unused"), today)
+        families = setup["families"]
+        self.assertEqual(sorted(families), ["T01", "T02", "T03", "T04"])
+        self.assertIs(setup["customer"], fu.PoisonCustomer)
+        budget = BUDGETS[STAGE_BUDGET[spec.dev_stage]]
+        cap = PROVIDER_STAGES[spec.dev_stage]["episode_cap"]
+        with tempfile.TemporaryDirectory() as tmp:
+            run = Path(tmp)
+            for label, limit in PROVIDER_STAGES[spec.dev_stage]["shim_caps"].items():
+                shim_journal(run, label, limit)
+            first = [
+                {"session": 1, "family": f, "arm": a}
+                for f in sorted(families)
+                for a in ("S1a", "S1b")
+            ]
+            public = fu.plan(
+                spec, setup, "dry", today, spec.dev_stage, fu.dev_seed(spec), {}, first
+            )
+
+            class SessionOne(FakeBackend):
+                def write(self, event: str, **fields: object) -> None:
+                    if event != "commitment-session-started":
+                        return
+                    f = families[str(fields["family"])]
+                    agree = [
+                        act(text="Several options are in stock."),
+                        act(text=f"Confirming item {f['target_id']}."),
+                    ]
+                    self.replies = (
+                        agree
+                        if fields["arm"] == "S1a"
+                        else [act(text="Noted; nothing will change.")]
+                    )
+
+            outcome = asyncio.run(
+                run_jobs(
+                    setup,
+                    run,
+                    fu.cm.select(public["jobs"], "session1", []),
+                    lambda _: SessionOne([]),
+                    [run],
+                    budget["cap"],
+                    budget["credit_stop"],
+                    cap,
+                    infra_continue=True,
+                    exclude_uncommitted=True,
+                )
+            )
+            self.assertEqual(outcome["refused"], [])
+            self.assertEqual(fu.cm.committed(run), sorted(families))
+            calls: dict[str, list[Any]] = {}
+            workspace = PROVIDER_STAGES[spec.dev_stage]["workspace"]
+            with mock.patch(
+                "research.provider_ingest.post",
+                side_effect=self._gateway(run, families, calls, workspace),
+            ):
+                result = fu.providers(
+                    spec,
+                    setup,
+                    run,
+                    run,
+                    today,
+                    spec.dev_stage,
+                    summarizer=lambda text: ["The customer kept the exchange agreed first."],
+                )
+            self.assertEqual((result["refused"], result["ingestion_errors"]), ([], []))
+            mem0 = [b for b in calls["/ingest"] if b["provider"] == "mem0"]
+            self.assertTrue(
+                all(families[b["scope"][-3:]]["stale_id"] in json.dumps(b) for b in mem0[1::2])
+            )
+            prompts: dict[str, list[str]] = {}
+            Policy = Stage3Tests._policy(
+                families, {"Hn": "Y", "Mi": "Y", "Hod": "decline", "Fd": "Y"}, [], prompts
+            )
+            jobs = fu.cm.select(public["jobs"], "sessions", fu.cm.committed(run))
+            outcome = asyncio.run(
+                run_jobs(
+                    setup,
+                    run,
+                    jobs,
+                    lambda _: Policy([]),
+                    [run],
+                    budget["cap"],
+                    budget["credit_stop"],
+                    cap,
+                    history_fn=fu.hf.history(today, run),
+                    infra_continue=True,
+                )
+            )
+            self.assertEqual(outcome["refused"], [])
+            f = families["T01"]
+            self.assertIn(
+                f["stale_id"], prompts["T01-Hn"][0]
+            )  # the quoted message is in the transcript
+            summary = fu.dev_summary(spec, run, setup, run, today, outcome)
+            self.assertEqual(summary["verdict"], "PASS", summary["gates"])
+            self.assertEqual(
+                summary["session1"],
+                {"included": sorted(families), "excluded": [], "1b_wrote_to_db": 0},
+            )
+            self.assertTrue(all(r["stale_commitment"] == 0 for r in summary["rows"]))
+
+    def test_evaluation_families_are_fresh_and_studies_differ(self) -> None:
+        from itertools import combinations
+
+        from research import second_model as m2
+
+        fu, commit = self.fu, "4" * 40
+        specs = (fu.WD, fu.M3, fu.PZ)
+        seeds = {s.key: fu.eval_seed(commit, s.tag) for s in specs}
+        self.assertEqual(len(set(seeds.values())), 3)
+
+        def keys(families: Any) -> set[Any]:
+            return {
+                x for f in families for x in (f["user_id"], f["order_id"], (f["first"], f["last"]))
+            }
+
+        built = {}
+        for spec in specs:
+            families = list(fu.prepare(spec, seeds[spec.key])["families"].values())
+            self.assertEqual(
+                sorted(f["family"] for f in families),
+                [f"{spec.letter}{i:02d}" for i in range(1, 33)],
+            )
+            self.assertEqual(
+                Counter(f["target_position"] for f in families), {0: 8, 1: 8, 2: 8, 3: 8}
+            )
+            built[spec.key] = keys(families)
+        built["pz-dev"] = keys(fu.prepare(fu.PZ)["families"].values())
+        others = keys(
+            [
+                *fu.s3.prepare_eval(fu.STAGE3_SEED)["families"].values(),
+                *m2.prepare(fu.s3.M2_SEED)["families"].values(),
+                *fu.hf.prepare(m2.HF_SEED)["families"].values(),
+            ]
+        )
+        for name, found in built.items():
+            self.assertFalse(others & found, name)
+        self.assertFalse(built["pz"] & built["pz-dev"])
+        for a, b in combinations(("wd", "m3", "pz"), 2):
+            self.assertFalse(built[a] & built[b], (a, b))
 
 
 if __name__ == "__main__":

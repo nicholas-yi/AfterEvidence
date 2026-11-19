@@ -10,10 +10,16 @@ from research.memory_analysis import EPISODE_FIELDS, tables_from_csv
 CSV = Path(__file__).resolve().parent / "data" / "memory-study-v1-episodes.csv"
 # Published in research/RESULTS.md "Memory study v1": successes, wins/losses, credits/episode.
 STUDY1 = {
-    "none": (39, None, 2.02), "raw": (41, (6, 4), 2.25), "consolidated": (41, (7, 5), 2.27),
-    "sleep": (42, (7, 4), 2.11), "workflows": (43, (8, 4), 1.97), "mem0": (43, (9, 5), 2.05),
-    "graphiti": (42, (7, 4), 2.17), "hindsight": (38, (6, 7), 2.13), "honcho": (41, (7, 5), 2.08),
-}  # fmt: skip
+    "none": (39, None, 2.02),
+    "raw": (41, (6, 4), 2.25),
+    "consolidated": (41, (7, 5), 2.27),
+    "sleep": (42, (7, 4), 2.11),
+    "workflows": (43, (8, 4), 1.97),
+    "mem0": (43, (9, 5), 2.05),
+    "graphiti": (42, (7, 4), 2.17),
+    "hindsight": (38, (6, 7), 2.13),
+    "honcho": (41, (7, 5), 2.08),
+}
 STUDY2 = {"none": (20, None), "session": (19, (1, 2)), "mem0": (18, (0, 2)), "honcho": (17, (1, 4))}
 # Post-hoc (not preregistered) paired differences and cluster-bootstrap 95% CIs.
 POST_HOC = {

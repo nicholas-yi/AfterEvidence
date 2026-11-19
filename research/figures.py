@@ -24,17 +24,37 @@ CSV = ROOT / "research" / "data" / "memory-study-v1-episodes.csv"
 OUT = ROOT / "docs" / "figures"
 POWER_MULTIPLIER = 2.80  # z(0.975) + z(0.80): smallest effect detectable with 80% power
 NAMES = {
-    "none": "No memory", "raw": "Raw transcripts", "consolidated": "One-pass lessons",
-    "sleep": "Sleep-style lessons", "workflows": "Workflows", "mem0": "Mem0",
-    "graphiti": "Graphiti", "hindsight": "Hindsight", "honcho": "Honcho",
+    "none": "No memory",
+    "raw": "Raw transcripts",
+    "consolidated": "One-pass lessons",
+    "sleep": "Sleep-style lessons",
+    "workflows": "Workflows",
+    "mem0": "Mem0",
+    "graphiti": "Graphiti",
+    "hindsight": "Hindsight",
+    "honcho": "Honcho",
     "session": "Session transcripts",
-}  # fmt: skip
+}
 THEMES = {
-    "light": {"bg": "#ffffff", "ink": "#1f2328", "muted": "#59636e", "grid": "#d8dee4",
-              "accent": "#0072B2", "second": "#E69F00", "band": "#59636e"},
-    "dark": {"bg": "#0d1117", "ink": "#e6edf3", "muted": "#9198a1", "grid": "#30363d",
-             "accent": "#56B4E9", "second": "#E69F00", "band": "#9198a1"},
-}  # fmt: skip
+    "light": {
+        "bg": "#ffffff",
+        "ink": "#1f2328",
+        "muted": "#59636e",
+        "grid": "#d8dee4",
+        "accent": "#0072B2",
+        "second": "#E69F00",
+        "band": "#59636e",
+    },
+    "dark": {
+        "bg": "#0d1117",
+        "ink": "#e6edf3",
+        "muted": "#9198a1",
+        "grid": "#30363d",
+        "accent": "#56B4E9",
+        "second": "#E69F00",
+        "band": "#9198a1",
+    },
+}
 FONT = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif"
 
 
@@ -56,15 +76,32 @@ class Svg:
             f'<rect width="{width}" height="{height}" fill="{theme["bg"]}"/>',
         ]
 
-    def text(self, x: float, y: float, s: str, *, anchor: str = "start", size: float = 13,
-             weight: str = "normal", color: str | None = None) -> None:  # fmt: skip
+    def text(
+        self,
+        x: float,
+        y: float,
+        s: str,
+        *,
+        anchor: str = "start",
+        size: float = 13,
+        weight: str = "normal",
+        color: str | None = None,
+    ) -> None:
         self.parts.append(
             f'<text x="{_n(x)}" y="{_n(y)}" text-anchor="{anchor}" font-size="{_n(size)}" '
             f'font-weight="{weight}" fill="{color or self.t["ink"]}">{escape(s)}</text>'
         )
 
-    def line(self, x1: float, y1: float, x2: float, y2: float, color: str,
-             width: float = 1, dash: str = "") -> None:  # fmt: skip
+    def line(
+        self,
+        x1: float,
+        y1: float,
+        x2: float,
+        y2: float,
+        color: str,
+        width: float = 1,
+        dash: str = "",
+    ) -> None:
         extra = f' stroke-dasharray="{dash}"' if dash else ""
         self.parts.append(
             f'<line x1="{_n(x1)}" y1="{_n(y1)}" x2="{_n(x2)}" y2="{_n(y2)}" '
@@ -87,11 +124,17 @@ class Svg:
 def memory_effects(tables: dict[str, Any], theme: dict[str, str]) -> str:
     """Forest plot: paired success difference vs no memory, with detectable-effect bands."""
     studies = [
-        ("Study 1 \u00b7 memory of other customers (26 tasks \u00d7 2 runs)", "study1",
-         [c for c in STUDY1_CONDITIONS if c != "none"]),
-        ("Study 2 \u00b7 memory of the same customer (22 later sessions, 16 customers)", "study2",
-         [c for c in STUDY2_CONDITIONS if c != "none"]),
-    ]  # fmt: skip
+        (
+            "Study 1 \u00b7 memory of other customers (26 tasks \u00d7 2 runs)",
+            "study1",
+            [c for c in STUDY1_CONDITIONS if c != "none"],
+        ),
+        (
+            "Study 2 \u00b7 memory of the same customer (22 later sessions, 16 customers)",
+            "study2",
+            [c for c in STUDY2_CONDITIONS if c != "none"],
+        ),
+    ]
     lo, hi, row, label_w, plot_w = -0.40, 0.30, 26, 190, 520
     width = label_w + plot_w + 190
     rows = sum(len(c) for *_, c in studies)
@@ -101,10 +144,19 @@ def memory_effects(tables: dict[str, Any], theme: dict[str, str]) -> str:
     def x(value: float) -> float:
         return label_w + plot_w * (value - lo) / (hi - lo)
 
-    svg.text(16, 30, "Every memory condition\u2019s effect on task success is consistent with zero",
-             size=16, weight="bold")  # fmt: skip
-    svg.text(16, 52, "Change in success rate vs. the same tasks without memory, percentage points",
-             color=t["muted"])  # fmt: skip
+    svg.text(
+        16,
+        30,
+        "Every memory condition\u2019s effect on task success is consistent with zero",
+        size=16,
+        weight="bold",
+    )
+    svg.text(
+        16,
+        52,
+        "Change in success rate vs. the same tasks without memory, percentage points",
+        color=t["muted"],
+    )
     y = 80
     for title, study, conditions in studies:
         effects = [tables[study][c]["post_hoc"] for c in conditions]
@@ -112,9 +164,14 @@ def memory_effects(tables: dict[str, Any], theme: dict[str, str]) -> str:
         inner, outer = POWER_MULTIPLIER * min(ses), POWER_MULTIPLIER * max(ses)
         top, bottom = y + 22, y + 22 + len(conditions) * row
         svg.text(16, y + 12, title, weight="bold")
-        svg.text(width - 16, y + 12,
-                 f"shaded: |effect| below {inner * 100:.0f}\u2013{outer * 100:.0f} pts is not reliably detectable",
-                 anchor="end", size=11, color=t["muted"])  # fmt: skip
+        svg.text(
+            width - 16,
+            y + 12,
+            f"shaded: |effect| below {inner * 100:.0f}\u2013{outer * 100:.0f} pts is not reliably detectable",
+            anchor="end",
+            size=11,
+            color=t["muted"],
+        )
         svg.rect(x(-outer), top, x(outer) - x(-outer), bottom - top, t["band"], 0.10)
         svg.rect(x(-inner), top, x(inner) - x(-inner), bottom - top, t["band"], 0.14)
         svg.line(x(0), top - 4, x(0), bottom, t["muted"], 1.2)
@@ -124,9 +181,13 @@ def memory_effects(tables: dict[str, Any], theme: dict[str, str]) -> str:
             svg.text(label_w - 12, cy + 4, NAMES[condition], anchor="end")
             svg.line(x(low), cy, x(high), cy, t["accent"], 2.2)
             svg.circle(x(difference), cy, 5, t["accent"])
-            svg.text(x(hi) + 10, cy + 4,
-                     f"{_pp(difference)}  ({_pp(low)}, {_pp(high)})",
-                     size=12, color=t["muted"])  # fmt: skip
+            svg.text(
+                x(hi) + 10,
+                cy + 4,
+                f"{_pp(difference)}  ({_pp(low)}, {_pp(high)})",
+                size=12,
+                color=t["muted"],
+            )
         y = bottom + 22
     axis = y - 8
     svg.line(label_w, axis, label_w + plot_w, axis, t["grid"])
@@ -148,8 +209,9 @@ def study1_success_cost(tables: dict[str, Any], theme: dict[str, str]) -> str:
     height = top + row * len(names) + 64
     svg, t = Svg(width, height, theme), theme
     left, right = label_w, label_w + panel_w + gap
-    costs = {n: rows[n]["mean_episode_credits"] + rows[n]["provider_credits_per_episode"]
-             for n in names}  # fmt: skip
+    costs = {
+        n: rows[n]["mean_episode_credits"] + rows[n]["provider_credits_per_episode"] for n in names
+    }
     max_cost = 3.0
 
     def rate_x(value: float) -> float:
@@ -159,15 +221,21 @@ def study1_success_cost(tables: dict[str, Any], theme: dict[str, str]) -> str:
         return right + panel_w * value / max_cost
 
     bottom = top + row * len(names)
-    svg.text(16, 30, "Success stayed between 73% and 83% for every condition, at similar cost",
-             size=16, weight="bold")  # fmt: skip
+    svg.text(
+        16,
+        30,
+        "Success stayed between 73% and 83% for every condition, at similar cost",
+        size=16,
+        weight="bold",
+    )
     svg.text(16, 52, "Study 1: 52 paired episodes per condition", color=t["muted"])
     svg.text(left, 80, "Task success (95% interval)", weight="bold")
     svg.text(right, 80, "AI credits per episode", weight="bold")
     for tick in (0.5, 0.6, 0.7, 0.8, 0.9, 1.0):
         svg.line(rate_x(tick), top - 6, rate_x(tick), bottom, t["grid"])
-        svg.text(rate_x(tick), bottom + 18, f"{tick:.0%}", anchor="middle", size=12,
-                 color=t["muted"])  # fmt: skip
+        svg.text(
+            rate_x(tick), bottom + 18, f"{tick:.0%}", anchor="middle", size=12, color=t["muted"]
+        )
     for tick in (0, 1, 2, 3):
         svg.line(cost_x(tick), top - 6, cost_x(tick), bottom, t["grid"])
         svg.text(cost_x(tick), bottom + 18, str(tick), anchor="middle", size=12, color=t["muted"])
@@ -181,8 +249,9 @@ def study1_success_cost(tables: dict[str, Any], theme: dict[str, str]) -> str:
         svg.text(label_w - 12, cy + 4, NAMES[name], anchor="end")
         svg.line(rate_x(low), cy, rate_x(high), cy, color, 2.2)
         svg.circle(rate_x(r["rate"]), cy, 5, color)
-        svg.text(rate_x(high) + 6, cy + 4, f"{r['successes']}/{r['episodes']}", size=12,
-                 color=t["muted"])  # fmt: skip
+        svg.text(
+            rate_x(high) + 6, cy + 4, f"{r['successes']}/{r['episodes']}", size=12, color=t["muted"]
+        )
         run = r["mean_episode_credits"]
         svg.rect(right, cy - 8, cost_x(run) - right, 16, color, 0.85)
         if r["provider_credits_per_episode"]:
@@ -190,8 +259,13 @@ def study1_success_cost(tables: dict[str, Any], theme: dict[str, str]) -> str:
         svg.text(cost_x(costs[name]) + 6, cy + 4, f"{costs[name]:.2f}", size=12, color=t["muted"])
     svg.text(left, height - 14, "dashed line: success without memory", size=12, color=t["muted"])
     svg.rect(right, height - 24, 12, 12, t["second"])
-    svg.text(right + 18, height - 14, "extra model calls the memory system made at retrieval",
-             size=12, color=t["muted"])  # fmt: skip
+    svg.text(
+        right + 18,
+        height - 14,
+        "extra model calls the memory system made at retrieval",
+        size=12,
+        color=t["muted"],
+    )
     return svg.render()
 
 

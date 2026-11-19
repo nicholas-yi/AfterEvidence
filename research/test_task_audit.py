@@ -49,15 +49,22 @@ DB: dict[str, Any] = {
 
 RETURN = "return_delivered_order_items"
 TASKS = [
-    task("0", act("find_user_id_by_name_zip", first_name="Alice", last_name="X", zip="1"),
-         act(RETURN, order_id="#W1", item_ids=["I1"])),
-    task("1", act("find_user_id_by_email", email="a@x"), act("get_product_details", product_id="P9")),
+    task(
+        "0",
+        act("find_user_id_by_name_zip", first_name="Alice", last_name="X", zip="1"),
+        act(RETURN, order_id="#W1", item_ids=["I1"]),
+    ),
+    task(
+        "1", act("find_user_id_by_email", email="a@x"), act("get_product_details", product_id="P9")
+    ),
     task("2", act(RETURN, order_id="#W3", item_ids=["I1"]), nl=1),
     task("3", act(RETURN, order_id="#W2", item_ids=["I1"])),
     task("4", act(RETURN, order_id="#W4", item_ids=["I1"])),
-    task("5", act("get_order_details", order_id="#W2"), act(RETURN, order_id="#W2", item_ids=["I1"])),
+    task(
+        "5", act("get_order_details", order_id="#W2"), act(RETURN, order_id="#W2", item_ids=["I1"])
+    ),
     task("9", act("get_user_details", user_id="dave")),
-]  # fmt: skip
+]
 SPLIT = {"train": ["0", "1", "2", "3", "4", "5"], "test": ["9"]}
 
 

@@ -1,129 +1,75 @@
 # Agent memory research track
 
-This is separate from the local UI demonstration.
+This is separate from the local app. It asks whether agent memory helps an agent act correctly
+on tau2-bench retail tasks, whether stale memory misleads it, and whether deletion removes what was
+derived from a conversation. Nine pre-registered studies are complete; their tables, deviations and
+history are in [RESULTS](RESULTS.md), designs in [DESIGN](DESIGN.md), usage in [COSTS](COSTS.md).
+Every published table is recomputed from a public CSV in CI (`python -m research.benchmark verify`).
 
-The research question is whether memory distilled from actual prior agent
-experience improves later tool-use task outcomes, without retaining unsupported
-lessons after evidence changes.
+## Code map
 
-## What is verified so far
+**Public benchmark and analyses (no model calls; CI runs them)**
 
-- Official MIT `tau2-bench` source pinned at
-  `c06b07dd7c4d4ec61ba6ff9bcdf0b15dd7ef36d4`.
-- Its native retail runtime initializes with sixteen tools.
-- One native local-Qwen development conversation completed in 400.968 seconds,
-  made real tool calls, and received **ENV reward 0**. This is not a full official
-  task score and says nothing yet about a memory intervention.
-- A three-request Copilot micro-pilot completed in 11.75 seconds using enabled
-  Claude Haiku 5.5, native user instructions/policy, and no hidden reference
-  actions. It did **not** complete or score a whole task.
-- Its recorded consumption was **0.1135835 AI credits**, about **$0.001136 in
-  credit value**, not a separate paid API invoice.
-- The subsequently authorized full-conversation development allowance was
-  capped at **20 requests total**. Two exposed an unstructured-action failure;
-  eighteen ran the repaired structured-action adapter and performed a real
-  native exchange, but reached the cap before conversation termination.
-  That attempt did not produce a completed task score.
-- Those initial 23 completed Copilot requests consumed **2.4402365 AI credits**,
-  about **$0.024402 in credit value**. Every failed/capped attempt remains logged.
-- A subsequent bounded development cohort produced one normally completed
-  task-1 episode with native ENV/task-basis reward **1.0**, reproduced by fresh
-  zero-inference replay. Two preceding schema failures remain counted; task 2
-  was blocked before inference by a strict reference-replay error.
-- This follow-up used **35 of 90 authorized requests**, **3.5914435 AI credits**,
-  about **$0.035914 in credit value**. Cumulative Copilot usage was then **58 requests
-  and 6.03168 credits**. A single completed sibling task is not an accuracy or
-  memory-efficacy estimate; simulator interpretation still needs calibration.
-- A 12-task development cohort on the devbox (one customer family each,
-  customer-disjoint from the test split) scored native ENV/task-basis reward
-  **1.0 on 9 tasks**; 3 failed the actor action contract early. It used
-  **162 of 360 approved requests** and **16.05978 AI credits**. Cumulative
-  usage is **220 requests and 22.09146 credits**. This is a single-seed,
-  judge-free development baseline, not an accuracy or memory-efficacy result.
-- Reference preflight now allows only scripted, non-mutating failed lookups
-  (policy v2); unscripted and business-rule failures are still rejected.
-- **Memory study v1** ([protocol](PROTOCOL-MEMORY.md), [results](RESULTS.md#memory-study-v1)):
-  nine memory conditions (none; raw transcripts; one-pass lessons; a sleep-style
-  replay/reweight/prune analogue; induced workflows; Mem0; Graphiti; Hindsight;
-  Honcho) on 26 test tasks × 2 runs showed **no detectable effect on task
-  success** (75% without memory vs 73-83% with; all Holm p = 1.0). Same-customer
-  memory was slightly worse than none (not significant), with a clear loss from
-  stale remembered facts. A deletion probe found no literal identifiers of the
-  deleted conversation afterwards (Honcho only on a recheck). Total 12,428
-  requests started; 1,425.05 AI credits recorded.
-- The source-aware retrieval/accounting/isolation/action-parser tests pass.
+- [benchmark.py](benchmark.py): `list` the studies, `verify` every published table and figure.
+- Per-study analyses: [memory study](memory_analysis.py) and [Study 2](study2_analysis.py),
+  [necessary memory](commitment_analysis.py), [changed mind](changed_mind_analysis.py),
+  [dated](changed_mind_dated_analysis.py), [Honcho features](honcho_features_analysis.py),
+  [Honcho Stage 3](honcho_stage3_analysis.py), [second model](second_model_analysis.py); public CSVs
+  in [data/](data/) and [figures](figures.py).
+- [test_harness_logic.py](test_harness_logic.py): customers, leakage checks, ledger and quota guard
+  on synthetic fixtures (no benchmark or SDK needed).
 
-No four-condition result from the original design exists; the memory study
-replaced it. Do not treat the application examples or software invariants as
-agent-learning evidence.
+**Multi-session harness (Studies 4-9)**
 
-## Files and commands
+- [commitment_pilot.py](commitment_pilot.py): families, scripted customer, actor loop, oracle,
+  leakage checks, budget ledger, infrastructure rule and provider retrieval.
+- Stages built on it: [changed_mind.py](changed_mind.py) (Studies 5-6),
+  [honcho_features.py](honcho_features.py) (Study 7), [honcho_stage3.py](honcho_stage3.py) (Study 8),
+  [second_model.py](second_model.py) (Study 9).
+- Providers: [memory_gateway.py](memory_gateway.py) (Mem0, Graphiti, Hindsight, Honcho behind one
+  HTTP API), [provider_ingest.py](provider_ingest.py), [memory_retrievers.py](memory_retrievers.py),
+  [copilot_shim.py](copilot_shim.py) (capped, journaled model endpoint for providers),
+  [copilot_backend.py](copilot_backend.py) (capped Copilot client and quota guard).
+- [run_status.py](run_status.py): `python -m research.run_status --root research\runs\commitment\<stage> --budget`
+  shows planned versus reported jobs and the ledger without opening any report.
 
-- [Design and selection audit](DESIGN.md).
-- [Cost estimates and resource boundaries](COSTS.md).
-- [Actual outcomes and remaining gates](RESULTS.md).
-- [Public per-episode table for Studies 1 and 2](data/memory-study-v1-episodes.csv),
-  recomputed by `python -m research.memory_analysis --csv` and checked in CI;
-  [README figures](figures.py) are regenerated from it (`python -m research.figures`).
-- [Benchmark and SDK pins](benchmark-lock.json).
-- [Non-editable dependency constraints](dependencies.lock.txt), combined with the source pins.
-- [Source-aware memory controls](memory_methods.py).
-- [Native scorer preflight and assessment](native_scoring.py).
-- [Zero-inference task/customer overlap and reference-ID audit](task_audit.py).
-- [Zero-inference simulator-calibration worksheets](simulator_review.py).
-- [Offline fixtures, tool environment, scorer and stop rules for the staleness
-  diagnostic](staleness.py) and its [episode runner](staleness_runner.py)
-  (dry run unless a stage cap is approved; Stage A run, see [design](DESIGN.md)).
-- [Necessary-memory pilots and evaluation](commitment_pilot.py), its [analysis](commitment_analysis.py)
-  and the [changed-mind pilot and evaluations](changed_mind.py) ([analysis](changed_mind_analysis.py),
-  [dated analysis](changed_mind_dated_analysis.py)): synthetic multi-session exchange families,
-  scripted customer, oracle and capped runners (see design); [Honcho features](honcho_features.py)
-  (message search, restating customer) and its [analysis](honcho_features_analysis.py); [Honcho Stage 3](honcho_stage3.py)
-  (dreaming, app-written facts, a mid-conversation memory tool).
-- [Run status](run_status.py): `python -m research.run_status --root research\runs\commitment\<stage> --budget`
-  shows planned versus reported job IDs from file names, plus the runner's ledger, without opening any report.
-- [Benchmark entry point](benchmark.py): `python -m research.benchmark list` names each study, its
-  public CSV and analysis; `python -m research.benchmark verify` recomputes every published table and
-  checks the figures (no model calls, no network).
-- Memory study: [protocol](PROTOCOL-MEMORY.md), [runbook](MEMORY-STUDY.md),
-  [Copilot shim](copilot_shim.py), [provider gateway](memory_gateway.py),
-  [memory builders](memory_bank.py), [retrievers](memory_retrievers.py),
-  [runner](study_runner.py), [Study 1](study1.py), [Study 2](study2.py),
-  [Study 3](lifecycle.py), [analysis](memory_analysis.py) and
-  [Study 2 analysis](study2_analysis.py), [providers lock](providers.lock.txt).
-- [Native local-model feasibility driver](tau_pilot.py).
-- [Three-request SDK micro-pilot](copilot_micro.py).
-- [Full native-environment Copilot pilot driver](tau_copilot.py),
-  exercised through a complete native-scored development conversation, but not
-  yet a reliable multi-task actor/simulator baseline.
+**Memory study (Studies 1-3)**: [protocol](PROTOCOL-MEMORY.md), [runbook](MEMORY-STUDY.md),
+[memory builders](memory_bank.py), [runner](study_runner.py), [Study 1](study1.py),
+[Study 2](study2.py), [Study 3](lifecycle.py), [source-aware memory controls](memory_methods.py),
+[providers lock](providers.lock.txt).
 
-From the project root:
+**Supporting tools**: [native scorer preflight](native_scoring.py), [task audit](task_audit.py),
+[simulator-review worksheets](simulator_review.py), the [staleness diagnostic](staleness.py) and its
+[runner](staleness_runner.py), early feasibility drivers ([local model](tau_pilot.py),
+[SDK micro-pilot](copilot_micro.py), [native Copilot pilot](tau_copilot.py)), and
+`python -m research.copilot_quota`. The native preflight (`python -m research.native_scoring --tasks 0 1 2`)
+deliberately exits nonzero for the pinned task 2 reference lookup failure; do not treat a
+reference-control trajectory as agent success.
+
+Pins: [benchmark and SDK](benchmark-lock.json), [dependency constraints](dependencies.lock.txt).
+
+## Validate and run
 
 ```powershell
-python -m unittest research.test_memory_methods research.test_costing research.test_task_audit research.test_simulator_review research.test_memory_study -v
-.\research\.venv\Scripts\python.exe -m unittest research.test_copilot_backend research.test_tau_action research.test_native_scoring -v
+python -m research.benchmark verify                       # published tables, from the CSVs
+python -m unittest research.test_harness_logic -v         # harness logic (needs pydantic only)
+.\research\.venv\Scripts\python.exe -m unittest research.test_commitment_pilot   # fake-backend dry passes (pinned benchmark; slow)
 .\research\.venv\Scripts\python.exe -m pyright --project research\pyrightconfig.json
-.\research\.venv\Scripts\python.exe -m research.native_scoring --tasks 0 1 2
-python -m research.task_audit
-.\research\.venv\Scripts\python.exe -m research.copilot_quota
-.\research\.venv\Scripts\python.exe -m research.costing research\runs\copilot-micro-04.jsonl
-.\research\.venv\Scripts\python.exe -m research.replay_partial research\runs\copilot-native-structured-feasibility-0.calls.jsonl
 ```
 
-Commands that consume model allowance require the explicit pilot request cap:
+Every live stage is a dry run unless given `--approved-requests` equal to its recorded cap and a
+provenance `--note`; evaluations also need their annotated protocol tag, and the runner refuses if
+its frozen sources differ from the tag or change during the run. Run a tagged study from its own
+worktree so work on `main` cannot touch it:
 
 ```powershell
-.\research\.venv\Scripts\python.exe -m research.copilot_micro --output research\runs\NEW-micro.jsonl
-.\research\.venv\Scripts\python.exe -m research.tau_copilot --task 0 --requests 20 --output research\runs\NEW-native-pilot.json
+scripts\frozen-worktree.ps1 -Tag <tag>             # worktree at the tag; run data, venvs and stacks linked
+scripts\frozen-worktree.ps1 -Tag <tag> -Remove     # afterwards
 ```
 
-These are opt-in examples, not standing authorization or a registered
-main experiment. A quota check is not a promise that billing settings prevent
-overages; verify the account's stop-on-budget settings.
-
-The zero-inference preflight command deliberately exits nonzero for the pinned
-task 2 reference lookup failure. It reports every selected task; do not silently
-drop that result or treat a reference-control trajectory as agent success.
+Live runs and shims also refuse to start if Copilot reports overage or under 50% of the monthly
+allowance left. A quota check is not a promise that billing settings prevent overages; set a
+spending limit in the account's billing settings.
 
 ### Add a memory system to the benchmark
 
@@ -137,6 +83,24 @@ drop that result or treat a reference-control trajectory as agent success.
    capped dev check; an evaluation needs an annotated protocol tag before its families are generated.
 4. Publish the per-session CSV, its analysis and a CSV test, and add the study to
    [benchmark.py](benchmark.py) so `verify` covers it.
+
+### Fairness to memory-system builders
+
+- **Defaults first, stated exactly.** Each system runs its open-source default pipeline at a pinned
+  version (Mem0 `mem0ai==2.2.1`, Graphiti `graphiti-core==0.31.2`, Hindsight `hindsight-client==1.2.0`,
+  Honcho server `5c7d24b` with `honcho-ai==2.9.0`; [providers lock](providers.lock.txt)), with every
+  internal LLM call served by the study's model through a capped shim. The settings each study used
+  (reasoning level, search mode, timestamps, workspaces) are in its [design](DESIGN.md) rows and the
+  gateway code; vendors' managed platforms and published scores use other models and settings.
+- **Tuned configurations are welcome as separate arms.** A builder can propose a configuration,
+  query wording or model available at the pinned version (or a newer pin) before a protocol tag. It
+  runs as its own labelled arm ("vendor-tuned") beside the default on the same families, model and
+  caps, with the analysis fixed at the tag; defaults are never replaced after results are seen.
+- **Fixes are re-run, not patched in.** If a builder finds an integration bug in the gateway, the fix
+  is committed, the affected study is marked, and a new tagged run measures it; published numbers
+  stay as recorded.
+- **Results describe this setup.** One synthetic retail task, simulated customers and the stated
+  model(s); none of it is a product ranking.
 
 ## Methodological boundaries
 

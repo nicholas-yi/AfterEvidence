@@ -25,11 +25,21 @@ def main() -> None:
     for name, reports in data.items():
         keys = [k for k in later if k in reports]
         k = sum(success(reports[key]) for key in keys)
-        row: dict = {"later_sessions": len(keys), "successes": k, "rate": round(k / len(keys), 3) if keys else None,
-                     "wilson95": wilson(k, len(keys)),
-                     "mean_requests": round(sum(reports[x]["_cost"]["started"] for x in keys) / len(keys), 2) if keys else None,
-                     "mean_episode_credits": round(sum(reports[x]["_cost"]["credits"] for x in keys) / len(keys), 4) if keys else None,
-                     "memory_errors": sum(bool((reports[x].get("memory") or {}).get("error")) for x in keys)}  # fmt: skip
+        row: dict = {
+            "later_sessions": len(keys),
+            "successes": k,
+            "rate": round(k / len(keys), 3) if keys else None,
+            "wilson95": wilson(k, len(keys)),
+            "mean_requests": round(sum(reports[x]["_cost"]["started"] for x in keys) / len(keys), 2)
+            if keys
+            else None,
+            "mean_episode_credits": round(
+                sum(reports[x]["_cost"]["credits"] for x in keys) / len(keys), 4
+            )
+            if keys
+            else None,
+            "memory_errors": sum(bool((reports[x].get("memory") or {}).get("error")) for x in keys),
+        }
         if name != "none":
             pairs = [key for key in keys if key in none]
             wins = sum(success(reports[x]) and not success(none[x]) for x in pairs)

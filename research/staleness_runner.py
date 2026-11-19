@@ -95,11 +95,17 @@ def stage_plan(stage: str, tag: str | None = None) -> dict[str, Any]:
         for name in ("staleness.py", "staleness_runner.py")
     }
     return {
-        "stage": stage, "shuffle_seed": SHUFFLE_SEED, "tag": tag, "tag_commit": commit,
-        "request_cap": settings["cap"], "credit_stop": settings["credit_stop"],
-        "requests_per_episode": REQUESTS_PER_EPISODE, "sources": sources, "jobs": jobs,
+        "stage": stage,
+        "shuffle_seed": SHUFFLE_SEED,
+        "tag": tag,
+        "tag_commit": commit,
+        "request_cap": settings["cap"],
+        "credit_stop": settings["credit_stop"],
+        "requests_per_episode": REQUESTS_PER_EPISODE,
+        "sources": sources,
+        "jobs": jobs,
         "_families": {f.family_id: f for f in families},
-    }  # fmt: skip
+    }
 
 
 def job_id(job: dict[str, Any]) -> str:
@@ -159,12 +165,20 @@ async def run_episode(
         status, error = "failed", f"{type(failure).__name__}: {failure}"[:500]
     result = env.outcome()
     return {
-        "family": family.family_id, "regime": regime, "condition": condition, "status": status,
-        "outcome": result["outcome"], "looked_up_before_submit": result["looked_up_before_submit"],
-        "terminal": env.terminal, "submitted": env.submitted, "reasks": reasks,
-        "requests_started": backend.calls, "memory_chars": len(render_memory(visible, condition)),
-        "error": error, "history": history,
-    }  # fmt: skip
+        "family": family.family_id,
+        "regime": regime,
+        "condition": condition,
+        "status": status,
+        "outcome": result["outcome"],
+        "looked_up_before_submit": result["looked_up_before_submit"],
+        "terminal": env.terminal,
+        "submitted": env.submitted,
+        "reasks": reasks,
+        "requests_started": backend.calls,
+        "memory_chars": len(render_memory(visible, condition)),
+        "error": error,
+        "history": history,
+    }
 
 
 def journal_rows(directory: Path) -> list[dict[str, Any]]:
@@ -223,8 +237,10 @@ def summarize(directory: Path) -> dict[str, Any]:
         for p in sorted(directory.glob("*.json"))
         if p.name not in {"plan.json", "summary.json"}
     ]
-    rows = [{k: r[k] for k in ("family", "regime", "condition", "outcome", "looked_up_before_submit")}
-            for r in reports]  # fmt: skip
+    rows = [
+        {k: r[k] for k in ("family", "regime", "condition", "outcome", "looked_up_before_submit")}
+        for r in reports
+    ]
     outcomes = Counter(f"{r['condition']}/{r['regime']}/{r['outcome']}" for r in rows)
     lookups = {
         c: sum(bool(r["looked_up_before_submit"]) for r in rows if r["condition"] == c)

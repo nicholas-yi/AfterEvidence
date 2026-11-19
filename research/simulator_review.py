@@ -145,11 +145,23 @@ def worksheet(report: dict[str, Any], task: dict[str, Any], source: str | None =
 
 
 INDEX_FIELDS: tuple[str, ...] = (
-    "source", "task_id", "condition", "seed", "status", "native_env_reward", "requests_started",
-    "user_turns", "ended_with_stop_marker", "transfer_or_out_of_scope",
-    "unknown_info_possibly_disclosed", "empty_user_messages", "needs_attention",
-    "reviewer", "fidelity_ok", "notes",
-)  # fmt: skip
+    "source",
+    "task_id",
+    "condition",
+    "seed",
+    "status",
+    "native_env_reward",
+    "requests_started",
+    "user_turns",
+    "ended_with_stop_marker",
+    "transfer_or_out_of_scope",
+    "unknown_info_possibly_disclosed",
+    "empty_user_messages",
+    "needs_attention",
+    "reviewer",
+    "fidelity_ok",
+    "notes",
+)
 
 
 def write_index(path: Path, summary: list[dict[str, Any]], jobs: list[dict[str, Any]]) -> None:
@@ -160,9 +172,14 @@ def write_index(path: Path, summary: list[dict[str, Any]], jobs: list[dict[str, 
         key = (str(job.get("task")), str(job.get("condition")), str(job.get("seed")))
         if key not in seen:
             rows.append(
-                {"task_id": key[0], "condition": key[1], "seed": key[2], "status": "no-report",
-                 "needs_attention": True}
-            )  # fmt: skip
+                {
+                    "task_id": key[0],
+                    "condition": key[1],
+                    "seed": key[2],
+                    "status": "no-report",
+                    "needs_attention": True,
+                }
+            )
     with path.open("w", encoding="utf-8", newline="") as handle:
         writer = csv.DictWriter(handle, INDEX_FIELDS, extrasaction="ignore")
         writer.writeheader()

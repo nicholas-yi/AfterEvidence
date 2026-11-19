@@ -44,8 +44,14 @@ class PublishedHonchoFeaturesTests(unittest.TestCase):
         )
         for arm, (k, n, ci, stale, declined, restated, credits) in ARMS.items():
             cell = r["arms"][arm]
-            got = (cell["successes"], cell["n"], tuple(cell["wilson95"]), cell["stale"],
-                   cell["declined"], cell["restated_sessions"])  # fmt: skip
+            got = (
+                cell["successes"],
+                cell["n"],
+                tuple(cell["wilson95"]),
+                cell["stale"],
+                cell["declined"],
+                cell["restated_sessions"],
+            )
             self.assertEqual(got, (k, n, ci, stale, declined, restated), arm)
             self.assertAlmostEqual(cell["credits_per_session"], credits, delta=0.0011, msg=arm)
         for block, expected in (("family_1", FAMILY_1), ("family_2", FAMILY_2)):

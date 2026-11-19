@@ -55,8 +55,12 @@ def ingest_provider(
                 error.read().decode()[:300] if isinstance(error, urllib.error.HTTPError) else ""
             )
             row = {"status": "error", "error": f"{error} {detail}".strip()}
-        row.update(provider=provider, scope=scope, episode=episode["id"],
-                   seconds=round(time.monotonic() - started, 1))  # fmt: skip
+        row.update(
+            provider=provider,
+            scope=scope,
+            episode=episode["id"],
+            seconds=round(time.monotonic() - started, 1),
+        )
         with WRITE_LOCK, ledger.open("a", encoding="utf-8") as handle:
             handle.write(json.dumps(row) + "\n")
         print(json.dumps(row), flush=True)

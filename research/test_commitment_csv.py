@@ -16,8 +16,11 @@ ARMS = {
     "Ho": (19, 23, (0.629, 0.93), 0.934),
 }
 # (pairs, wins, losses, p, Holm p)
-SECONDARIES = {"M vs Hn": (20, 0, 0, 1.0, 1.0), "Ho vs Hn": (18, 0, 3, 0.25, 0.75),
-               "Hc vs Hn": (18, 0, 1, 1.0, 1.0)}  # fmt: skip
+SECONDARIES = {
+    "M vs Hn": (20, 0, 0, 1.0, 1.0),
+    "Ho vs Hn": (18, 0, 3, 0.25, 0.75),
+    "Hc vs Hn": (18, 0, 1, 1.0, 1.0),
+}
 
 
 class PublishedCommitmentEvaluationTests(unittest.TestCase):
@@ -45,8 +48,11 @@ class PublishedCommitmentEvaluationTests(unittest.TestCase):
         self.assertTrue(primary["significant"])
         for name, (pairs, wins, losses, p, p_holm) in SECONDARIES.items():
             s = r["secondaries"][name]
-            self.assertEqual((s["pairs"], s["wins"], s["losses"], s["p"], s["p_holm"]),
-                             (pairs, wins, losses, p, p_holm), name)  # fmt: skip
+            self.assertEqual(
+                (s["pairs"], s["wins"], s["losses"], s["p"], s["p_holm"]),
+                (pairs, wins, losses, p, p_holm),
+                name,
+            )
         memory = r["provider_memory"]
         self.assertEqual(
             (memory["M"]["has_target_id"], memory["M"]["lacking_id_recovered"]), (20, [4, 4])

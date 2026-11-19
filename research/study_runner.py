@@ -31,16 +31,26 @@ def started_requests(root: Path) -> int:
 
 def job_command(job: dict[str, object], python: str) -> list[str]:
     command = [
-        python, "-m", "research.tau_copilot",
-        "--task", str(job["task"]),
-        "--split", str(job.get("split", "train")),
-        "--condition", str(job.get("condition", "none")),
-        "--requests", str(PER_EPISODE),
-        "--max-steps", "60",
-        "--reasks", "1",
-        "--seed", str(job.get("seed", 42)),
-        "--output", str(job["output"]),
-    ]  # fmt: skip
+        python,
+        "-m",
+        "research.tau_copilot",
+        "--task",
+        str(job["task"]),
+        "--split",
+        str(job.get("split", "train")),
+        "--condition",
+        str(job.get("condition", "none")),
+        "--requests",
+        str(PER_EPISODE),
+        "--max-steps",
+        "60",
+        "--reasks",
+        "1",
+        "--seed",
+        str(job.get("seed", 42)),
+        "--output",
+        str(job["output"]),
+    ]
     if job.get("memory_spec"):
         command += ["--memory-spec", str(job["memory_spec"])]
     if job.get("protocol_tag"):
@@ -73,11 +83,15 @@ def run_jobs(jobs: list[dict[str, object]], root: Path, cap: int, workers: int) 
                 ).returncode
             report = json.loads(output.read_text(encoding="utf-8")) if output.exists() else {}
             row = {
-                "task": job["task"], "condition": job.get("condition"), "seed": job.get("seed"),
+                "task": job["task"],
+                "condition": job.get("condition"),
+                "seed": job.get("seed"),
                 "status": report.get("status", f"no-report-exit-{code}"),
-                "reward": report.get("native_env_reward"), "requests": report.get("requests_started"),
-                "reasks": report.get("actor_reasks"), "seconds": round(time.monotonic() - started, 1),
-            }  # fmt: skip
+                "reward": report.get("native_env_reward"),
+                "requests": report.get("requests_started"),
+                "reasks": report.get("actor_reasks"),
+                "seconds": round(time.monotonic() - started, 1),
+            }
             results.append(row)
             print(json.dumps(row), flush=True)
         finally:

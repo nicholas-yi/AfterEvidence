@@ -46,8 +46,13 @@ class PublishedSecondModelTests(unittest.TestCase):
         )
         for arm, (k, n, ci, stale, declined, credits) in ARMS.items():
             cell = r["arms"][arm]
-            got = (cell["successes"], cell["n"], tuple(cell["wilson95"]), cell["stale"],
-                   cell["declined"])  # fmt: skip
+            got = (
+                cell["successes"],
+                cell["n"],
+                tuple(cell["wilson95"]),
+                cell["stale"],
+                cell["declined"],
+            )
             self.assertEqual(got, (k, n, ci, stale, declined), arm)
             self.assertAlmostEqual(cell["credits_per_session"], credits, delta=0.0011, msg=arm)
         for block, expected in (("primary_success", PRIMARY), ("secondary_stale", SECONDARY)):

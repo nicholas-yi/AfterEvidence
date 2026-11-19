@@ -39,8 +39,17 @@ class PublishedDatedChangedMindEvaluationTests(unittest.TestCase):
         )
         for arm, (k, n, ci, stale, declined, credits) in ARMS.items():
             cell = r["arms"][arm]
-            self.assertEqual((cell["successes"], cell["n"], tuple(cell["wilson95"]), cell["stale"], cell["declined"]),
-                             (k, n, ci, stale, declined), arm)  # fmt: skip
+            self.assertEqual(
+                (
+                    cell["successes"],
+                    cell["n"],
+                    tuple(cell["wilson95"]),
+                    cell["stale"],
+                    cell["declined"],
+                ),
+                (k, n, ci, stale, declined),
+                arm,
+            )
             self.assertAlmostEqual(cell["credits_per_session"], credits, delta=0.0011, msg=arm)
         for block, expected in (("primary_success", PRIMARY), ("secondary_stale", SECONDARY)):
             for name, pair in expected.items():
@@ -52,10 +61,19 @@ class PublishedDatedChangedMindEvaluationTests(unittest.TestCase):
         for arm, pair in VERSUS_HN.items():
             got = r["descriptive_vs_hn"][f"{arm} vs Hn"]["success"]
             self.assertEqual((got["arm_only"], got["reference_only"]), pair, arm)
-        memory = {a: (v["has_Y"], v["has_X"], v["date_correct"], v["deferral_present"])
-                  for a, v in r["provider_memory"].items()}  # fmt: skip
-        self.assertEqual(memory, {"M": (31, 29, 0, 9), "Mi": (31, 28, 28, 0),
-                                  "Ho": (18, 19, 0, 10), "Hod": (18, 21, 31, 3)})  # fmt: skip
+        memory = {
+            a: (v["has_Y"], v["has_X"], v["date_correct"], v["deferral_present"])
+            for a, v in r["provider_memory"].items()
+        }
+        self.assertEqual(
+            memory,
+            {
+                "M": (31, 29, 0, 9),
+                "Mi": (31, 28, 28, 0),
+                "Ho": (18, 19, 0, 10),
+                "Hod": (18, 21, 31, 3),
+            },
+        )
 
 
 if __name__ == "__main__":

@@ -21,13 +21,31 @@ from typing import Any
 from research.costing import summarize_micro
 
 STUDY1_CONDITIONS = (
-    "none", "raw", "consolidated", "sleep", "workflows", "mem0", "graphiti", "hindsight", "honcho",
-)  # fmt: skip
+    "none",
+    "raw",
+    "consolidated",
+    "sleep",
+    "workflows",
+    "mem0",
+    "graphiti",
+    "hindsight",
+    "honcho",
+)
 STUDY2_CONDITIONS = ("none", "session", "mem0", "honcho")
 EPISODE_FIELDS: tuple[str, ...] = (
-    "study", "session", "task", "family", "condition", "replicate", "success", "failure_class",
-    "requests_started", "actor_sim_credits", "provider_credits_allocated", "retrieved_chars",
-)  # fmt: skip
+    "study",
+    "session",
+    "task",
+    "family",
+    "condition",
+    "replicate",
+    "success",
+    "failure_class",
+    "requests_started",
+    "actor_sim_credits",
+    "provider_credits_allocated",
+    "retrieved_chars",
+)
 RESAMPLES = 10_000
 
 
@@ -137,15 +155,23 @@ def compare(
             "rate": round(k / n, 3) if n else None,
             "wilson95": wilson(k, n),
             "mean_requests": round(sum(e["started"] for e in episodes) / n, 2) if n else None,
-            "mean_episode_credits": round(sum(e["credits"] for e in episodes) / n, 4) if n else None,
+            "mean_episode_credits": round(sum(e["credits"] for e in episodes) / n, 4)
+            if n
+            else None,
             "contract_failures": sum(r.get("status") == "failed" for r in reports.values()),
             "no_report": sum(r.get("status") == "no-report" for r in reports.values()),
             "capped": sum(r.get("status") == "budget-capped" for r in reports.values()),
-            "memory_errors": sum(bool((r.get("memory") or {}).get("error")) for r in reports.values()),
+            "memory_errors": sum(
+                bool((r.get("memory") or {}).get("error")) for r in reports.values()
+            ),
             "mean_memory_chars": round(
-                sum(len(str((r.get("memory") or {}).get("text") or "")) for r in reports.values()) / n, 1
-            ) if n else None,
-        }  # fmt: skip
+                sum(len(str((r.get("memory") or {}).get("text") or "")) for r in reports.values())
+                / n,
+                1,
+            )
+            if n
+            else None,
+        }
         if name != baseline:
             pairs = [key for key in reports if key in base]
             b = sum(success(reports[key]) and not success(base[key]) for key in pairs)
@@ -159,18 +185,30 @@ def compare(
 
 
 def _episode_row(
-    study: str, session: str, task: str, family: str, condition: str, replicate: str,
-    report: dict[str, Any], provider_share: float,
-) -> dict[str, Any]:  # fmt: skip
+    study: str,
+    session: str,
+    task: str,
+    family: str,
+    condition: str,
+    replicate: str,
+    report: dict[str, Any],
+    provider_share: float,
+) -> dict[str, Any]:
     memory = report.get("memory")
     return {
-        "study": study, "session": session, "task": task, "family": family,
-        "condition": condition, "replicate": replicate, "success": success(report),
-        "failure_class": failure_class(report), "requests_started": report["_cost"]["started"],
+        "study": study,
+        "session": session,
+        "task": task,
+        "family": family,
+        "condition": condition,
+        "replicate": replicate,
+        "success": success(report),
+        "failure_class": failure_class(report),
+        "requests_started": report["_cost"]["started"],
         "actor_sim_credits": round(report["_cost"]["credits"], 9),
         "provider_credits_allocated": round(provider_share, 9),
         "retrieved_chars": len(str(memory.get("text") or "")) if isinstance(memory, dict) else "",
-    }  # fmt: skip
+    }
 
 
 def export_episodes(root: Path, out: Path) -> int:
@@ -189,8 +227,11 @@ def export_episodes(root: Path, out: Path) -> int:
         for (task, seed), report in sorted(
             reports.items(), key=lambda kv: (int(kv[0][0]), kv[0][1])
         ):
-            rows.append(_episode_row("study1", "test", task, "", condition, seed, report,
-                                     total / len(reports)))  # fmt: skip
+            rows.append(
+                _episode_row(
+                    "study1", "test", task, "", condition, seed, report, total / len(reports)
+                )
+            )
     families = json.loads((root / "study2-families.json").read_text(encoding="utf-8"))
     family_of, session_of = {}, {}
     for index, sessions in enumerate(families.values(), start=1):
@@ -204,8 +245,18 @@ def export_episodes(root: Path, out: Path) -> int:
         later = sum(session_of[task] == "later" for task, _ in reports)
         for (task, seed), report in sorted(reports.items(), key=lambda kv: int(kv[0][0])):
             share = total / later if session_of[task] == "later" else 0.0
-            rows.append(_episode_row("study2", session_of[task], task, family_of[task], condition,
-                                     seed, report, share))  # fmt: skip
+            rows.append(
+                _episode_row(
+                    "study2",
+                    session_of[task],
+                    task,
+                    family_of[task],
+                    condition,
+                    seed,
+                    report,
+                    share,
+                )
+            )
     with out.open("w", encoding="utf-8", newline="\n") as handle:
         writer = csv.DictWriter(handle, EPISODE_FIELDS, lineterminator="\n")
         writer.writeheader()
@@ -267,8 +318,10 @@ def tables_from_csv(path: Path) -> dict[str, Any]:
         ("study2", STUDY2_CONDITIONS, "family"),
     ):
         selected = [r for r in rows if r["study"] == study and r["session"] != "first"]
-        by = {c: {(r["task"], r["replicate"]): r for r in selected if r["condition"] == c}
-              for c in conditions}  # fmt: skip
+        by = {
+            c: {(r["task"], r["replicate"]): r for r in selected if r["condition"] == c}
+            for c in conditions
+        }
         base = by["none"]
         table: dict[str, Any] = {}
         pvalues: dict[str, float] = {}
@@ -276,13 +329,17 @@ def tables_from_csv(path: Path) -> dict[str, Any]:
             episodes = list(by[name].values())
             n, k = len(episodes), sum(r["success"] for r in episodes)
             row: dict[str, Any] = {
-                "episodes": n, "successes": k, "rate": round(k / n, 3), "wilson95": wilson(k, n),
+                "episodes": n,
+                "successes": k,
+                "rate": round(k / n, 3),
+                "wilson95": wilson(k, n),
                 "mean_requests": round(sum(r["requests_started"] for r in episodes) / n, 2),
                 "mean_episode_credits": round(sum(r["actor_sim_credits"] for r in episodes) / n, 4),
                 "provider_credits_per_episode": round(
-                    sum(r["provider_credits_allocated"] for r in episodes) / n, 4),
+                    sum(r["provider_credits_allocated"] for r in episodes) / n, 4
+                ),
                 "failures": dict(Counter(r["failure_class"] for r in episodes if not r["success"])),
-            }  # fmt: skip
+            }
             if name != "none":
                 keys = [key for key in by[name] if key in base]
                 wins = sum(by[name][x]["success"] and not base[x]["success"] for x in keys)
@@ -292,9 +349,13 @@ def tables_from_csv(path: Path) -> dict[str, Any]:
                     clusters.setdefault(base[x][cluster_field], []).append(
                         by[name][x]["success"] - base[x]["success"]
                     )
-                row.update(paired=len(keys), wins=wins, losses=losses,
-                           mcnemar_p=round(mcnemar_exact(wins, losses), 4),
-                           post_hoc=cluster_effect(clusters))  # fmt: skip
+                row.update(
+                    paired=len(keys),
+                    wins=wins,
+                    losses=losses,
+                    mcnemar_p=round(mcnemar_exact(wins, losses), 4),
+                    post_hoc=cluster_effect(clusters),
+                )
                 pvalues[name] = row["mcnemar_p"]
             table[name] = row
         for name, adjusted in holm(pvalues).items():

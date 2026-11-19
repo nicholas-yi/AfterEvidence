@@ -82,8 +82,16 @@ def generate_families(seed: int, count: int, exclude: frozenset[str] = frozenset
         rng.shuffle(on_file)
         family_id = f"s{seed % 10_000:04d}-{len(families):02d}"
         families.append(
-            Family(family_id, customer, kind, values[0], values[1], (values[2], values[3]), tuple(on_file))
-        )  # fmt: skip
+            Family(
+                family_id,
+                customer,
+                kind,
+                values[0],
+                values[1],
+                (values[2], values[3]),
+                tuple(on_file),
+            )
+        )
     return families
 
 
@@ -107,8 +115,13 @@ def eval_families(tag_commit: str) -> list[Family]:
 
 
 def _record(rid: str, epoch: int, text: str, superseded_by: str | None = None) -> dict[str, Any]:
-    return {"id": rid, "session": f"S{rid[1:]}", "epoch": epoch, "superseded_by": superseded_by,
-            "text": text}  # fmt: skip
+    return {
+        "id": rid,
+        "session": f"S{rid[1:]}",
+        "epoch": epoch,
+        "superseded_by": superseded_by,
+        "text": text,
+    }
 
 
 def scenario(family: Family, regime: str) -> dict[str, Any]:
@@ -117,20 +130,31 @@ def scenario(family: Family, regime: str) -> dict[str, Any]:
     changed = f"Customer changed their default {kind} from {old} to {new}."
     if regime == "current":
         # Valid preference recorded after the restore (epoch 5 > at_epoch 4).
-        records = [_record("m1", 5, f"Customer asked that {new} become their default {kind}; "
-                           "the account had not been updated yet.")]  # fmt: skip
+        records = [
+            _record(
+                "m1",
+                5,
+                f"Customer asked that {new} become their default {kind}; "
+                "the account had not been updated yet.",
+            )
+        ]
         default, correct, obsolete = None, new, None
     elif regime == "reset":
         records = [_record("m1", 3, changed)]  # lost by the restore to epoch 2 at epoch 4
         default, correct, obsolete = old, old, new
     elif regime == "corrected":
-        records = [_record("m1", 3, changed, superseded_by="m2"),
-                   _record("m2", 4, f"Customer's default {kind} is {old}.")]  # fmt: skip
+        records = [
+            _record("m1", 3, changed, superseded_by="m2"),
+            _record("m2", 4, f"Customer's default {kind} is {old}."),
+        ]
         default, correct, obsolete = old, old, new
     else:
         raise ValueError(f"unknown regime {regime!r}")
-    account = {"customer": family.customer, f"{kind}s on file": list(family.on_file),
-               f"default {kind}": default}  # fmt: skip
+    account = {
+        "customer": family.customer,
+        f"{kind}s on file": list(family.on_file),
+        f"default {kind}": default,
+    }
     return {
         "visible": {
             "request": f"Please use my default {kind} for this order.",
@@ -278,7 +302,7 @@ def decide(rows: list[dict[str, Any]], min_effect: float = 0.20) -> dict[str, An
                     ),
                     4,
                 ),
-            }  # fmt: skip
+            }
             for c in PAID_CONDITIONS
         },
     }

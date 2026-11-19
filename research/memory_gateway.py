@@ -80,16 +80,38 @@ class Mem0Store:
             from mem0 import Memory
 
             base, token = shim("mem0"), CONFIG["token"]
-            self.instances["shared"] = Memory.from_config({
-                "llm": {"provider": "openai", "config": {
-                    "model": CONFIG["model"], "openai_base_url": base, "api_key": token, "temperature": 0}},
-                "embedder": {"provider": "openai", "config": {
-                    "model": "nomic-embed-text", "openai_base_url": base, "api_key": token, "embedding_dims": 768}},
-                "vector_store": {"provider": "qdrant", "config": {
-                    "path": str(state() / "mem0-qdrant" / "bank"), "collection_name": "ae",
-                    "embedding_model_dims": 768, "on_disk": True}},
-                "history_db_path": str(state() / "mem0-history-bank.db"),
-            })  # fmt: skip
+            self.instances["shared"] = Memory.from_config(
+                {
+                    "llm": {
+                        "provider": "openai",
+                        "config": {
+                            "model": CONFIG["model"],
+                            "openai_base_url": base,
+                            "api_key": token,
+                            "temperature": 0,
+                        },
+                    },
+                    "embedder": {
+                        "provider": "openai",
+                        "config": {
+                            "model": "nomic-embed-text",
+                            "openai_base_url": base,
+                            "api_key": token,
+                            "embedding_dims": 768,
+                        },
+                    },
+                    "vector_store": {
+                        "provider": "qdrant",
+                        "config": {
+                            "path": str(state() / "mem0-qdrant" / "bank"),
+                            "collection_name": "ae",
+                            "embedding_model_dims": 768,
+                            "on_disk": True,
+                        },
+                    },
+                    "history_db_path": str(state() / "mem0-history-bank.db"),
+                }
+            )
         return self.instances["shared"]
 
     @staticmethod
@@ -118,6 +140,30 @@ class Mem0Store:
         # Library-default search (top_k 20); mem0 2.2.1 ignored the limit=10 that v1 passed.
         found = self.memory(scope).search(query, filters=self.owner(scope))
         return [item["memory"] for item in found.get("results", [])]
+
+    def facts(
+        self, scope: str, facts: list[str], session: str, delete: list[str]
+    ) -> dict[str, Any]:
+        """Application-written facts stored verbatim (infer=False: no extraction LLM call), each
+        its own memory; deletes the application's own earlier facts by ID."""
+        memory, owner = self.memory(scope), self.owner(scope)
+        deleted, missing = [], []
+        for memory_id in delete:  # Mem0's own extraction may already have updated or removed one
+            try:
+                memory.delete(memory_id)
+                deleted.append(memory_id)
+            except Exception:
+                missing.append(memory_id)
+        made = memory.add(
+            [{"role": "user", "content": fact} for fact in facts],
+            run_id=session,
+            metadata={"episode": session, "source": "application facts"},
+            user_id=owner.get("user_id"),
+            agent_id=owner.get("agent_id"),
+            infer=False,
+        )
+        items = made.get("results", []) if isinstance(made, dict) else (made or [])
+        return {"created": [item["id"] for item in items], "deleted": deleted, "missing": missing}
 
     def delete(self, scope: str, episode_id: str) -> dict[str, Any]:
         owner = self.owner(scope)
@@ -181,10 +227,13 @@ class GraphitiStore:
 
         graph = await self.graph()
         result = await graph.add_episode(
-            name=episode["id"], episode_body=transcript(episode),
+            name=episode["id"],
+            episode_body=transcript(episode),
             source_description="retail customer-service conversation",
-            reference_time=datetime.now(timezone.utc), source=EpisodeType.message, group_id=safe(scope),
-        )  # fmt: skip
+            reference_time=datetime.now(timezone.utc),
+            source=EpisodeType.message,
+            group_id=safe(scope),
+        )
         self.uuids[f"{scope}|{episode['id']}"] = result.episode.uuid
         self.uuids_path.write_text(json.dumps(self.uuids))
         return {"nodes": len(result.nodes), "edges": len(result.edges)}
@@ -230,10 +279,12 @@ class HindsightStore:
 
     async def ingest(self, scope: str, episode: dict[str, Any]) -> dict[str, Any]:
         response = await self.client.aretain(
-            await self.bank(scope), transcript(episode), document_id=episode["id"],
+            await self.bank(scope),
+            transcript(episode),
+            document_id=episode["id"],
             context="retail customer-service conversation",
             timestamp=datetime.now(timezone.utc).isoformat(),
-        )  # fmt: skip
+        )
         return {"success": bool(getattr(response, "success", True))}
 
     async def search(self, scope: str, query: str) -> list[str]:
@@ -248,8 +299,10 @@ class HindsightStore:
 
     async def dump(self, scope: str) -> list[str]:
         response = await self.client.alist_memories(await self.bank(scope), limit=1000)
-        return [item.get("text", "") if isinstance(item, dict) else getattr(item, "text", "")
-                for item in response.items]  # fmt: skip
+        return [
+            item.get("text", "") if isinstance(item, dict) else getattr(item, "text", "")
+            for item in response.items
+        ]
 
 
 class HonchoStore:
@@ -287,8 +340,10 @@ class HonchoStore:
             busy = (status.pending_work_units or 0) + (status.in_progress_work_units or 0)
             empty = empty + 1 if busy == 0 else 0
             if empty >= 2:
-                return {k: getattr(status, f"{k}_work_units", 0) or 0
-                        for k in ("total", "completed", "in_progress", "pending")}  # fmt: skip
+                return {
+                    k: getattr(status, f"{k}_work_units", 0) or 0
+                    for k in ("total", "completed", "in_progress", "pending")
+                }
             time.sleep(3)
         raise TimeoutError("Honcho deriver queue did not drain.")
 
@@ -298,11 +353,15 @@ class HonchoStore:
         session = honcho.session(safe(episode["id"]), peers=[agent, customer])
         speakers = {"customer": customer, "agent": agent, "tool": agent}
         times = episode.get("times") or []
-        session.add_messages([
-            speakers[s].message(("[tool] " if s == "tool" else "") + t,
-                                **({"created_at": times[i]} if i < len(times) else {}))
-            for i, (s, t) in enumerate(turns(episode))
-        ])  # fmt: skip
+        session.add_messages(
+            [
+                speakers[s].message(
+                    ("[tool] " if s == "tool" else "") + t,
+                    **({"created_at": times[i]} if i < len(times) else {}),
+                )
+                for i, (s, t) in enumerate(turns(episode))
+            ]
+        )
         return {"session": session.id, "queue": self.wait(honcho)}
 
     def messages(self, scope: str, query: str, limit: int = 10) -> list[str]:
@@ -313,8 +372,10 @@ class HonchoStore:
             return []
         found = honcho.search(query, filters={"session_id": {"in": sessions}}, limit=limit)
         speaker = {customer: "Customer", "agent": "Agent"}
-        return [f"[{m.created_at:%Y-%m-%d %H:%M} UTC] {speaker.get(m.peer_id, m.peer_id)}: {m.content}"
-                for m in found]  # fmt: skip
+        return [
+            f"[{m.created_at:%Y-%m-%d %H:%M} UTC] {speaker.get(m.peer_id, m.peer_id)}: {m.content}"
+            for m in found
+        ]
 
     def search(
         self, scope: str, query: str, level: str | None = None, ask: bool = False
@@ -430,6 +491,14 @@ async def honcho_facts(request: Request):
         return {"result": await call("honcho", "facts", *args)}
 
 
+@app.post("/mem0/facts")
+async def mem0_facts(request: Request):
+    body = await request.json()
+    async with lock("mem0"):
+        args = (body["scope"], body["facts"], body["session"], body.get("delete", []))
+        return {"result": await call("mem0", "facts", *args)}
+
+
 @app.post("/honcho/dream")
 async def honcho_dream(request: Request):
     body = await request.json()
@@ -447,10 +516,12 @@ async def delete(request: Request):
 @app.post("/status")
 async def status(request: Request):
     body = await request.json()
-    result: dict[str, Any] = {"state": str(state().resolve()),
-                              "honcho_workspace": CONFIG.get("honcho_workspace", "ae-customer"),
-                              "honcho_reasoning_level": CONFIG.get("honcho_reasoning_level", "low"),
-                              "honcho_workspace_by_prefix": CONFIG.get("honcho_workspace_by_prefix", {})}  # fmt: skip
+    result: dict[str, Any] = {
+        "state": str(state().resolve()),
+        "honcho_workspace": CONFIG.get("honcho_workspace", "ae-customer"),
+        "honcho_reasoning_level": CONFIG.get("honcho_reasoning_level", "low"),
+        "honcho_workspace_by_prefix": CONFIG.get("honcho_workspace_by_prefix", {}),
+    }
     if body.get("provider") == "honcho":
         honcho = store("honcho")
         scope = body.get("scope", "customer:")

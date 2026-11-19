@@ -13,6 +13,8 @@ account data, and provider state. Earlier feasibility work is under
 [Development history](#development-history). Environment: unmodified
 MIT-licensed tau2-bench retail at `c06b07dd7c4d4ec61ba6ff9bcdf0b15dd7ef36d4`.
 
+Contents (newest study first): [Second-model replication](#second-model-replication) · [Honcho Stage 3 evaluation](#honcho-stage-3-evaluation) · [Honcho features evaluation](#honcho-features-evaluation) · [Dated changed-mind evaluation](#dated-changed-mind-evaluation) · [Changed-mind evaluation](#changed-mind-evaluation) · [Necessary-memory evaluation](#necessary-memory-evaluation) · [Memory study v1](#memory-study-v1) · [Remaining gates and next steps](#remaining-gates-and-next-steps) · [Preserved evidence](#preserved-evidence) · [Software verification versus scientific evidence](#software-verification-versus-scientific-evidence) · [Development history](#development-history).
+
 ## Second-model replication
 
 Protocol: [design](DESIGN.md#second-model-replication-owner-2026-11-17-just-use-cheap-stuff), tag

@@ -15,9 +15,33 @@ from pathlib import Path
 from research.study_runner import run_jobs
 
 TEST_TASKS = (
-    "5", "9", "17", "18", "26", "27", "32", "33", "42", "49", "51", "53", "55",
-    "56", "61", "71", "74", "77", "79", "86", "90", "94", "97", "100", "101", "102",
-)  # fmt: skip
+    "5",
+    "9",
+    "17",
+    "18",
+    "26",
+    "27",
+    "32",
+    "33",
+    "42",
+    "49",
+    "51",
+    "53",
+    "55",
+    "56",
+    "61",
+    "71",
+    "74",
+    "77",
+    "79",
+    "86",
+    "90",
+    "94",
+    "97",
+    "100",
+    "101",
+    "102",
+)
 INTERNAL = ("raw", "consolidated", "sleep", "workflows")
 PROVIDERS = ("mem0", "graphiti", "hindsight", "honcho")
 CONDITIONS = ("none",) + INTERNAL + PROVIDERS
@@ -45,10 +69,13 @@ def jobs(root: Path, memory_dir: Path, tag: str, gateway: str) -> list[dict[str,
         for task in TEST_TASKS:
             for condition in CONDITIONS:
                 job: dict[str, object] = {
-                    "task": task, "split": "test", "condition": condition, "seed": replicate,
+                    "task": task,
+                    "split": "test",
+                    "condition": condition,
+                    "seed": replicate,
                     "protocol_tag": tag,
                     "output": str(root / condition / f"task-{task}-r{replicate}.json"),
-                }  # fmt: skip
+                }
                 if spec_paths[condition] is not None:
                     job["memory_spec"] = str(spec_paths[condition])
                 result.append(job)

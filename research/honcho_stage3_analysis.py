@@ -33,8 +33,11 @@ def rows_from_runs(directory: Path) -> list[dict[str, Any]]:
     from research.commitment_pilot import final_reports
 
     rows = hfa.rows_from_runs(directory, MEMORY_ARMS)
-    calls = {(r["family"], r["arm"]): len(r.get("memory_tool_calls") or []) for r in final_reports(directory)
-             if r.get("session") == 2}  # fmt: skip
+    calls = {
+        (r["family"], r["arm"]): len(r.get("memory_tool_calls") or [])
+        for r in final_reports(directory)
+        if r.get("session") == 2
+    }
     for row in rows:
         if str(row["session"]) == "2":
             row["tool_calls"] = calls.get((row["family"], row["arm"]), 0)
@@ -74,24 +77,38 @@ def analyse(rows: list[dict[str, Any]], planned_families: int = 32) -> dict[str,
             }
             continue
         n, k = len(cell), sum(_flag(r.get("success")) for r in cell)
-        arms[arm] = {"successes": k, "n": n, "wilson95": wilson(k, n),
-                     "stale": sum(_num(r.get("stale_commitment")) > 0 for r in cell),
-                     "declined": sum(_flag(r.get("declined")) for r in cell),
-                     "infra_failed": sum(_flag(r.get("infra_failed")) for r in cell),
-                     "tool_sessions": sum(_num(r.get("tool_calls")) > 0 for r in cell),
-                     "requests_per_session": round(sum(_num(r.get("requests")) for r in cell) / n, 2),
-                     "credits_per_session": round(sum(_num(r.get("credits")) for r in cell) / n, 3),
-                     "memory_has_Y": sum(_flag(r.get("memory_has_Y")) for r in cell) if arm in MEMORY_ARMS else None,
-                     "memory_has_X": sum(_flag(r.get("memory_has_X")) for r in cell) if arm in MEMORY_ARMS else None}  # fmt: skip
-    return {"planned_families": planned_families, "session1_families": len(families), "included": len(included),
-            "excluded": sorted(set(families) - set(included)), "complete_arms": [a for a in ARMS if a in complete],
-            "not_run_arms": [a for a in ARMS if a not in complete], "arms": arms,
-            "primary_success": hfa._block(PRIMARY, tables, complete),
-            "secondary_facts": hfa._block(SECONDARY_A, tables, complete),
-            "secondary_stale": hfa._block(SECONDARY_B, tables, complete),
-            "leakage_sessions": sum(_flag(r.get("leakage")) for r in rows),
-            "requests_total": int(sum(_num(r.get("requests")) for r in rows)),
-            "credits_total": round(sum(_num(r.get("credits")) for r in rows), 2)}  # fmt: skip
+        arms[arm] = {
+            "successes": k,
+            "n": n,
+            "wilson95": wilson(k, n),
+            "stale": sum(_num(r.get("stale_commitment")) > 0 for r in cell),
+            "declined": sum(_flag(r.get("declined")) for r in cell),
+            "infra_failed": sum(_flag(r.get("infra_failed")) for r in cell),
+            "tool_sessions": sum(_num(r.get("tool_calls")) > 0 for r in cell),
+            "requests_per_session": round(sum(_num(r.get("requests")) for r in cell) / n, 2),
+            "credits_per_session": round(sum(_num(r.get("credits")) for r in cell) / n, 3),
+            "memory_has_Y": sum(_flag(r.get("memory_has_Y")) for r in cell)
+            if arm in MEMORY_ARMS
+            else None,
+            "memory_has_X": sum(_flag(r.get("memory_has_X")) for r in cell)
+            if arm in MEMORY_ARMS
+            else None,
+        }
+    return {
+        "planned_families": planned_families,
+        "session1_families": len(families),
+        "included": len(included),
+        "excluded": sorted(set(families) - set(included)),
+        "complete_arms": [a for a in ARMS if a in complete],
+        "not_run_arms": [a for a in ARMS if a not in complete],
+        "arms": arms,
+        "primary_success": hfa._block(PRIMARY, tables, complete),
+        "secondary_facts": hfa._block(SECONDARY_A, tables, complete),
+        "secondary_stale": hfa._block(SECONDARY_B, tables, complete),
+        "leakage_sessions": sum(_flag(r.get("leakage")) for r in rows),
+        "requests_total": int(sum(_num(r.get("requests")) for r in rows)),
+        "credits_total": round(sum(_num(r.get("credits")) for r in rows), 2),
+    }
 
 
 def main() -> None:

@@ -28,11 +28,30 @@ ARMS = ("Hn", "M", "Mi", "Ho", "Hod")
 PROVIDER_ARMS = ("M", "Mi", "Ho", "Hod")
 PAIRS = (("Mi", "M"), ("Hod", "Ho"))
 FIELDS: tuple[str, ...] = (
-    "family", "session", "arm", "included", "status", "success", "commitment", "stale_commitment",
-    "declined", "wrong_variant_other", "unauthorized_attempts", "proposals_before_consent",
-    "attempts", "infra_failed", "requests", "credits", "leakage", "memory_chars", "memory_error",
-    "memory_has_Y", "memory_has_X", "memory_date_correct", "memory_deferral_present",
-)  # fmt: skip
+    "family",
+    "session",
+    "arm",
+    "included",
+    "status",
+    "success",
+    "commitment",
+    "stale_commitment",
+    "declined",
+    "wrong_variant_other",
+    "unauthorized_attempts",
+    "proposals_before_consent",
+    "attempts",
+    "infra_failed",
+    "requests",
+    "credits",
+    "leakage",
+    "memory_chars",
+    "memory_error",
+    "memory_has_Y",
+    "memory_has_X",
+    "memory_date_correct",
+    "memory_deferral_present",
+)
 
 
 def rows_from_runs(directory: Path) -> list[dict[str, Any]]:
@@ -58,35 +77,56 @@ def rows_from_runs(directory: Path) -> list[dict[str, Any]]:
     for r in reports:
         family = families[r["family"]]
         journals = sorted(directory.glob(f"{job_id(r)}-a*.calls.jsonl"))
-        lines = [{**json.loads(x), "_journal": str(p)} for p in journals
-                 for x in p.read_text(encoding="utf-8").splitlines() if x]  # fmt: skip
+        lines = [
+            {**json.loads(x), "_journal": str(p)}
+            for p in journals
+            for x in p.read_text(encoding="utf-8").splitlines()
+            if x
+        ]
         ledger = pilot_ledger(lines, 10**9, 10**9)
         row: dict[str, Any] = {
-            "family": r["family"], "session": r["session"], "arm": r["arm"],
-            "included": r["family"] in included, "status": r.get("status"),
-            "attempts": len(journals), "infra_failed": bool(r.get("infra_failure")),
-            "requests": ledger["started"], "credits": round(ledger["recorded_credits"], 4),
-        }  # fmt: skip
+            "family": r["family"],
+            "session": r["session"],
+            "arm": r["arm"],
+            "included": r["family"] in included,
+            "status": r.get("status"),
+            "attempts": len(journals),
+            "infra_failed": bool(r.get("infra_failure")),
+            "requests": ledger["started"],
+            "credits": round(ledger["recorded_credits"], 4),
+        }
         if r["session"] == 1:
             row["commitment"] = bool(r.get("commitment"))
         else:
-            stale = sum(c["name"] == "exchange_delivered_order_items"
-                        and c["arguments"].get("new_item_ids") == [family["stale_id"]]
-                        for m in r.get("messages") or [] if m.get("role") == "assistant"
-                        for c in (m.get("tool_calls") or []))  # fmt: skip
-            row.update(success=bool(r.get("success")), stale_commitment=stale, declined=r.get("mutations") == 0,
-                       wrong_variant_other=int(r.get("wrong_variant_attempts") or 0) - stale,
-                       unauthorized_attempts=r.get("unauthorized_attempts"),
-                       proposals_before_consent=r.get("proposals_before_consent"), leakage=bool(r.get("leakage")))  # fmt: skip
+            stale = sum(
+                c["name"] == "exchange_delivered_order_items"
+                and c["arguments"].get("new_item_ids") == [family["stale_id"]]
+                for m in r.get("messages") or []
+                if m.get("role") == "assistant"
+                for c in (m.get("tool_calls") or [])
+            )
+            row.update(
+                success=bool(r.get("success")),
+                stale_commitment=stale,
+                declined=r.get("mutations") == 0,
+                wrong_variant_other=int(r.get("wrong_variant_attempts") or 0) - stale,
+                unauthorized_attempts=r.get("unauthorized_attempts"),
+                proposals_before_consent=r.get("proposals_before_consent"),
+                leakage=bool(r.get("leakage")),
+            )
             path = directory / "memory" / f"{r['family']}-{r['arm']}.json"
             if r["arm"] in PROVIDER_ARMS and path.exists():
                 record = json.loads(path.read_text(encoding="utf-8"))
                 text = record.get("text") or ""
                 shows = any(date_mentions(text, d) for d in backdated)
-                row.update(memory_chars=record.get("chars"), memory_error=bool(record.get("error")),
-                           memory_has_Y=family["target_id"] in text, memory_has_X=family["stale_id"] in text,
-                           memory_date_correct=shows and not date_mentions(text, today),
-                           memory_deferral_present=deferral_present(text))  # fmt: skip
+                row.update(
+                    memory_chars=record.get("chars"),
+                    memory_error=bool(record.get("error")),
+                    memory_has_Y=family["target_id"] in text,
+                    memory_has_X=family["stale_id"] in text,
+                    memory_date_correct=shows and not date_mentions(text, today),
+                    memory_deferral_present=deferral_present(text),
+                )
         rows.append(row)
     order = {a: i for i, a in enumerate(("S1a", "S1b", *ARMS))}
     return sorted(rows, key=lambda x: (x["family"], x["session"], order.get(x["arm"], 99)))
@@ -125,34 +165,54 @@ def analyse(rows: list[dict[str, Any]], planned_families: int = 32) -> dict[str,
         n = len(cell)
         k = sum(_flag(r.get("success")) for r in cell)
         s = sum(_num(r.get("stale_commitment")) > 0 for r in cell)
-        arms[arm] = {"successes": k, "n": n, "wilson95": wilson(k, n), "stale": s,
-                     "declined": sum(_flag(r.get("declined")) for r in cell),
-                     "infra_failed": sum(_flag(r.get("infra_failed")) for r in cell),
-                     "credits_per_session": round(sum(_num(r.get("credits")) for r in cell) / n, 3) if n else None,
-                     "requests_per_session": round(sum(_num(r.get("requests")) for r in cell) / n, 2) if n else None,
-                     "wrong_variant_other": int(sum(_num(r.get("wrong_variant_other")) for r in cell)),
-                     "unauthorized": int(sum(_num(r.get("unauthorized_attempts")) for r in cell))}  # fmt: skip
+        arms[arm] = {
+            "successes": k,
+            "n": n,
+            "wilson95": wilson(k, n),
+            "stale": s,
+            "declined": sum(_flag(r.get("declined")) for r in cell),
+            "infra_failed": sum(_flag(r.get("infra_failed")) for r in cell),
+            "credits_per_session": round(sum(_num(r.get("credits")) for r in cell) / n, 3)
+            if n
+            else None,
+            "requests_per_session": round(sum(_num(r.get("requests")) for r in cell) / n, 2)
+            if n
+            else None,
+            "wrong_variant_other": int(sum(_num(r.get("wrong_variant_other")) for r in cell)),
+            "unauthorized": int(sum(_num(r.get("unauthorized_attempts")) for r in cell)),
+        }
     primary = {f"{a} vs {b}": _paired(success, a, b) for a, b in PAIRS}
     secondary = {f"{a} vs {b}": _paired(stale, a, b) for a, b in PAIRS}
     for block in (primary, secondary):
         adjusted = holm({k: v["p"] for k, v in block.items()})
         for key, value in block.items():
             value["p_holm"] = adjusted[key]
-    versus_hn = {f"{a} vs Hn": {"success": _paired(success, a, "Hn"), "stale": _paired(stale, a, "Hn")}
-                 for a in PROVIDER_ARMS}  # fmt: skip
+    versus_hn = {
+        f"{a} vs Hn": {"success": _paired(success, a, "Hn"), "stale": _paired(stale, a, "Hn")}
+        for a in PROVIDER_ARMS
+    }
     memory = {}
     for arm in PROVIDER_ARMS:
         cell = [r for r in second if r["arm"] == arm]
-        memory[arm] = {key: sum(_flag(r.get(f"memory_{key}")) for r in cell)
-                       for key in ("error", "has_Y", "has_X", "date_correct", "deferral_present")}  # fmt: skip
-    return {"planned_families": planned_families, "session1_families": len(families), "included": len(included),
-            "excluded": sorted(set(families) - set(included)),
-            "complete": len(families) == planned_families and len(second) == len(included) * len(ARMS),
-            "arms": arms, "primary_success": primary, "secondary_stale": secondary,
-            "descriptive_vs_hn": versus_hn, "provider_memory": memory,
-            "leakage_sessions": sum(_flag(r.get("leakage")) for r in rows),
-            "requests_total": int(sum(_num(r.get("requests")) for r in rows)),
-            "credits_total": round(sum(_num(r.get("credits")) for r in rows), 2)}  # fmt: skip
+        memory[arm] = {
+            key: sum(_flag(r.get(f"memory_{key}")) for r in cell)
+            for key in ("error", "has_Y", "has_X", "date_correct", "deferral_present")
+        }
+    return {
+        "planned_families": planned_families,
+        "session1_families": len(families),
+        "included": len(included),
+        "excluded": sorted(set(families) - set(included)),
+        "complete": len(families) == planned_families and len(second) == len(included) * len(ARMS),
+        "arms": arms,
+        "primary_success": primary,
+        "secondary_stale": secondary,
+        "descriptive_vs_hn": versus_hn,
+        "provider_memory": memory,
+        "leakage_sessions": sum(_flag(r.get("leakage")) for r in rows),
+        "requests_total": int(sum(_num(r.get("requests")) for r in rows)),
+        "credits_total": round(sum(_num(r.get("credits")) for r in rows), 2),
+    }
 
 
 def main() -> None:

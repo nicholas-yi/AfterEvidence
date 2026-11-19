@@ -58,12 +58,24 @@ def mem0_record(directory: Path, families: list[str]) -> None:
 
 
 def build_eval(base: dict[str, Any], pool: list[str], seed: int) -> list[dict[str, Any]]:
-    avoid = (cp.build_eval_families(base, cm.EVAL_SEED, pool) + cm.build(base, pool)
-             + cm.build_eval(base, pool, cm.CM_EVAL_SEED) + cm.build_dated_eval(base, pool, hf.DE_SEED)
-             + hf.build_eval(base, pool, HF_SEED))  # fmt: skip
-    families = cp.build_eval_families(base, seed, pool, count=32, prefix="P", width=2,
-                                      namespace=f"AE-SECOND-MODEL-EVAL-v1-{seed}", avoid=avoid,
-                                      names=[(a, b) for a in P_FIRST for b in P_LAST])  # fmt: skip
+    avoid = (
+        cp.build_eval_families(base, cm.EVAL_SEED, pool)
+        + cm.build(base, pool)
+        + cm.build_eval(base, pool, cm.CM_EVAL_SEED)
+        + cm.build_dated_eval(base, pool, hf.DE_SEED)
+        + hf.build_eval(base, pool, HF_SEED)
+    )
+    families = cp.build_eval_families(
+        base,
+        seed,
+        pool,
+        count=32,
+        prefix="P",
+        width=2,
+        namespace=f"AE-SECOND-MODEL-EVAL-v1-{seed}",
+        avoid=avoid,
+        names=[(a, b) for a in P_FIRST for b in P_LAST],
+    )
     for f in families:
         alternatives = f["alternatives"]
         f["stale_id"] = alternatives[(f["target_position"] + 2) % len(alternatives)]["item_id"]
@@ -76,15 +88,33 @@ def prepare(seed: int | None = None) -> dict[str, Any]:
     return hf._validate(cp.prepare(builder=lambda base, pool: build_eval(base, pool, seed)))
 
 
-def plan(setup: dict[str, Any], note: str | None, today: Any, stage: str, seed: int,
-         extra: dict[str, Any], first: list[dict[str, Any]] | None = None) -> dict[str, Any]:  # fmt: skip
+def plan(
+    setup: dict[str, Any],
+    note: str | None,
+    today: Any,
+    stage: str,
+    seed: int,
+    extra: dict[str, Any],
+    first: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
     common = hf._common(setup, today, stage)
     for key in ("arms", "restating_rule", "shared"):
         common.pop(key, None)
-    return {**common, "model": MODEL, "provider_llm": f"{MODEL} (shims started with --model {MODEL})",
-            "arms": {"Hn": "dated transcripts", "Mi": "Mem0 with in-band dates", "Hod": "Honcho dialectic, backdated",
-                     "Hs": "Honcho message search"}, "arms_priority": ARMS, "note": note, **extra,
-            "jobs": (first or []) + hf.schedule(list(setup["families"]), ARMS, seed)}  # fmt: skip
+    return {
+        **common,
+        "model": MODEL,
+        "provider_llm": f"{MODEL} (shims started with --model {MODEL})",
+        "arms": {
+            "Hn": "dated transcripts",
+            "Mi": "Mem0 with in-band dates",
+            "Hod": "Honcho dialectic, backdated",
+            "Hs": "Honcho message search",
+        },
+        "arms_priority": ARMS,
+        "note": note,
+        **extra,
+        "jobs": (first or []) + hf.schedule(list(setup["families"]), ARMS, seed),
+    }
 
 
 def summary(
@@ -102,23 +132,51 @@ def summary(
             continue
         f = setup["families"][r["family"]]
         text = records.get(f"{r['family']}-{r['arm']}", {}).get("text") or ""
-        rows.append({"family": r["family"], "arm": r["arm"], "status": r.get("status"), "success": bool(r.get("success")),
-                     "stale_commitment": cm.stale_attempts(f, r.get("messages") or []),
-                     "declined": r.get("mutations") == 0, "reasks": r.get("reasks"),
-                     "memory_has_Y": f["target_id"] in text, "memory_has_X": f["stale_id"] in text,
-                     "requests": r.get("requests_started"), "leakage": bool(r.get("leakage"))})  # fmt: skip
-    ok = {arm: sum(not records.get(f"{f}-{arm}", {"error": "missing"}).get("error") for f in families)
-          for arm in ("Mi", "Hod", "Hs")}  # fmt: skip
-    gates = {**{f"{arm}_memory_3of4": n >= 3 for arm, n in ok.items()},
-             "zero_leakage": not any(r["leakage"] for r in rows),
-             "no_harness_defect": len(rows) == len(families) * len(ARMS) and not (outcome or {}).get("refused")}  # fmt: skip
+        rows.append(
+            {
+                "family": r["family"],
+                "arm": r["arm"],
+                "status": r.get("status"),
+                "success": bool(r.get("success")),
+                "stale_commitment": cm.stale_attempts(f, r.get("messages") or []),
+                "declined": r.get("mutations") == 0,
+                "reasks": r.get("reasks"),
+                "memory_has_Y": f["target_id"] in text,
+                "memory_has_X": f["stale_id"] in text,
+                "requests": r.get("requests_started"),
+                "leakage": bool(r.get("leakage")),
+            }
+        )
+    ok = {
+        arm: sum(not records.get(f"{f}-{arm}", {"error": "missing"}).get("error") for f in families)
+        for arm in ("Mi", "Hod", "Hs")
+    }
+    gates = {
+        **{f"{arm}_memory_3of4": n >= 3 for arm, n in ok.items()},
+        "zero_leakage": not any(r["leakage"] for r in rows),
+        "no_harness_defect": len(rows) == len(families) * len(ARMS)
+        and not (outcome or {}).get("refused"),
+    }
     budget = cp.BUDGETS[cp.STAGE_BUDGET[DEV_STAGE]]
     rows_all = cp.journal_rows(directory)
-    ledger = {k: {x: y for x, y in cp.pilot_ledger(v, budget["cap"], budget["credit_stop"]).items() if x != "reasons"}
-              for k, v in {"total": rows_all,
-                           "episodes": [r for r in rows_all if Path(r["_journal"]).parent.name != "shims"]}.items()}  # fmt: skip
-    return {"rows": sorted(rows, key=lambda r: (r["family"], ARMS.index(r["arm"]))), "memory_ok": ok, "gates": gates,
-            "verdict": "PASS" if all(gates.values()) else "FAIL", "ledger": ledger}  # fmt: skip
+    ledger = {
+        k: {
+            x: y
+            for x, y in cp.pilot_ledger(v, budget["cap"], budget["credit_stop"]).items()
+            if x != "reasons"
+        }
+        for k, v in {
+            "total": rows_all,
+            "episodes": [r for r in rows_all if Path(r["_journal"]).parent.name != "shims"],
+        }.items()
+    }
+    return {
+        "rows": sorted(rows, key=lambda r: (r["family"], ARMS.index(r["arm"]))),
+        "memory_ok": ok,
+        "gates": gates,
+        "verdict": "PASS" if all(gates.values()) else "FAIL",
+        "ledger": ledger,
+    }
 
 
 def dev_main(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
@@ -129,8 +187,13 @@ def dev_main(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
     if args.summarize:
         print(json.dumps(summary(directory, setup), indent=2, default=str))
         return 0
-    inputs = {f: {x: hashlib.sha256(cp.transcript(r["messages"]).encode()).hexdigest()
-                  for x, r in zip(("1a", "1b"), cm._first_sessions(source, f))} for f in sorted(setup["families"])}  # fmt: skip
+    inputs = {
+        f: {
+            x: hashlib.sha256(cp.transcript(r["messages"]).encode()).hexdigest()
+            for x, r in zip(("1a", "1b"), cm._first_sessions(source, f))
+        }
+        for f in sorted(setup["families"])
+    }
     public = plan(
         setup,
         args.note,
@@ -154,8 +217,17 @@ def dev_main(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
     (directory / "summary.json").write_text(
         json.dumps(result, indent=2, default=str) + "\n", encoding="utf-8"
     )
-    print(json.dumps({"refused": outcome["refused"], "infra_events": outcome["infra_events"],
-                      **{k: v for k, v in result.items() if k != "rows"}}, indent=2, default=str))  # fmt: skip
+    print(
+        json.dumps(
+            {
+                "refused": outcome["refused"],
+                "infra_events": outcome["infra_events"],
+                **{k: v for k, v in result.items() if k != "rows"},
+            },
+            indent=2,
+            default=str,
+        )
+    )
     return 1 if outcome["refused"] else 0
 
 
@@ -188,13 +260,26 @@ def eval_plan(
     sources = {
         n: hashlib.sha256((Path(cp.__file__).parent / n).read_bytes()).hexdigest() for n in SOURCES
     }
-    return plan(setup, note, today, EVAL_STAGE, tag["seed"], {
-        "tag": tag["tag"], "tag_commit": tag["commit"], "seed": tag["seed"],
-        "seed_rule": "int(first 8 hex of SHA-256(tag commit SHA))", "template_pool": setup["pool"],
-        "namespace": f"AE-SECOND-MODEL-EVAL-v1-{tag['seed']}", "sources": sources,
-        "dev_check": hashlib.sha256(dev.read_bytes()).hexdigest() if dev.exists() else None,
-        "exclusion": "no explicit 1a or 1b agreement: excluded from every arm, reported, not replaced",
-        "analysis": "research/second_model_analysis.py: only arms complete for every included family"}, first)  # fmt: skip
+    return plan(
+        setup,
+        note,
+        today,
+        EVAL_STAGE,
+        tag["seed"],
+        {
+            "tag": tag["tag"],
+            "tag_commit": tag["commit"],
+            "seed": tag["seed"],
+            "seed_rule": "int(first 8 hex of SHA-256(tag commit SHA))",
+            "template_pool": setup["pool"],
+            "namespace": f"AE-SECOND-MODEL-EVAL-v1-{tag['seed']}",
+            "sources": sources,
+            "dev_check": hashlib.sha256(dev.read_bytes()).hexdigest() if dev.exists() else None,
+            "exclusion": "no explicit 1a or 1b agreement: excluded from every arm, reported, not replaced",
+            "analysis": "research/second_model_analysis.py: only arms complete for every included family",
+        },
+        first,
+    )
 
 
 def eval_main(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
@@ -251,13 +336,37 @@ def eval_main(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
         print(json.dumps(result, indent=2))
         return 1 if result["refused"] else 0
     if args.phase == "session1":
-        outcome = asyncio.run(cp.live_run(directory, args.model, EVAL_STAGE, cm.select(public["jobs"], "session1", []),
-                                          setup, infra_continue=True, exclude_uncommitted=True))  # fmt: skip
+        outcome = asyncio.run(
+            cp.live_run(
+                directory,
+                args.model,
+                EVAL_STAGE,
+                cm.select(public["jobs"], "session1", []),
+                setup,
+                infra_continue=True,
+                exclude_uncommitted=True,
+            )
+        )
     else:
-        outcome = hf._sessions(args, parser, directory, EVAL_STAGE, cm.select(public["jobs"], "sessions", included),
-                               setup, directory)  # fmt: skip
-    print(json.dumps({"refused": outcome["refused"], "infra_events": outcome["infra_events"],
-                      "sessions_run": len(outcome["results"])}, indent=2))  # fmt: skip
+        outcome = hf._sessions(
+            args,
+            parser,
+            directory,
+            EVAL_STAGE,
+            cm.select(public["jobs"], "sessions", included),
+            setup,
+            directory,
+        )
+    print(
+        json.dumps(
+            {
+                "refused": outcome["refused"],
+                "infra_events": outcome["infra_events"],
+                "sessions_run": len(outcome["results"]),
+            },
+            indent=2,
+        )
+    )
     return 1 if outcome["refused"] else 0
 
 

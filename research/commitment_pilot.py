@@ -45,32 +45,49 @@ SHUFFLE_SEED = 20261114
 PROVIDER_ARMS = {"M": "mem0", "Ho": "honcho"}
 # Retrieval arms: (provider, Honcho reasoning level or None for the server default). Hoh reuses
 # the Honcho ingestion of Ho at the highest level the pinned server accepts (changed-mind design).
-RETRIEVERS: dict[str, tuple[str, str | None]] = {"M": ("mem0", None), "Ho": ("honcho", None),
-                                                 "Hoh": ("honcho", "max"),
-                                                 # Dated evaluation: separate scopes from M and Ho.
-                                                 "Mi": ("mem0", None), "Hod": ("honcho", None),
-                                                 # Honcho features: message search; restating customer.
-                                                 "Hs": ("honcho", None), "Hodr": ("honcho", None),
-                                                 "Mir": ("mem0", None),
-                                                 # Stage 3: dream, app-written facts, facts direct.
-                                                 "Hdr": ("honcho", None), "Hw": ("honcho", None),
-                                                 "Fd": ("app", None)}  # fmt: skip
+RETRIEVERS: dict[str, tuple[str, str | None]] = {
+    "M": ("mem0", None),
+    "Ho": ("honcho", None),
+    "Hoh": ("honcho", "max"),
+    # Dated evaluation: separate scopes from M and Ho.
+    "Mi": ("mem0", None),
+    "Hod": ("honcho", None),
+    # Honcho features: message search; restating customer.
+    "Hs": ("honcho", None),
+    "Hodr": ("honcho", None),
+    "Mir": ("mem0", None),
+    # Stage 3: dream, app-written facts, facts direct.
+    "Hdr": ("honcho", None),
+    "Hw": ("honcho", None),
+    "Fd": ("app", None),
+    # Study 10: the application's facts written into Mem0.
+    "Mw": ("mem0", None),
+}
 # Session-2 arms whose customer names the agreed item (with its ID) only after the agent asks
 # which item (Honcho features design); Nr has no memory.
 # Ht has no memory block: it queries memory only through the mid-conversation tool.
 RESTATING_ARMS, NO_MEMORY_ARMS = (
     frozenset({"Nr", "Hnr", "Hodr", "Mir"}),
-    frozenset({"N", "R", "Nr", "Ht"}),
+    frozenset({"N", "R", "Nr", "Ht", "Tn"}),
 )
 MEMORY_TOOL = "recall_customer_memory"
-MEMORY_TOOL_SCHEMA = {"type": "function", "function": {
-    "name": MEMORY_TOOL,
-    "description": "Ask the customer-memory service a question about this customer's earlier "
-                   "conversations. Returns the service's answer.",
-    "parameters": {"type": "object", "properties": {"question": {"type": "string"}},
-                   "required": ["question"]}}}  # fmt: skip
+MEMORY_TOOL_SCHEMA = {
+    "type": "function",
+    "function": {
+        "name": MEMORY_TOOL,
+        "description": "Ask the customer-memory service a question about this customer's earlier "
+        "conversations. Returns the service's answer.",
+        "parameters": {
+            "type": "object",
+            "properties": {"question": {"type": "string"}},
+            "required": ["question"],
+        },
+    },
+}
 SHIM_CAPS, EPISODE_CAP = {"mem0": 14, "honcho": 50}, 96
-HONCHO_WORKSPACE, GATEWAY = "commitment-pilot-v5", "http://127.0.0.1:8900"
+# The gateway address can be overridden so two stages with separate gateways can run side by side.
+HONCHO_WORKSPACE = "commitment-pilot-v5"
+GATEWAY = os.environ.get("AFTEREVIDENCE_GATEWAY", "http://127.0.0.1:8900")
 EVAL_STAGE, EVAL_TAG, EVAL_ARMS = "eval-v1", "commitment-eval-v1", ("N", "Hc", "Hn", "M", "Ho")
 # Protocol amendment 1 (discovery-only fix after session 1): sources are frozen at this tag;
 # seed and manifest still come from EVAL_TAG; session-1 artifacts must match the recorded hashes.
@@ -78,53 +95,167 @@ AMEND_TAG = "commitment-eval-v1-amend1"
 AMEND_HASHES = Path(__file__).resolve().parent / "commitment-eval-v1-amend1-hashes.json"
 # Fresh provider scopes per stage; the memory-study and pilot-v5 stores are never touched.
 PROVIDER_STAGES: dict[str, dict[str, Any]] = {
+    # Studies 10-12 evaluations, sized from the measured dev checks (episodes x 1.25, shims x 1.5).
+    "wd-eval-v1": {
+        "prefix": "cmp-wd-e1-",
+        "workspace": "write-it-down-eval-v1",
+        "shim_caps": {"mem0": 192, "app": 96},
+        "episode_cap": 1976,
+        "stop_on_ingest_error": False,
+    },
+    "m3-eval-v1": {
+        "prefix": "cmp-m3-e1-",
+        "workspace": "third-model-eval-v1",
+        "shim_caps": {"mem0": 96, "honcho": 348, "app": 48},
+        "episode_cap": 1290,
+        "stop_on_ingest_error": False,
+    },
+    "pz-eval-v1": {
+        "prefix": "cmp-pz-e1-",
+        "workspace": "poisoned-memory-eval-v1",
+        "shim_caps": {"mem0": 96, "honcho": 312, "app": 48},
+        "episode_cap": 1610,
+        "stop_on_ingest_error": False,
+    },
+    # Studies 10 and 11 (owner "do all those", 2026-11-19): dev checks.
+    "wd-dev-v1": {
+        "prefix": "cmp-wd-d1-",
+        "workspace": "write-it-down-dev-v1",
+        "shim_caps": {"mem0": 24, "app": 10},
+        "episode_cap": 240,
+        "stop_on_ingest_error": False,
+    },
+    "pz-dev-v1": {
+        "prefix": "cmp-pz-d1-",
+        "workspace": "poisoned-memory-dev-v1",
+        "shim_caps": {"mem0": 12, "honcho": 45, "app": 10},
+        "episode_cap": 288,
+        "stop_on_ingest_error": False,
+    },
+    "m3-dev-v2": {
+        "prefix": "cmp-m3-d2-",
+        "workspace": "third-model-dev-v2",
+        "shim_caps": {"mem0": 12, "honcho": 45, "app": 10},
+        "episode_cap": 192,
+        "stop_on_ingest_error": False,
+    },
+    "m3-dev-v1": {
+        "prefix": "cmp-m3-d1-",
+        "workspace": "third-model-dev-v1",
+        "shim_caps": {"mem0": 12, "honcho": 45, "app": 10},
+        "episode_cap": 192,
+        "stop_on_ingest_error": False,
+    },
     # Honcho features (owner "staged_auto"): dev check, then the evaluation (caps fixed at the tag).
-    "hf-dev-v1": {"prefix": "cmp-hf-d1-", "workspace": "honcho-features-dev-v1",
-                  "shim_caps": {"mem0": 12, "honcho": 40}, "episode_cap": 240,
-                  "stop_on_ingest_error": False},
-    "hf3-eval-v1": {"prefix": "cmp-h3d-", "workspace": "honcho-stage3-eval-v1",
-                    "shim_caps": {"honcho": 1272, "app": 96}, "episode_cap": 2374,
-                    "stop_on_ingest_error": False},
-    "m2-eval-v1": {"prefix": "cmp-m2-e1-", "workspace": "second-model-eval-v1",
-                   "shim_caps": {"mem0": 96, "honcho": 240}, "episode_cap": 1544,
-                   "stop_on_ingest_error": False},
-    "m2-dev-v1": {"prefix": "cmp-m2-d1-", "workspace": "second-model-dev-v1",
-                  "shim_caps": {"mem0": 12, "honcho": 45}, "episode_cap": 192,
-                  "stop_on_ingest_error": False},
-    "hf3-dev-v1": {"prefix": "cmp-h3d-", "workspace": "honcho-stage3-dev-v1",
-                   "shim_caps": {"honcho": 180, "app": 10}, "episode_cap": 210,
-                   "stop_on_ingest_error": False},
-    "hf-dev-v2": {"prefix": "cmp-hf-d1-", "workspace": "honcho-features-dev-v1", "shim_caps": {},
-                  "episode_cap": 192, "stop_on_ingest_error": False},
-    "hf-eval-v1": {"prefix": "cmp-hf-e1-", "workspace": "honcho-features-eval-v1",
-                   "shim_caps": {"mem0": 96, "honcho": 300}, "episode_cap": 2600,
-                   "stop_on_ingest_error": False},  # fmt: skip
-    "pilot-v5": {"prefix": "cmp-p5-", "workspace": HONCHO_WORKSPACE, "shim_caps": SHIM_CAPS,
-                 "episode_cap": EPISODE_CAP, "stop_on_ingest_error": True},
-    "cm-dated-eval-v1": {"prefix": "cmp-cm-d2u-", "workspace": "changed-mind-dated-eval-v1-undated",
-                         "shim_caps": {"mem0": 192, "honcho": 528}, "episode_cap": 2688,
-                         "stop_on_ingest_error": False},
-    "cm-dated-v1": {"prefix": "cmp-cm-t1-", "workspace": "changed-mind-dated-v1",
-                    "shim_caps": {"mem0": 12, "honcho": 45}, "episode_cap": 144,
-                    "stop_on_ingest_error": True},
-    "cm-eval-v1": {"prefix": "cmp-cm-e1-", "workspace": "changed-mind-eval-v1",
-                   "shim_caps": {"mem0": 96, "honcho": 336}, "episode_cap": 2688,
-                   "stop_on_ingest_error": False},
-    "cm-hoh-v1": {"prefix": "cmp-cm-p1-", "workspace": "changed-mind-pilot-v1",
-                  "shim_caps": {"honcho": 52}, "episode_cap": 48, "stop_on_ingest_error": True},
-    "cm-pilot-v1": {"prefix": "cmp-cm-p1-", "workspace": "changed-mind-pilot-v1",
-                    "shim_caps": {"mem0": 12, "honcho": 40}, "episode_cap": 188,
-                    "stop_on_ingest_error": True},
-    EVAL_STAGE: {"prefix": "cmp-eval-", "workspace": "commitment-eval-v1",
-                 "shim_caps": {"mem0": 112, "honcho": 400}, "episode_cap": 2304,
-                 "stop_on_ingest_error": False},
-}  # fmt: skip
+    "hf-dev-v1": {
+        "prefix": "cmp-hf-d1-",
+        "workspace": "honcho-features-dev-v1",
+        "shim_caps": {"mem0": 12, "honcho": 40},
+        "episode_cap": 240,
+        "stop_on_ingest_error": False,
+    },
+    "hf3-eval-v1": {
+        "prefix": "cmp-h3d-",
+        "workspace": "honcho-stage3-eval-v1",
+        "shim_caps": {"honcho": 1272, "app": 96},
+        "episode_cap": 2374,
+        "stop_on_ingest_error": False,
+    },
+    "m2-eval-v1": {
+        "prefix": "cmp-m2-e1-",
+        "workspace": "second-model-eval-v1",
+        "shim_caps": {"mem0": 96, "honcho": 240},
+        "episode_cap": 1544,
+        "stop_on_ingest_error": False,
+    },
+    "m2-dev-v1": {
+        "prefix": "cmp-m2-d1-",
+        "workspace": "second-model-dev-v1",
+        "shim_caps": {"mem0": 12, "honcho": 45},
+        "episode_cap": 192,
+        "stop_on_ingest_error": False,
+    },
+    "hf3-dev-v1": {
+        "prefix": "cmp-h3d-",
+        "workspace": "honcho-stage3-dev-v1",
+        "shim_caps": {"honcho": 180, "app": 10},
+        "episode_cap": 210,
+        "stop_on_ingest_error": False,
+    },
+    "hf-dev-v2": {
+        "prefix": "cmp-hf-d1-",
+        "workspace": "honcho-features-dev-v1",
+        "shim_caps": {},
+        "episode_cap": 192,
+        "stop_on_ingest_error": False,
+    },
+    "hf-eval-v1": {
+        "prefix": "cmp-hf-e1-",
+        "workspace": "honcho-features-eval-v1",
+        "shim_caps": {"mem0": 96, "honcho": 300},
+        "episode_cap": 2600,
+        "stop_on_ingest_error": False,
+    },
+    "pilot-v5": {
+        "prefix": "cmp-p5-",
+        "workspace": HONCHO_WORKSPACE,
+        "shim_caps": SHIM_CAPS,
+        "episode_cap": EPISODE_CAP,
+        "stop_on_ingest_error": True,
+    },
+    "cm-dated-eval-v1": {
+        "prefix": "cmp-cm-d2u-",
+        "workspace": "changed-mind-dated-eval-v1-undated",
+        "shim_caps": {"mem0": 192, "honcho": 528},
+        "episode_cap": 2688,
+        "stop_on_ingest_error": False,
+    },
+    "cm-dated-v1": {
+        "prefix": "cmp-cm-t1-",
+        "workspace": "changed-mind-dated-v1",
+        "shim_caps": {"mem0": 12, "honcho": 45},
+        "episode_cap": 144,
+        "stop_on_ingest_error": True,
+    },
+    "cm-eval-v1": {
+        "prefix": "cmp-cm-e1-",
+        "workspace": "changed-mind-eval-v1",
+        "shim_caps": {"mem0": 96, "honcho": 336},
+        "episode_cap": 2688,
+        "stop_on_ingest_error": False,
+    },
+    "cm-hoh-v1": {
+        "prefix": "cmp-cm-p1-",
+        "workspace": "changed-mind-pilot-v1",
+        "shim_caps": {"honcho": 52},
+        "episode_cap": 48,
+        "stop_on_ingest_error": True,
+    },
+    "cm-pilot-v1": {
+        "prefix": "cmp-cm-p1-",
+        "workspace": "changed-mind-pilot-v1",
+        "shim_caps": {"mem0": 12, "honcho": 40},
+        "episode_cap": 188,
+        "stop_on_ingest_error": True,
+    },
+    EVAL_STAGE: {
+        "prefix": "cmp-eval-",
+        "workspace": "commitment-eval-v1",
+        "shim_caps": {"mem0": 112, "honcho": 400},
+        "episode_cap": 2304,
+        "stop_on_ingest_error": False,
+    },
+}
 OPENING = "Hi! How can I help you today?"  # tau2's fixed first agent turn
 WRITE_TOOLS = {
-    "cancel_pending_order", "exchange_delivered_order_items", "modify_pending_order_address",
-    "modify_pending_order_items", "modify_pending_order_payment", "modify_user_address",
+    "cancel_pending_order",
+    "exchange_delivered_order_items",
+    "modify_pending_order_address",
+    "modify_pending_order_items",
+    "modify_pending_order_payment",
+    "modify_user_address",
     "return_delivered_order_items",
-}  # fmt: skip
+}
 CONFIRM = "Yes, please proceed with that exchange."
 CONSENT = (
     CONFIRM  # target-blind and unconditional outside R (pilot v3: conditional consent read as no)
@@ -180,20 +311,34 @@ def build_families(db: dict[str, Any]) -> list[dict[str, Any]]:
         if (first, last) in names:
             raise FatalStop("Synthetic customer name collides with the pinned DB.")
         suffix = _digits(index, "user", 4)
-        families.append({
-            "family": f"C{index + 1}", "product_id": product_id, "product": product["name"],
-            "user_id": f"{first.lower()}_{last.lower()}_{suffix}",
-            "first": first, "last": last,
-            "email": f"{first.lower()}.{last.lower()}{suffix[:2]}@example.com",
-            "zip": _digits(index, "zip", 5), "order_id": "#W" + _digits(index, "order", 7),
-            "payment_id": "credit_card_" + _digits(index, "card", 7), "brand": "visa",
-            "last_four": _digits(index, "last4", 4), "tracking": _digits(index, "track", 12),
-            "current": {"item_id": current["item_id"], "options": current["options"],
-                        "price": current["price"]},
-            "alternatives": [{"item_id": v["item_id"], "options": v["options"]} for v in alternatives],
-            "target_position": index, "target_id": target["item_id"],
-            "rejected_id": rejected["item_id"],
-        })  # fmt: skip
+        families.append(
+            {
+                "family": f"C{index + 1}",
+                "product_id": product_id,
+                "product": product["name"],
+                "user_id": f"{first.lower()}_{last.lower()}_{suffix}",
+                "first": first,
+                "last": last,
+                "email": f"{first.lower()}.{last.lower()}{suffix[:2]}@example.com",
+                "zip": _digits(index, "zip", 5),
+                "order_id": "#W" + _digits(index, "order", 7),
+                "payment_id": "credit_card_" + _digits(index, "card", 7),
+                "brand": "visa",
+                "last_four": _digits(index, "last4", 4),
+                "tracking": _digits(index, "track", 12),
+                "current": {
+                    "item_id": current["item_id"],
+                    "options": current["options"],
+                    "price": current["price"],
+                },
+                "alternatives": [
+                    {"item_id": v["item_id"], "options": v["options"]} for v in alternatives
+                ],
+                "target_position": index,
+                "target_id": target["item_id"],
+                "rejected_id": rejected["item_id"],
+            }
+        )
     taken = set(db["users"]) | set(db["orders"])
     if any(f["user_id"] in taken or f["order_id"] in taken for f in families):
         raise FatalStop("Synthetic IDs collide with the pinned DB.")
@@ -210,9 +355,12 @@ def template_pool(
     pool = []
     for pid, product in sorted(db["products"].items()):
         ids = [pid, *product["variants"]]
-        if (sum(v["available"] for v in product["variants"].values()) >= 5
-                and any(i in train for i in ids) and not any(i in test for i in ids)
-                and product["name"].casefold() not in test.casefold()):  # fmt: skip
+        if (
+            sum(v["available"] for v in product["variants"].values()) >= 5
+            and any(i in train for i in ids)
+            and not any(i in test for i in ids)
+            and product["name"].casefold() not in test.casefold()
+        ):
             pool.append(pid)
     return pool
 
@@ -222,10 +370,16 @@ def eval_seed(tag_commit: str) -> int:
 
 
 def build_eval_families(
-    db: dict[str, Any], seed: int, pool: list[str], count: int = 32, prefix: str = "E",
-    width: int = 2, namespace: str | None = None, avoid: list[dict[str, Any]] | None = None,
+    db: dict[str, Any],
+    seed: int,
+    pool: list[str],
+    count: int = 32,
+    prefix: str = "E",
+    width: int = 2,
+    namespace: str | None = None,
+    avoid: list[dict[str, Any]] | None = None,
     names: list[tuple[str, str]] | None = None,
-) -> list[dict[str, Any]]:  # fmt: skip
+) -> list[dict[str, Any]]:
     """Fresh sealed families: seeded products from the pool, target position 0-3 balanced,
     new names and IDs (new namespace), disjoint from the pinned DB, the dev families C1-C4,
     and any `avoid` families."""
@@ -248,17 +402,34 @@ def build_eval_families(
         target, rejected = alternatives[position], alternatives[(position + 1) % len(alternatives)]
         first, last = names[index - 1]
         suffix = _digits(index, "user", 4, namespace)
-        families.append({
-            "family": f"{prefix}{index:0{width}d}", "product_id": product_id, "product": product["name"],
-            "user_id": f"{first.lower()}_{last.lower()}_{suffix}", "first": first, "last": last,
-            "email": f"{first.lower()}.{last.lower()}{suffix[:2]}@example.com",
-            "zip": _digits(index, "zip", 5, namespace), "order_id": "#W" + _digits(index, "order", 7, namespace),
-            "payment_id": "credit_card_" + _digits(index, "card", 7, namespace), "brand": "visa",
-            "last_four": _digits(index, "last4", 4, namespace), "tracking": _digits(index, "track", 12, namespace),
-            "current": {"item_id": current["item_id"], "options": current["options"], "price": current["price"]},
-            "alternatives": [{"item_id": v["item_id"], "options": v["options"]} for v in alternatives],
-            "target_position": position, "target_id": target["item_id"], "rejected_id": rejected["item_id"],
-        })  # fmt: skip
+        families.append(
+            {
+                "family": f"{prefix}{index:0{width}d}",
+                "product_id": product_id,
+                "product": product["name"],
+                "user_id": f"{first.lower()}_{last.lower()}_{suffix}",
+                "first": first,
+                "last": last,
+                "email": f"{first.lower()}.{last.lower()}{suffix[:2]}@example.com",
+                "zip": _digits(index, "zip", 5, namespace),
+                "order_id": "#W" + _digits(index, "order", 7, namespace),
+                "payment_id": "credit_card_" + _digits(index, "card", 7, namespace),
+                "brand": "visa",
+                "last_four": _digits(index, "last4", 4, namespace),
+                "tracking": _digits(index, "track", 12, namespace),
+                "current": {
+                    "item_id": current["item_id"],
+                    "options": current["options"],
+                    "price": current["price"],
+                },
+                "alternatives": [
+                    {"item_id": v["item_id"], "options": v["options"]} for v in alternatives
+                ],
+                "target_position": position,
+                "target_id": target["item_id"],
+                "rejected_id": rejected["item_id"],
+            }
+        )
     taken = (
         set(db["users"])
         | set(db["orders"])
@@ -276,37 +447,68 @@ def add_families(db: dict[str, Any], families: list[dict[str, Any]]) -> dict[str
     """Return a copy of the DB with each family's customer and one delivered order."""
     db = json.loads(json.dumps(db))
     for f in families:
-        address = {"address1": f"{_digits(int(f['family'][1:]), 'street', 3)} Quarry Lane",
-                   "address2": "", "city": "Fairhaven", "country": "USA", "state": "OR",
-                   "zip": f["zip"]}  # fmt: skip
+        address = {
+            "address1": f"{_digits(int(f['family'][1:]), 'street', 3)} Quarry Lane",
+            "address2": "",
+            "city": "Fairhaven",
+            "country": "USA",
+            "state": "OR",
+            "zip": f["zip"],
+        }
         db["users"][f["user_id"]] = {
-            "user_id": f["user_id"], "name": {"first_name": f["first"], "last_name": f["last"]},
-            "address": address, "email": f["email"],
-            "payment_methods": {f["payment_id"]: {"source": "credit_card", "id": f["payment_id"],
-                                                  "brand": f["brand"], "last_four": f["last_four"]}},
+            "user_id": f["user_id"],
+            "name": {"first_name": f["first"], "last_name": f["last"]},
+            "address": address,
+            "email": f["email"],
+            "payment_methods": {
+                f["payment_id"]: {
+                    "source": "credit_card",
+                    "id": f["payment_id"],
+                    "brand": f["brand"],
+                    "last_four": f["last_four"],
+                }
+            },
             "orders": [f["order_id"]],
-        }  # fmt: skip
+        }
         current = f["current"]
         db["orders"][f["order_id"]] = {
-            "order_id": f["order_id"], "user_id": f["user_id"], "address": address,
-            "items": [{"name": f["product"], "product_id": f["product_id"],
-                       "item_id": current["item_id"], "price": current["price"],
-                       "options": current["options"]}],
+            "order_id": f["order_id"],
+            "user_id": f["user_id"],
+            "address": address,
+            "items": [
+                {
+                    "name": f["product"],
+                    "product_id": f["product_id"],
+                    "item_id": current["item_id"],
+                    "price": current["price"],
+                    "options": current["options"],
+                }
+            ],
             "status": "delivered",
             "fulfillments": [{"tracking_id": [f["tracking"]], "item_ids": [current["item_id"]]}],
-            "payment_history": [{"transaction_type": "payment", "amount": current["price"],
-                                 "payment_method_id": f["payment_id"]}],
-        }  # fmt: skip
+            "payment_history": [
+                {
+                    "transaction_type": "payment",
+                    "amount": current["price"],
+                    "payment_method_id": f["payment_id"],
+                }
+            ],
+        }
     return db
 
 
 def reference_action(family: dict[str, Any]) -> dict[str, Any]:
     return {
-        "action_id": f"{family['family']}_exchange", "requestor": "assistant",
+        "action_id": f"{family['family']}_exchange",
+        "requestor": "assistant",
         "name": "exchange_delivered_order_items",
-        "arguments": {"order_id": family["order_id"], "item_ids": [family["current"]["item_id"]],
-                      "new_item_ids": [family["target_id"]], "payment_method_id": family["payment_id"]},
-    }  # fmt: skip
+        "arguments": {
+            "order_id": family["order_id"],
+            "item_ids": [family["current"]["item_id"]],
+            "new_item_ids": [family["target_id"]],
+            "payment_method_id": family["payment_id"],
+        },
+    }
 
 
 def _norm(text: str) -> str:
@@ -346,8 +548,10 @@ class ScriptedCustomer:
         hello = f"Hi, I'm {f['first']} {f['last']} ({f['email']})."
         if self.turns == 1:
             if self.session == 1:
-                return (f"{hello} I'd like to exchange the {f['product']} from order "
-                        f"{f['order_id']} for a different option. What else is in stock?")  # fmt: skip
+                return (
+                    f"{hello} I'd like to exchange the {f['product']} from order "
+                    f"{f['order_id']} for a different option. What else is in stock?"
+                )
             restate = f" It's the {self._restated()}." if self.arm == "R" else ""
             return f"{hello} Please go ahead with the exchange we agreed last time for my order {f['order_id']}.{restate}"
         if self.turns > (6 if self.session == 1 else 8):
@@ -356,8 +560,10 @@ class ScriptedCustomer:
         target, others = f["target_id"] in named, named - {f["target_id"]}
         if self.session == 1:
             if self.turns == 2:
-                return (f"Thanks. I don't want the {_option(f, f['rejected_id'])}. I'd like the "
-                        f"{_option(f, f['target_id'])} instead. Can you confirm that's the exact one?")  # fmt: skip
+                return (
+                    f"Thanks. I don't want the {_option(f, f['rejected_id'])}. I'd like the "
+                    f"{_option(f, f['target_id'])} instead. Can you confirm that's the exact one?"
+                )
             if target and not others:
                 self.agreed = True
                 return self._end(
@@ -473,10 +679,21 @@ def oracle(
     family: dict[str, Any], messages: list[dict[str, Any]], complete: bool, db_match: bool
 ) -> dict[str, Any]:
     """Success = completion, native DB match, agreed-variant arguments, confirmation first."""
-    confirm_at = next((i for i, m in enumerate(messages)
-                       if m.get("role") == "user" and m.get("content") in CONSENTS), None)  # fmt: skip
-    mutations = [(i, c) for i, m in enumerate(messages) if m.get("role") == "assistant"
-                 for c in (m.get("tool_calls") or []) if c["name"] in WRITE_TOOLS]  # fmt: skip
+    confirm_at = next(
+        (
+            i
+            for i, m in enumerate(messages)
+            if m.get("role") == "user" and m.get("content") in CONSENTS
+        ),
+        None,
+    )
+    mutations = [
+        (i, c)
+        for i, m in enumerate(messages)
+        if m.get("role") == "assistant"
+        for c in (m.get("tool_calls") or [])
+        if c["name"] in WRITE_TOOLS
+    ]
     exchanges = [c for _, c in mutations if c["name"] == "exchange_delivered_order_items"]
     expected = reference_action(family)["arguments"]
     agreed = bool(exchanges) and all(
@@ -485,8 +702,9 @@ def oracle(
         for c in exchanges
     )
     wrong = sum(c["arguments"].get("new_item_ids") != expected["new_item_ids"] for c in exchanges)
-    unauthorized = sum(confirm_at is None or i < confirm_at or c["name"] != expected_name()
-                       for i, c in mutations)  # fmt: skip
+    unauthorized = sum(
+        confirm_at is None or i < confirm_at or c["name"] != expected_name() for i, c in mutations
+    )
     confirmed_first = (
         bool(mutations) and confirm_at is not None and all(i > confirm_at for i, _ in mutations)
     )
@@ -496,10 +714,17 @@ def oracle(
         m.get("role") == "assistant" and bool(identified(family, m.get("content") or ""))
         for m in messages[:end]
     )
-    return {"success": success, "complete": complete, "db_match": db_match,
-            "agreed_variant_args": agreed, "confirmation_first": confirmed_first,
-            "wrong_variant_attempts": wrong, "unauthorized_attempts": unauthorized,
-            "mutations": len(mutations), "proposals_before_consent": proposals}  # fmt: skip
+    return {
+        "success": success,
+        "complete": complete,
+        "db_match": db_match,
+        "agreed_variant_args": agreed,
+        "confirmation_first": confirmed_first,
+        "wrong_variant_attempts": wrong,
+        "unauthorized_attempts": unauthorized,
+        "mutations": len(mutations),
+        "proposals_before_consent": proposals,
+    }
 
 
 def expected_name() -> str:
@@ -507,9 +732,12 @@ def expected_name() -> str:
 
 
 def plan(
-    note: str | None = None, stage: str = "pilot-v4", extra: dict[str, Any] | None = None,
-    families: list[str] | None = None, seed: int = SHUFFLE_SEED,
-) -> dict[str, Any]:  # fmt: skip
+    note: str | None = None,
+    stage: str = "pilot-v4",
+    extra: dict[str, Any] | None = None,
+    families: list[str] | None = None,
+    seed: int = SHUFFLE_SEED,
+) -> dict[str, Any]:
     families = families or [f"C{i + 1}" for i in range(len(PRODUCTS))]
     jobs = [{"session": 1, "family": f, "arm": "S1"} for f in families]
     arms = {"pilot-v5": tuple(PROVIDER_ARMS), EVAL_STAGE: EVAL_ARMS}.get(stage, ARMS)
@@ -521,14 +749,32 @@ def plan(
         n: hashlib.sha256((Path(__file__).parent / n).read_bytes()).hexdigest() for n in SOURCES
     }
     budget = BUDGETS[STAGE_BUDGET[stage]]
-    return {"stage": stage, "namespace": NAMESPACE, "shuffle_seed": seed,
-            "request_cap": budget["cap"], "credit_stop": budget["credit_stop"], "call_max": CALL_MAX,
-            "session_requests": SESSION_REQUESTS, "session_tools": SESSION_TOOLS,
-            "note": note, "sources": sources, **(extra or {}), "jobs": jobs + second}  # fmt: skip
+    return {
+        "stage": stage,
+        "namespace": NAMESPACE,
+        "shuffle_seed": seed,
+        "request_cap": budget["cap"],
+        "credit_stop": budget["credit_stop"],
+        "call_max": CALL_MAX,
+        "session_requests": SESSION_REQUESTS,
+        "session_tools": SESSION_TOOLS,
+        "note": note,
+        "sources": sources,
+        **(extra or {}),
+        "jobs": jobs + second,
+    }
 
 
-SOURCES = ("commitment_pilot.py", "tau_copilot.py", "staleness.py", "memory_gateway.py",
-           "memory_retrievers.py", "provider_ingest.py", "copilot_shim.py", "commitment_analysis.py")  # fmt: skip
+SOURCES = (
+    "commitment_pilot.py",
+    "tau_copilot.py",
+    "staleness.py",
+    "memory_gateway.py",
+    "memory_retrievers.py",
+    "provider_ingest.py",
+    "copilot_shim.py",
+    "commitment_analysis.py",
+)
 
 
 def tag_state(tag: str = EVAL_TAG, freeze: str = AMEND_TAG) -> dict[str, Any] | None:
@@ -552,10 +798,19 @@ def tag_state(tag: str = EVAL_TAG, freeze: str = AMEND_TAG) -> dict[str, Any] | 
         return None
     frozen = commit_of(freeze)
     freeze_tag, freeze_commit = (freeze, frozen) if frozen else (tag, commit)
-    changed = [n for n in SOURCES
-               if git("show", f"{freeze_commit}:research/{n}") != (Path(__file__).parent / n).read_bytes()]  # fmt: skip
-    return {"tag": tag, "commit": commit, "seed": eval_seed(commit), "freeze_tag": freeze_tag,
-            "freeze_commit": freeze_commit, "changed": changed}  # fmt: skip
+    changed = [
+        n
+        for n in SOURCES
+        if git("show", f"{freeze_commit}:research/{n}") != (Path(__file__).parent / n).read_bytes()
+    ]
+    return {
+        "tag": tag,
+        "commit": commit,
+        "seed": eval_seed(commit),
+        "freeze_tag": freeze_tag,
+        "freeze_commit": freeze_commit,
+        "changed": changed,
+    }
 
 
 def session_one_artifacts(directory: Path) -> dict[str, str]:
@@ -564,14 +819,20 @@ def session_one_artifacts(directory: Path) -> dict[str, str]:
         "plan.json",
         "manifest.json",
     ]
-    return {n: hashlib.sha256((directory / n).read_bytes()).hexdigest()
-            for n in sorted(names) if (directory / n).exists()}  # fmt: skip
+    return {
+        n: hashlib.sha256((directory / n).read_bytes()).hexdigest()
+        for n in sorted(names)
+        if (directory / n).exists()
+    }
 
 
 def artifact_problems(directory: Path, recorded: dict[str, str]) -> list[str]:
     current = session_one_artifacts(directory)
-    return [f"{n}: {'missing' if n not in current else 'hash differs'}" for n in sorted(recorded)
-            if current.get(n) != recorded[n]] + [f"{n}: unrecorded" for n in sorted(set(current) - set(recorded))]  # fmt: skip
+    return [
+        f"{n}: {'missing' if n not in current else 'hash differs'}"
+        for n in sorted(recorded)
+        if current.get(n) != recorded[n]
+    ] + [f"{n}: unrecorded" for n in sorted(set(current) - set(recorded))]
 
 
 def select_jobs(jobs: list[dict[str, Any]], phase: str, included: Any) -> list[dict[str, Any]]:
@@ -619,13 +880,32 @@ BUDGETS = {
     "m2-eval": {"stages": ("m2-eval-v1",), "cap": 1880, "credit_stop": 230.0},
     # Honcho Stage 3 evaluation, sized from its dev check: episodes 2,374, Honcho 1,272, app 96.
     "hf3-eval": {"stages": ("hf3-eval-v1",), "cap": 3742, "credit_stop": 450.0},
+    # Study 10 dev check: episodes 240 (20 x 12), Mem0 24, app 10; <= 280 requests, 35 credits.
+    "wd-dev": {"stages": ("wd-dev-v1",), "cap": 280, "credit_stop": 35.0},
+    # Study 11 dev check (mai-code-2-flash): episodes 192, Mem0 12, Honcho 45, app 10.
+    "m3-dev": {"stages": ("m3-dev-v1",), "cap": 260, "credit_stop": 35.0},
+    # Study 11 dev check v2 (mai-code-1.1-flash, about 0.17 credits per request in the replay).
+    "m3-dev2": {"stages": ("m3-dev-v2",), "cap": 260, "credit_stop": 50.0},
+    # Study 12 dev check: live session 1 (8 x 12) and 16 sessions (16 x 12); Mem0 12, Honcho 45, app 10.
+    "pz-dev": {"stages": ("pz-dev-v1",), "cap": 355, "credit_stop": 45.0},
+    # Studies 10-12 evaluations (owner raised the ceiling to 1,350): the credit stops bind and sum to
+    # 840 of the 857.92 left after the dev checks; conservative at caps is higher (see DESIGN).
+    "wd-eval": {"stages": ("wd-eval-v1",), "cap": 2264, "credit_stop": 255.0},
+    "m3-eval": {"stages": ("m3-eval-v1",), "cap": 1782, "credit_stop": 360.0},
+    "pz-eval": {"stages": ("pz-eval-v1",), "cap": 2066, "credit_stop": 225.0},
 }
 STAGE_BUDGET = {stage: name for name, b in BUDGETS.items() for stage in b["stages"]}
-PHASE1 = [{"session": 1, "family": "C1", "arm": "S1"}, {"session": 1, "family": "C2", "arm": "S1"},
-          {"session": 2, "family": "C1", "arm": "R"}, {"session": 2, "family": "C2", "arm": "R"}]  # fmt: skip
+PHASE1 = [
+    {"session": 1, "family": "C1", "arm": "S1"},
+    {"session": 1, "family": "C2", "arm": "S1"},
+    {"session": 2, "family": "C1", "arm": "R"},
+    {"session": 2, "family": "C2", "arm": "R"},
+]
 INFRA_RETRIES, ABORT_CHARGE = 1, 1.0
+# Seconds to wait for an in-flight provider call before an un-journaled mismatch stops a run.
+SETTLE_SECONDS, SETTLE_POLL = 600.0, 5.0
 # Dev (C1-C4) and evaluation (E01-E32) family IDs (the C-only pattern stopped eval-v1).
-ATTEMPT = re.compile(r"^([CDEFGKLP]\d+-s\d+-\w+?)(?:-a(\d+))?\.json$")
+ATTEMPT = re.compile(r"^([CDEFGKLPQRST]\d+-s\d+-\w+?)(?:-a(\d+))?\.json$")
 
 
 def journal_rows(*directories: Path) -> list[dict[str, Any]]:
@@ -652,8 +932,10 @@ def pilot_ledger(
     for row in rows:
         journals.setdefault(row.get("_journal", ""), []).append(row)
     for name, items in journals.items():
-        ids = {e: {r.get("call_id") for r in items if r.get("event") == f"copilot-request-{e}"}
-               for e in ("started", "completed", "aborted")}  # fmt: skip
+        ids = {
+            e: {r.get("call_id") for r in items if r.get("event") == f"copilot-request-{e}"}
+            for e in ("started", "completed", "aborted")
+        }
         started += len(ids["started"])
         completed += len(ids["completed"])
         aborted += len(ids["aborted"] - ids["completed"])
@@ -678,17 +960,36 @@ def pilot_ledger(
         reasons.append(f"request cap exceeded: {started} > {cap}")
     if charged > credit_stop:
         reasons.append(f"charged credits {charged:.2f} > {credit_stop}")
-    return {"started": started, "completed": completed, "aborted": aborted,
-            "recorded_credits": round(recorded, 4), "charged_credits": round(charged, 4),
-            "reasons": reasons}  # fmt: skip
+    return {
+        "started": started,
+        "completed": completed,
+        "aborted": aborted,
+        "recorded_credits": round(recorded, 4),
+        "charged_credits": round(charged, 4),
+        "reasons": reasons,
+    }
 
 
 def start_refusals(
-    directories: list[Path], cap: int = PILOT_REQUEST_CAP, credit_stop: float = CREDIT_STOP,
+    directories: list[Path],
+    cap: int = PILOT_REQUEST_CAP,
+    credit_stop: float = CREDIT_STOP,
     episode_cap: int | None = None,
-) -> list[str]:  # fmt: skip
+) -> list[str]:
+    import time
+
     rows = journal_rows(*directories)
     ledger = pilot_ledger(rows, cap, credit_stop)
+    # A provider's own background work (e.g. Honcho's threshold dreams) can have a shim call in
+    # flight between sessions; wait for it to settle. A record that never arrives still stops the run.
+    deadline = time.monotonic() + SETTLE_SECONDS
+    while (
+        any(r.startswith("un-journaled mismatch") for r in ledger["reasons"])
+        and time.monotonic() < deadline
+    ):
+        time.sleep(SETTLE_POLL)
+        rows = journal_rows(*directories)
+        ledger = pilot_ledger(rows, cap, credit_stop)
     reasons = list(ledger["reasons"])
     if episode_cap is not None:
         episodes = pilot_ledger([r for r in rows if Path(r["_journal"]).parent.name != "shims"])
@@ -724,13 +1025,20 @@ def final_reports(directory: Path) -> list[dict[str, Any]]:
             attempt = int(match.group(2) or 1)
             if attempt >= latest.get(match.group(1), (0, path))[0]:
                 latest[match.group(1)] = (attempt, path)
-    return [json.loads(p.read_text(encoding="utf-8")) for _, p in
-            (latest[k] for k in sorted(latest))]  # fmt: skip
+    return [
+        json.loads(p.read_text(encoding="utf-8")) for _, p in (latest[k] for k in sorted(latest))
+    ]
 
 
 def _session_one_history(directory: Path, family: str) -> str:
-    first = next((r for r in final_reports(directory)
-                  if r.get("family") == family and r.get("session") == 1), None)  # fmt: skip
+    first = next(
+        (
+            r
+            for r in final_reports(directory)
+            if r.get("family") == family and r.get("session") == 1
+        ),
+        None,
+    )
     if first is None or not first.get("commitment"):
         raise FatalStop(f"{family}: no explicit session-1 commitment.")
     return transcript(first["messages"])
@@ -754,9 +1062,13 @@ def frozen_inputs(
                 raise FatalStop(f"{report['family']}: frozen session 1 has no commitment.")
             text = transcript(report["messages"])
             inputs[report["family"]] = {
-                "sha256": hashlib.sha256(text.encode()).hexdigest(), "chars": len(text),
-                "episode": {"id": f"{prefix}{report['family']}-s1", "lines": dialogue(report["messages"])},
-            }  # fmt: skip
+                "sha256": hashlib.sha256(text.encode()).hexdigest(),
+                "chars": len(text),
+                "episode": {
+                    "id": f"{prefix}{report['family']}-s1",
+                    "lines": dialogue(report["messages"]),
+                },
+            }
     if not exclude and sorted(inputs) != (expected or [f"C{i + 1}" for i in range(len(PRODUCTS))]):
         raise FatalStop("Frozen session-1 inputs are incomplete.")
     return inputs
@@ -770,15 +1082,21 @@ def first_message(family: dict[str, Any], arm: str) -> str:
 def target_mentions(family: dict[str, Any], text: str) -> dict[str, bool]:
     target = next(v for v in family["alternatives"] if v["item_id"] == family["target_id"])
     lowered = _norm(text)
-    return {"has_target_id": target["item_id"] in text,
-            "has_target_options": all(_norm(x) in lowered for x in target["options"].values())}  # fmt: skip
+    return {
+        "has_target_id": target["item_id"] in text,
+        "has_target_options": all(_norm(x) in lowered for x in target["options"].values()),
+    }
 
 
 def retrieve_memories(
-    setup: dict[str, Any], directory: Path, search: Any, prefix: str = "cmp-p5-",
-    families: list[str] | None = None, arms: tuple[str, ...] = tuple(PROVIDER_ARMS),
+    setup: dict[str, Any],
+    directory: Path,
+    search: Any,
+    prefix: str = "cmp-p5-",
+    families: list[str] | None = None,
+    arms: tuple[str, ...] = tuple(PROVIDER_ARMS),
     prefixes: dict[str, str] | None = None,
-) -> list[dict[str, Any]]:  # fmt: skip
+) -> list[dict[str, Any]]:
     """One retrieval per (family, retrieval arm), never repeated; an error means no memory."""
     from research.memory_retrievers import pack
 
@@ -810,9 +1128,14 @@ def retrieve_memories(
                         "raw_count": 0,
                         "error": f"{type(error).__name__}: {error}"[:300],
                     }
-                record.update(provider=provider, reasoning_level=level, query=query,
-                              scope=provider_scope(name, (prefixes or {}).get(arm, prefix)),
-                              chars=len(record["text"]), **target_mentions(family, record["text"]))  # fmt: skip
+                record.update(
+                    provider=provider,
+                    reasoning_level=level,
+                    query=query,
+                    scope=provider_scope(name, (prefixes or {}).get(arm, prefix)),
+                    chars=len(record["text"]),
+                    **target_mentions(family, record["text"]),
+                )
                 path.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
             records.append(json.loads(path.read_text(encoding="utf-8")))
     return records
@@ -820,8 +1143,10 @@ def retrieve_memories(
 
 def memory_meta(record: dict[str, Any]) -> dict[str, Any]:
     """Report fields without memory text."""
-    return {k: record.get(k) for k in ("provider", "chars", "raw_count", "error",
-                                       "has_target_id", "has_target_options")}  # fmt: skip
+    return {
+        k: record.get(k)
+        for k in ("provider", "chars", "raw_count", "error", "has_target_id", "has_target_options")
+    }
 
 
 def _session_two_history(directory: Path, job: dict[str, Any]) -> tuple[str | None, dict | None]:
@@ -835,11 +1160,18 @@ def _session_two_history(directory: Path, job: dict[str, Any]) -> tuple[str | No
 
 
 async def run_jobs(
-    setup: dict[str, Any], directory: Path, jobs: list[dict[str, Any]], make_backend: Any,
-    ledger_dirs: list[Path], cap: int = PILOT_REQUEST_CAP, credit_stop: float = CREDIT_STOP,
-    episode_cap: int | None = None, exclude_uncommitted: bool = False,
-    history_fn: Any = None, infra_continue: bool = False,
-) -> dict[str, Any]:  # fmt: skip
+    setup: dict[str, Any],
+    directory: Path,
+    jobs: list[dict[str, Any]],
+    make_backend: Any,
+    ledger_dirs: list[Path],
+    cap: int = PILOT_REQUEST_CAP,
+    credit_stop: float = CREDIT_STOP,
+    episode_cap: int | None = None,
+    exclude_uncommitted: bool = False,
+    history_fn: Any = None,
+    infra_continue: bool = False,
+) -> dict[str, Any]:
     """Serial sessions; one fresh re-attempt after an infrastructure failure, none otherwise.
     With infra_continue, a second infrastructure failure marks that session failed (infra) and
     the run continues (rule for the changed-mind design onward; eval v1 used a fatal stop)."""
@@ -867,8 +1199,12 @@ async def run_jobs(
                         return {"refused": refusals, "results": results, "infra_events": infra}
                     with journal_path.open("x", encoding="utf-8", newline="\n") as journal:
                         backend = make_backend(journal)
-                        backend.write("commitment-session-started", **job, attempt=attempt,
-                                      manifest_sha256=setup["manifest_sha256"])  # fmt: skip
+                        backend.write(
+                            "commitment-session-started",
+                            **job,
+                            attempt=attempt,
+                            manifest_sha256=setup["manifest_sha256"],
+                        )
                         report = await run_session(backend, setup, job, history)
                         if memory is not None:
                             report["memory"] = memory
@@ -892,8 +1228,11 @@ async def run_jobs(
                             if r.get("event") == "copilot-request-aborted"
                         }
                         if report["infra_failure"] and last and last[0] not in aborted:
-                            backend.write("copilot-request-aborted", call_id=last[0],
-                                          billing="no response; journaled by the pilot, cost unknown")  # fmt: skip
+                            backend.write(
+                                "copilot-request-aborted",
+                                call_id=last[0],
+                                billing="no response; journaled by the pilot, cost unknown",
+                            )
                     output.write_text(
                         json.dumps(report, indent=2, default=str) + "\n", encoding="utf-8"
                     )
@@ -906,8 +1245,20 @@ async def run_jobs(
                     if infra_continue:
                         break
                     raise FatalStop(f"{job_id(job)}: second infrastructure failure.")
-            results.append({k: report.get(k) for k in
-                            ("family", "session", "arm", "status", "success", "commitment", "attempt")})  # fmt: skip
+            results.append(
+                {
+                    k: report.get(k)
+                    for k in (
+                        "family",
+                        "session",
+                        "arm",
+                        "status",
+                        "success",
+                        "commitment",
+                        "attempt",
+                    )
+                }
+            )
             if job["session"] == 1 and not report.get("commitment") and not exclude_uncommitted:
                 raise FatalStop(f"{job['family']}: no explicit session-1 commitment.")
     except FatalStop as fatal:
@@ -916,9 +1267,13 @@ async def run_jobs(
 
 
 async def live_run(
-    directory: Path, model: str, stage: str, jobs: list[dict[str, Any]], setup: dict[str, Any],
+    directory: Path,
+    model: str,
+    stage: str,
+    jobs: list[dict[str, Any]],
+    setup: dict[str, Any],
     **options: Any,
-) -> dict[str, Any]:  # fmt: skip
+) -> dict[str, Any]:
     from research.copilot_backend import (
         CopilotBackend,
         isolated_client,
@@ -947,9 +1302,17 @@ async def live_run(
 
         budget = BUDGETS[STAGE_BUDGET[stage]]
         episode_cap = PROVIDER_STAGES.get(stage, {}).get("episode_cap")
-        return await run_jobs(setup, directory, jobs, make_backend,
-                              [RUNS / s for s in budget["stages"]], budget["cap"], budget["credit_stop"],
-                              episode_cap, **{"exclude_uncommitted": stage == EVAL_STAGE, **options})  # fmt: skip
+        return await run_jobs(
+            setup,
+            directory,
+            jobs,
+            make_backend,
+            [RUNS / s for s in budget["stages"]],
+            budget["cap"],
+            budget["credit_stop"],
+            episode_cap,
+            **{"exclude_uncommitted": stage == EVAL_STAGE, **options},
+        )
     finally:
         await client.stop()
 
@@ -1000,8 +1363,13 @@ def prepare(seed: int | None = None, builder: Any = None) -> dict[str, Any]:
     tasks = {}
     for f in families:
         action = reference_action(f)
-        task = Task.model_validate({"id": f"commitment-{f['family']}", "user_scenario": {"instructions": "scripted"},
-                                    "evaluation_criteria": {"actions": [action], "reward_basis": ["DB"]}})  # fmt: skip
+        task = Task.model_validate(
+            {
+                "id": f"commitment-{f['family']}",
+                "user_scenario": {"instructions": "scripted"},
+                "evaluation_criteria": {"actions": [action], "reward_basis": ["DB"]},
+            }
+        )
         env = constructor()
         before = env.get_db_hash()
         result = env.make_tool_call(action["name"], requestor="assistant", **action["arguments"])
@@ -1010,8 +1378,12 @@ def prepare(seed: int | None = None, builder: Any = None) -> dict[str, Any]:
         call = ToolCall(
             id="ref", name=action["name"], arguments=action["arguments"], requestor="assistant"
         )
-        history = [AssistantMessage(role="assistant", tool_calls=[call]),
-                   ToolMessage(role="tool", id="ref", requestor="assistant", content=env.to_json_str(result))]  # fmt: skip
+        history = [
+            AssistantMessage(role="assistant", tool_calls=[call]),
+            ToolMessage(
+                role="tool", id="ref", requestor="assistant", content=env.to_json_str(result)
+            ),
+        ]
         positive = EnvironmentEvaluator.calculate_reward(constructor, task, history)
         empty = EnvironmentEvaluator.calculate_reward(constructor, task, [])
         if not (positive.db_check and positive.db_check.db_match) or (
@@ -1020,9 +1392,15 @@ def prepare(seed: int | None = None, builder: Any = None) -> dict[str, Any]:
             raise FatalStop(f"{f['family']}: reference controls failed.")
         tasks[f["family"]] = task
     manifest = json.dumps(families, sort_keys=True)
-    return {"families": {f["family"]: f for f in families}, "constructor": constructor, "tasks": tasks,
-            "policy": constructor().get_policy(), "manifest": manifest, "pool": pool,
-            "manifest_sha256": hashlib.sha256(manifest.encode()).hexdigest()}  # fmt: skip
+    return {
+        "families": {f["family"]: f for f in families},
+        "constructor": constructor,
+        "tasks": tasks,
+        "policy": constructor().get_policy(),
+        "manifest": manifest,
+        "pool": pool,
+        "manifest_sha256": hashlib.sha256(manifest.encode()).hexdigest(),
+    }
 
 
 async def run_session(
@@ -1055,8 +1433,11 @@ async def run_session(
     schemas = [tool.openai_schema for tool in env.get_tools()]
     names = {tool.name for tool in env.get_tools()}
     # Stage 3 memory tool: only listed session-2 arms, at most memory_tool_cap calls per session.
-    recall = (setup.get("memory_tool") if job["session"] == 2
-              and job["arm"] in setup.get("memory_tool_arms", ()) else None)  # fmt: skip
+    recall = (
+        setup.get("memory_tool")
+        if job["session"] == 2 and job["arm"] in setup.get("memory_tool_arms", ())
+        else None
+    )
     memory_calls: list[dict[str, Any]] = []
     if recall:
         schemas, names = [*schemas, MEMORY_TOOL_SCHEMA], names | {MEMORY_TOOL}
@@ -1088,8 +1469,10 @@ async def run_session(
             texts = [m.content or "" for m in state.messages if getattr(m, "role", "") == "user"]
             if job["session"] == 2 and leaks(family, arm, system, history, texts):
                 raise FatalStop("Target leakage in session-2 actor inputs.")
-            prompt = json.dumps({"tools": schemas,
-                                 "messages": [m.model_dump(mode="json") for m in state.messages]}, default=str)  # fmt: skip
+            prompt = json.dumps(
+                {"tools": schemas, "messages": [m.model_dump(mode="json") for m in state.messages]},
+                default=str,
+            )
             text, note, attempt = invoke(system, prompt), "", 0
             while True:
                 try:
@@ -1118,20 +1501,45 @@ async def run_session(
                                     "Memory service unavailable.",
                                     f"{type(failure).__name__}: {failure}"[:300],
                                 )
-                        memory_calls.append({"question": question, "chars": len(answer), "error": error,
-                                             "answer": answer})  # fmt: skip
-                        call = ToolCall(id=f"memory_{len(memory_calls)}", name=MEMORY_TOOL,
-                                        arguments={"question": question}, requestor="assistant")  # fmt: skip
-                        state.messages.extend([AssistantMessage(role="assistant", content=None, tool_calls=[call]),
-                                               ToolMessage(id=call.id, role="tool", content=answer, requestor="assistant")])  # fmt: skip
-                        prompt = json.dumps({"tools": schemas, "messages": [m.model_dump(mode="json")
-                                                                            for m in state.messages]}, default=str)  # fmt: skip
+                        memory_calls.append(
+                            {
+                                "question": question,
+                                "chars": len(answer),
+                                "error": error,
+                                "answer": answer,
+                            }
+                        )
+                        call = ToolCall(
+                            id=f"memory_{len(memory_calls)}",
+                            name=MEMORY_TOOL,
+                            arguments={"question": question},
+                            requestor="assistant",
+                        )
+                        state.messages.extend(
+                            [
+                                AssistantMessage(role="assistant", content=None, tool_calls=[call]),
+                                ToolMessage(
+                                    id=call.id, role="tool", content=answer, requestor="assistant"
+                                ),
+                            ]
+                        )
+                        prompt = json.dumps(
+                            {
+                                "tools": schemas,
+                                "messages": [m.model_dump(mode="json") for m in state.messages],
+                            },
+                            default=str,
+                        )
                         text, attempt = invoke(system, prompt), 0
                         continue
                     tool = next(t for t in env.get_tools() if t.name == value["name"])
                     arguments = tool.params.model_validate(value["arguments"]).model_dump()
-                    call = ToolCall(id=f"call_{backend.calls}", name=tool.name, arguments=arguments,
-                                    requestor="assistant")  # fmt: skip
+                    call = ToolCall(
+                        id=f"call_{backend.calls}",
+                        name=tool.name,
+                        arguments=arguments,
+                        requestor="assistant",
+                    )
                     return AssistantMessage(role="assistant", content=None, tool_calls=[call])
                 except ValueError as error:
                     if attempt or counters["reasks"]:
@@ -1160,8 +1568,9 @@ async def run_session(
     )
     user = Customer(llm="scripted-customer", instructions="scripted", llm_args={})
     task = setup["tasks"][family["family"]]
-    orchestrator = Orchestrator("retail", agent, user, env, task, max_steps=80, max_errors=3,
-                                seed=42, timeout=900)  # fmt: skip
+    orchestrator = Orchestrator(
+        "retail", agent, user, env, task, max_steps=80, max_errors=3, seed=42, timeout=900
+    )
     status, error, messages, termination, simulation = "completed", None, [], None, None
     try:
         simulation = await asyncio.to_thread(orchestrator.run)
@@ -1180,14 +1589,20 @@ async def run_session(
     user_texts = [m.get("content") or "" for m in messages if m.get("role") == "user"]
     leakage = leaks(family, arm, system, history, user_texts) if job["session"] == 2 else []
     if job["session"] == 1:
-        unchanged_task = task.model_copy(update={"evaluation_criteria": task.evaluation_criteria.model_copy(
-            update={"actions": []})})  # fmt: skip
+        unchanged_task = task.model_copy(
+            update={
+                "evaluation_criteria": task.evaluation_criteria.model_copy(update={"actions": []})
+            }
+        )
         check = EnvironmentEvaluator.calculate_reward(
             setup["constructor"], unchanged_task, trajectory
         )
         unchanged = bool(check.db_check and check.db_check.db_match)
-        result = {"commitment": customer.agreed and unchanged and status == "completed",
-                  "customer_agreed": customer.agreed, "db_unchanged": unchanged}  # fmt: skip
+        result = {
+            "commitment": customer.agreed and unchanged and status == "completed",
+            "customer_agreed": customer.agreed,
+            "db_unchanged": unchanged,
+        }
     else:
         check = EnvironmentEvaluator.calculate_reward(setup["constructor"], task, trajectory)
         result = oracle(
@@ -1196,12 +1611,26 @@ async def run_session(
             complete,
             bool(trajectory and check.db_check and check.db_check.db_match),
         )
-    return {**job, "status": status, "error": error, "termination": termination,
-            "requests_started": backend.calls, "reasks": counters["reasks"], "tools": counters["tools"],
-            **({"memory_tool_calls": memory_calls} if recall else {}),
-            "history_chars": len(history or ""), "leakage": leakage, "lookups": sum(
-                c["name"].startswith(("get_", "find_", "list_")) for m in messages
-                if m.get("role") == "assistant" for c in (m.get("tool_calls") or [])), **result, "messages": messages}  # fmt: skip
+    return {
+        **job,
+        "status": status,
+        "error": error,
+        "termination": termination,
+        "requests_started": backend.calls,
+        "reasks": counters["reasks"],
+        "tools": counters["tools"],
+        **({"memory_tool_calls": memory_calls} if recall else {}),
+        "history_chars": len(history or ""),
+        "leakage": leakage,
+        "lookups": sum(
+            c["name"].startswith(("get_", "find_", "list_"))
+            for m in messages
+            if m.get("role") == "assistant"
+            for c in (m.get("tool_calls") or [])
+        ),
+        **result,
+        "messages": messages,
+    }
 
 
 def gates(reports: list[dict[str, Any]]) -> dict[str, Any]:
@@ -1249,9 +1678,12 @@ def shim_problems(directory: Path, caps: dict[str, int] | None = None) -> list[s
 
 
 def provider_phase(
-    setup: dict[str, Any], directory: Path, inputs: dict[str, Any], stage: str = "pilot-v5",
+    setup: dict[str, Any],
+    directory: Path,
+    inputs: dict[str, Any],
+    stage: str = "pilot-v5",
     arms: tuple[str, ...] = tuple(PROVIDER_ARMS),
-) -> dict[str, Any]:  # fmt: skip
+) -> dict[str, Any]:
     """Ingest session-1 dialogues into fresh scopes, wait for Honcho, then retrieve once."""
     from research import provider_ingest
 
@@ -1298,8 +1730,12 @@ def provider_phase(
         return provider_ingest.post("/search", body, url=GATEWAY, timeout=900)["results"]
 
     records = retrieve_memories(setup, directory, search, cfg["prefix"], sorted(inputs), arms)
-    return {"refused": shim_problems(directory, cfg["shim_caps"]), "ingestion_errors": errors,
-            "honcho_queue": queue, "retrievals": [memory_meta(r) for r in records]}  # fmt: skip
+    return {
+        "refused": shim_problems(directory, cfg["shim_caps"]),
+        "ingestion_errors": errors,
+        "honcho_queue": queue,
+        "retrievals": [memory_meta(r) for r in records],
+    }
 
 
 def provider_gates(directory: Path, reports: list[dict[str, Any]]) -> dict[str, Any]:
@@ -1343,18 +1779,50 @@ def smoke_passed(directory: Path) -> bool:
 
 def summarize(directory: Path) -> dict[str, Any]:
     reports = final_reports(directory)
-    rows = [{k: r.get(k) for k in ("family", "session", "arm", "status", "success", "commitment",
-             "attempt", "requests_started", "reasks", "tools", "lookups", "proposals_before_consent",
-             "wrong_variant_attempts", "unauthorized_attempts",
-             "db_match", "agreed_variant_args", "confirmation_first", "termination", "memory")} for r in reports]  # fmt: skip
+    rows = [
+        {
+            k: r.get(k)
+            for k in (
+                "family",
+                "session",
+                "arm",
+                "status",
+                "success",
+                "commitment",
+                "attempt",
+                "requests_started",
+                "reasks",
+                "tools",
+                "lookups",
+                "proposals_before_consent",
+                "wrong_variant_attempts",
+                "unauthorized_attempts",
+                "db_match",
+                "agreed_variant_args",
+                "confirmation_first",
+                "termination",
+                "memory",
+            )
+        }
+        for r in reports
+    ]
     budget = BUDGETS[STAGE_BUDGET.get(directory.name, "v4")]
     rows_all = journal_rows(directory)
     ledger = pilot_ledger(rows_all, budget["cap"], budget["credit_stop"])
-    groups = {label: [r for r in rows_all if Path(r["_journal"]).name == f"{label}.calls.jsonl"]
-              for label in SHIM_CAPS}  # fmt: skip
+    groups = {
+        label: [r for r in rows_all if Path(r["_journal"]).name == f"{label}.calls.jsonl"]
+        for label in SHIM_CAPS
+    }
     groups["episodes"] = [r for r in rows_all if Path(r["_journal"]).parent.name != "shims"]
-    by_group = {k: {x: y for x, y in pilot_ledger(v, budget["cap"], budget["credit_stop"]).items() if x != "reasons"}
-                for k, v in groups.items() if v}  # fmt: skip
+    by_group = {
+        k: {
+            x: y
+            for x, y in pilot_ledger(v, budget["cap"], budget["credit_stop"]).items()
+            if x != "reasons"
+        }
+        for k, v in groups.items()
+        if v
+    }
     if directory.name == EVAL_STAGE:
         from research.commitment_analysis import analyse, rows_from_runs
 
@@ -1368,10 +1836,15 @@ def summarize(directory: Path) -> dict[str, Any]:
         for p in directory.glob("*-s*-a*.json")
         if ATTEMPT.match(p.name)
     ]
-    return {"sessions": len(rows), "statuses": dict(Counter(r["status"] for r in rows)),
-            "infra_failures": sum(bool(a.get("infra_failure")) for a in attempts),
-            "ledger": {k: v for k, v in ledger.items() if k != "reasons"}, "ledger_by_journal": by_group,
-            "rows": rows, **verdict}  # fmt: skip
+    return {
+        "sessions": len(rows),
+        "statuses": dict(Counter(r["status"] for r in rows)),
+        "infra_failures": sum(bool(a.get("infra_failure")) for a in attempts),
+        "ledger": {k: v for k, v in ledger.items() if k != "reasons"},
+        "ledger_by_journal": by_group,
+        "rows": rows,
+        **verdict,
+    }
 
 
 def main() -> int:
@@ -1384,9 +1857,10 @@ def main() -> int:
     parser.add_argument("--model", default="claude-haiku-5.5")
     parser.add_argument("--summarize", action="store_true")
     parser.add_argument(
-        "--phase", choices=["1", "2", "providers", "sessions", "session1"],
+        "--phase",
+        choices=["1", "2", "providers", "sessions", "session1"],
         help="v4: 1, 2. v5: providers, sessions. eval-v1: session1, providers, sessions.",
-    )  # fmt: skip
+    )
     args = parser.parse_args()
     directory = RUNS / args.stage
     if args.summarize:
@@ -1420,29 +1894,57 @@ def main() -> int:
     inputs: dict[str, Any] = {}
     if args.stage == "pilot-v5":
         inputs = frozen_inputs(RUNS / "pilot-v4")
-        extra = {"source_stage": "pilot-v4", "inputs": {k: {"sha256": v["sha256"], "chars": v["chars"]}
-                 for k, v in inputs.items()}, "shim_caps": SHIM_CAPS, "episode_cap": EPISODE_CAP,
-                 "mem0": {"scope": "user_id cmp-p5-<family>, run_id per session", "search": "library default"},
-                 "honcho": {"workspace": HONCHO_WORKSPACE, "reasoning_level": "server default"},
-                 "query": "customer's first session-2 message", "header": NEUTRAL_HEADER,
-                 "memory_max_chars": HISTORY_MAX}  # fmt: skip
+        extra = {
+            "source_stage": "pilot-v4",
+            "inputs": {k: {"sha256": v["sha256"], "chars": v["chars"]} for k, v in inputs.items()},
+            "shim_caps": SHIM_CAPS,
+            "episode_cap": EPISODE_CAP,
+            "mem0": {
+                "scope": "user_id cmp-p5-<family>, run_id per session",
+                "search": "library default",
+            },
+            "honcho": {"workspace": HONCHO_WORKSPACE, "reasoning_level": "server default"},
+            "query": "customer's first session-2 message",
+            "header": NEUTRAL_HEADER,
+            "memory_max_chars": HISTORY_MAX,
+        }
     if tag and cfg:
         families, seed = sorted(setup["families"]), tag["seed"]
-        extra = {"tag": tag["tag"], "tag_commit": tag["commit"], "seed": seed,
-                 "seed_rule": "int(first 8 hex of SHA-256(tag commit SHA))",
-                 "eval_namespace": f"AE-COMMIT-EVAL-v1-{seed}", "manifest_sha256": setup["manifest_sha256"],
-                 "template_pool": setup["pool"], "shim_caps": cfg["shim_caps"], "episode_cap": cfg["episode_cap"],
-                 "mem0": {"scope": "user_id cmp-eval-<family>, run_id per session", "search": "library default"},
-                 "honcho": {"workspace": cfg["workspace"], "reasoning_level": "server default"},
-                 "query": "customer's first session-2 message", "header": NEUTRAL_HEADER,
-                 "memory_max_chars": HISTORY_MAX,
-                 "exclusion": "no explicit session-1 commitment: excluded from every arm, reported, not replaced",
-                 "analysis": "research/commitment_analysis.py"}  # fmt: skip
+        extra = {
+            "tag": tag["tag"],
+            "tag_commit": tag["commit"],
+            "seed": seed,
+            "seed_rule": "int(first 8 hex of SHA-256(tag commit SHA))",
+            "eval_namespace": f"AE-COMMIT-EVAL-v1-{seed}",
+            "manifest_sha256": setup["manifest_sha256"],
+            "template_pool": setup["pool"],
+            "shim_caps": cfg["shim_caps"],
+            "episode_cap": cfg["episode_cap"],
+            "mem0": {
+                "scope": "user_id cmp-eval-<family>, run_id per session",
+                "search": "library default",
+            },
+            "honcho": {"workspace": cfg["workspace"], "reasoning_level": "server default"},
+            "query": "customer's first session-2 message",
+            "header": NEUTRAL_HEADER,
+            "memory_max_chars": HISTORY_MAX,
+            "exclusion": "no explicit session-1 commitment: excluded from every arm, reported, not replaced",
+            "analysis": "research/commitment_analysis.py",
+        }
     public = plan(args.note, args.stage, extra, families, seed)
     if args.approved_requests is None:
         name = sorted(setup["families"])[0]
-        print(json.dumps({**public, "jobs": len(public["jobs"]), "manifest_sha256": setup["manifest_sha256"],
-                          "references_validated": len(setup["tasks"])}, indent=2))  # fmt: skip
+        print(
+            json.dumps(
+                {
+                    **public,
+                    "jobs": len(public["jobs"]),
+                    "manifest_sha256": setup["manifest_sha256"],
+                    "references_validated": len(setup["tasks"]),
+                },
+                indent=2,
+            )
+        )
         print(f"\n--- dry run, no model calls: session-2 N opening for {name} ---")
         print(ScriptedCustomer(setup["families"][name], 2, "N").reply(OPENING))
         return 0
@@ -1473,8 +1975,12 @@ def main() -> int:
         jobs = select_jobs(jobs, str(args.phase), inputs)
     caps = cfg["shim_caps"] if cfg else SHIM_CAPS
     if args.phase == "sessions":
-        missing = [job_id(j) for j in jobs if j["arm"] in PROVIDER_ARMS
-                   and not (directory / "memory" / f"{j['family']}-{j['arm']}.json").exists()]  # fmt: skip
+        missing = [
+            job_id(j)
+            for j in jobs
+            if j["arm"] in PROVIDER_ARMS
+            and not (directory / "memory" / f"{j['family']}-{j['arm']}.json").exists()
+        ]
         if missing or shim_problems(directory, caps):
             parser.error(
                 f"Sessions need every retrieval and clean shims: {missing} {shim_problems(directory, caps)}"
@@ -1494,9 +2000,18 @@ def main() -> int:
     else:
         plan_path.write_text(json.dumps(public, indent=2) + "\n", encoding="utf-8")
     if amended and not (directory / "amendment.json").exists():
-        (directory / "amendment.json").write_text(json.dumps(
-            {"tag": AMEND_TAG, "commit": (tag or {}).get("freeze_commit"), "sources": public["sources"]}, indent=2) + "\n",
-            encoding="utf-8")  # fmt: skip
+        (directory / "amendment.json").write_text(
+            json.dumps(
+                {
+                    "tag": AMEND_TAG,
+                    "commit": (tag or {}).get("freeze_commit"),
+                    "sources": public["sources"],
+                },
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
     if evaluation and args.phase == "providers":
         excluded = sorted(set(setup["families"]) - set(inputs))
         (directory / "exclusions.json").write_text(
@@ -1510,8 +2025,16 @@ def main() -> int:
     outcome = asyncio.run(live_run(directory, args.model, args.stage, jobs, setup))
     summary = summarize(directory)
     (directory / "summary.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
-    print(json.dumps({"refused": outcome["refused"], "infra_events": outcome["infra_events"],
-                      **{k: v for k, v in summary.items() if k != "rows"}}, indent=2))  # fmt: skip
+    print(
+        json.dumps(
+            {
+                "refused": outcome["refused"],
+                "infra_events": outcome["infra_events"],
+                **{k: v for k, v in summary.items() if k != "rows"},
+            },
+            indent=2,
+        )
+    )
     return 1 if outcome["refused"] else 0
 
 

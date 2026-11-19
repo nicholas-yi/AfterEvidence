@@ -38,8 +38,17 @@ class PublishedChangedMindEvaluationTests(unittest.TestCase):
         )
         for arm, (k, n, ci, stale, declined, credits) in ARMS.items():
             cell = r["arms"][arm]
-            self.assertEqual((cell["successes"], cell["n"], tuple(cell["wilson95"]), cell["stale"], cell["declined"]),
-                             (k, n, ci, stale, declined), arm)  # fmt: skip
+            self.assertEqual(
+                (
+                    cell["successes"],
+                    cell["n"],
+                    tuple(cell["wilson95"]),
+                    cell["stale"],
+                    cell["declined"],
+                ),
+                (k, n, ci, stale, declined),
+                arm,
+            )
             self.assertAlmostEqual(cell["credits_per_session"], credits, delta=0.0011, msg=arm)
         for block, expected in (("primary_success", PRIMARY), ("secondary_stale", SECONDARY)):
             for name, pair in expected.items():
@@ -54,8 +63,10 @@ class PublishedChangedMindEvaluationTests(unittest.TestCase):
         self.assertEqual(r["hoh_vs_ho_success"]["p"], 1.0)
         self.assertEqual(r["manipulation_hn_vs_n"]["arm_only"], 30)
         memory = r["provider_memory"]
-        self.assertEqual({a: (v["has_Y"], v["has_X"], v["has_both"]) for a, v in memory.items()},
-                         {"M": (31, 29, 29), "Ho": (26, 16, 13), "Hoh": (24, 15, 12)})  # fmt: skip
+        self.assertEqual(
+            {a: (v["has_Y"], v["has_X"], v["has_both"]) for a, v in memory.items()},
+            {"M": (31, 29, 29), "Ho": (26, 16, 13), "Hoh": (24, 15, 12)},
+        )
 
 
 if __name__ == "__main__":

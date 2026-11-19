@@ -14,16 +14,16 @@ jobs:
       matrix:
         python: ["3.11", "3.12"]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python }}
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: "22"
-      - run: python -m pip install ".[dev]"
+      - run: python -m pip install ".[dev]" pydantic==2.14.3  # pydantic: research harness logic tests
       - run: python -m unittest discover -s tests -v
-      - run: python -m unittest research.test_memory_methods research.test_costing research.test_task_audit research.test_simulator_review research.test_memory_study research.test_staleness research.test_memory_csv research.test_commitment_csv research.test_changed_mind_csv research.test_changed_mind_dated_csv research.test_honcho_features_csv research.test_honcho_stage3_csv research.test_second_model_csv research.test_benchmark research.test_run_status -v
+      - run: python -m unittest research.test_memory_methods research.test_costing research.test_task_audit research.test_simulator_review research.test_memory_study research.test_staleness research.test_memory_csv research.test_commitment_csv research.test_changed_mind_csv research.test_changed_mind_dated_csv research.test_honcho_features_csv research.test_honcho_stage3_csv research.test_second_model_csv research.test_benchmark research.test_run_status research.test_harness_logic research.test_tau_action research.test_staleness_runner -v
       - run: ruff check afterevidence tests research scripts
       - run: ruff format --check afterevidence tests research scripts
       - run: pyright
@@ -36,14 +36,16 @@ jobs:
   windows-script:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
-      - name: Parse sleep guard without acquiring a power request
+      - uses: actions/checkout@v7
+      - name: Parse the sleep guard and worktree helper without running them
         shell: pwsh
         run: |
-          $tokens = $null
-          $errors = $null
-          [System.Management.Automation.Language.Parser]::ParseFile(
-            (Join-Path $env:GITHUB_WORKSPACE 'scripts\keep-awake.ps1'),
-            [ref]$tokens, [ref]$errors
-          ) | Out-Null
-          if ($errors.Count -gt 0) { throw ($errors | Out-String) }
+          foreach ($script in 'keep-awake.ps1', 'frozen-worktree.ps1') {
+            $tokens = $null
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile(
+              (Join-Path $env:GITHUB_WORKSPACE ('scripts\' + $script)),
+              [ref]$tokens, [ref]$errors
+            ) | Out-Null
+            if ($errors.Count -gt 0) { throw ($script + ': ' + ($errors | Out-String)) }
+          }

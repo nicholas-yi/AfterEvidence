@@ -98,34 +98,71 @@ def corpus(episodes: list[dict[str, Any]], limit: int = 2500) -> str:
 
 
 LESSONS_SCHEMA = {
-    "type": "object", "additionalProperties": False, "required": ["lessons"],
-    "properties": {"lessons": {"type": "array", "items": {
-        "type": "object", "additionalProperties": False, "required": ["text", "support_sets"],
-        "properties": {"text": {"type": "string"},
-                       "support_sets": {"type": "array", "items": {"type": "array", "items": {"type": "string"}}}},
-    }}},
-}  # fmt: skip
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["lessons"],
+    "properties": {
+        "lessons": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["text", "support_sets"],
+                "properties": {
+                    "text": {"type": "string"},
+                    "support_sets": {
+                        "type": "array",
+                        "items": {"type": "array", "items": {"type": "string"}},
+                    },
+                },
+            },
+        }
+    },
+}
 
 CANDIDATES_SCHEMA = {
-    "type": "object", "additionalProperties": False, "required": ["lessons"],
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["lessons"],
     "properties": {"lessons": {"type": "array", "items": {"type": "string"}}},
-}  # fmt: skip
+}
 
 MERGE_SCHEMA = {
-    "type": "object", "additionalProperties": False, "required": ["lessons"],
-    "properties": {"lessons": {"type": "array", "items": {
-        "type": "object", "additionalProperties": False, "required": ["cluster", "text"],
-        "properties": {"cluster": {"type": "integer"}, "text": {"type": "string"}},
-    }}},
-}  # fmt: skip
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["lessons"],
+    "properties": {
+        "lessons": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["cluster", "text"],
+                "properties": {"cluster": {"type": "integer"}, "text": {"type": "string"}},
+            },
+        }
+    },
+}
 
 WORKFLOW_SCHEMA = {
-    "type": "object", "additionalProperties": False, "required": ["workflows"],
-    "properties": {"workflows": {"type": "array", "items": {
-        "type": "object", "additionalProperties": False, "required": ["name", "steps"],
-        "properties": {"name": {"type": "string"}, "steps": {"type": "array", "items": {"type": "string"}}},
-    }}},
-}  # fmt: skip
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["workflows"],
+    "properties": {
+        "workflows": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["name", "steps"],
+                "properties": {
+                    "name": {"type": "string"},
+                    "steps": {"type": "array", "items": {"type": "string"}},
+                },
+            },
+        }
+    },
+}
 
 
 class Builder:
@@ -246,8 +283,13 @@ def build_sleep(
         }
         for s in kept
     ]
-    stats = {"candidates": len(candidates), "clusters": len(groups), "kept": len(kept),
-             "threshold": threshold, "keep_floor": keep_floor}  # fmt: skip
+    stats = {
+        "candidates": len(candidates),
+        "clusters": len(groups),
+        "kept": len(kept),
+        "threshold": threshold,
+        "keep_floor": keep_floor,
+    }
     return items, stats
 
 
