@@ -37,6 +37,7 @@ import datetime as dt
 import hashlib
 import json
 import random
+import re
 import subprocess
 from pathlib import Path
 from typing import Any
@@ -50,7 +51,8 @@ from research import honcho_stage3 as s3
 OWNER = (
     'Owner (ask_user, 2026-11-20): "solve all those, close all gaps"; experiments A (stale summary), '
     "B (tool prompt), C (long history), D (injected memory), E (Graphiti and Hindsight), F (shared "
-    "scope) and G (another decision) selected; ceiling raised by 1,300 to 2,650 credits."
+    "scope) and G (another decision) selected; ceiling raised by 1,300 to 2,650 credits, then "
+    '(ask_user "raise_225", after the dev checks) by 225 to 2,875 so every arm fits at caps.'
 )
 SOURCES = (*fu.SOURCES, "gaps.py", "gaps_analysis.py", "memory_gateway.py")
 MEMORY_TOOL_CAP = s3.MEMORY_TOOL_CAP
@@ -93,6 +95,14 @@ STREAMS = {
 APP_ARMS = ("Fd", "Fz", "Fs", "Fsh")
 TOOL_ARMS = ("Tn", "Tp")
 ADDRESS_CONSENT = "Yes, please proceed with that address change."
+# After consent, a completion report ends the session. The exchange pattern (cp.DONE) missed "Your
+# shipping address change ... is complete" in the ac dev check (B03 Fd), so the customer repeated
+# its consent until the request cap; address changes are also reported as "updated" or "changed".
+ADDRESS_DONE = re.compile(
+    r"\b(?:is|was|has been|have been|'s been)\s+(?:now\s+)?(?:successfully\s+)?"
+    r"(?:complete|completed|updated|changed|modified|processed|submitted)\b"
+    r"|\bsuccessfully\s+(?:updated|changed|modified|processed)\b|\bstatus is now\b"
+)
 STREETS = (
     "Larkspur",
     "Juniper",
@@ -431,7 +441,8 @@ class AddressCustomer(cp.ScriptedCustomer):
         if self.turns > 8:
             return self._end("I'll come back another time.")
         if self.confirmed:
-            if cp.DONE.search(agent_text.casefold()):
+            lowered = agent_text.casefold()
+            if cp.DONE.search(lowered) or ADDRESS_DONE.search(lowered):
                 return self._end("Thanks, that's all.")
             return ADDRESS_CONSENT
         if len(named) == 1:

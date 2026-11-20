@@ -141,26 +141,26 @@ PROVIDER_STAGES: dict[str, dict[str, Any]] = {
         "episode_cap": 288,
         "stop_on_ingest_error": False,
     },
-    # Provisional until the dev checks: resized from their measured rates before the tags.
+    # Sized from the dev checks (episodes x 1.25, shims x 1.5 per family x 32; see DESIGN).
     "gx-eval-v1": {
         "prefix": "cmp-gx-e1-",
         "workspace": "gaps-eval-v1",
-        "shim_caps": {"mem0": 300, "honcho": 800, "graphiti": 300, "hindsight": 320, "app": 70},
-        "episode_cap": 3600,
+        "shim_caps": {"mem0": 288, "honcho": 504, "graphiti": 480, "hindsight": 216, "app": 96},
+        "episode_cap": 5240,
         "stop_on_ingest_error": False,
     },
     "lh-eval-v1": {
         "prefix": "cmp-lh-e1-",
         "workspace": "long-history-eval-v1",
-        "shim_caps": {"mem0": 260, "honcho": 960, "app": 40},
-        "episode_cap": 1600,
+        "shim_caps": {"mem0": 240, "honcho": 540, "app": 48},
+        "episode_cap": 2130,
         "stop_on_ingest_error": False,
     },
     "ac-eval-v1": {
         "prefix": "cmp-ac-e1-",
         "workspace": "address-change-eval-v1",
-        "shim_caps": {"mem0": 100, "honcho": 360, "app": 40},
-        "episode_cap": 1300,
+        "shim_caps": {"mem0": 96, "honcho": 264, "app": 48},
+        "episode_cap": 2070,
         "stop_on_ingest_error": False,
     },
     # Studies 10-12 evaluations, sized from the measured dev checks (episodes x 1.25, shims x 1.5).
@@ -970,10 +970,11 @@ BUDGETS = {
     "gx-dev2": {"stages": ("gx-dev-v2",), "cap": 907, "credit_stop": 95.0},
     "lh-dev": {"stages": ("lh-dev-v1",), "cap": 594, "credit_stop": 60.0},
     "ac-dev": {"stages": ("ac-dev-v1",), "cap": 358, "credit_stop": 40.0},
-    # Provisional until the dev checks (resized before the tags).
-    "gx-eval": {"stages": ("gx-eval-v1",), "cap": 5390, "credit_stop": 620.0},
-    "lh-eval": {"stages": ("lh-eval-v1",), "cap": 2860, "credit_stop": 300.0},
-    "ac-eval": {"stages": ("ac-eval-v1",), "cap": 1800, "credit_stop": 230.0},
+    # Evaluations (owner "raise_225": ceiling 2,875): conservative at caps 919.6 + 343.2 + 297.6 =
+    # 1,560.4 of the 1,561.71 left after the dev checks; credit stops sum to 1,320.
+    "gx-eval": {"stages": ("gx-eval-v1",), "cap": 6824, "credit_stop": 760.0},
+    "lh-eval": {"stages": ("lh-eval-v1",), "cap": 2958, "credit_stop": 300.0},
+    "ac-eval": {"stages": ("ac-eval-v1",), "cap": 2478, "credit_stop": 260.0},
 }
 STAGE_BUDGET = {stage: name for name, b in BUDGETS.items() for stage in b["stages"]}
 PHASE1 = [

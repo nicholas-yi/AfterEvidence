@@ -457,6 +457,18 @@ class GapsTests(unittest.TestCase):
                 customer.reply(f"Change it to {gaps.alternative(f, item)['options']['address1']}?")
             )
         self.assertEqual(replies, {gaps.ADDRESS_CONSENT})
+        reports = {
+            "Your shipping address change on order #W1 is complete. The order is still pending.": True,
+            "The shipping address has been updated to 1 Elm Court.": True,
+            "Done: the address was successfully changed.": True,
+            "I'll update the address now.": False,
+            "Once the change is made, it will be complete.": False,
+        }
+        for text, ends in reports.items():
+            customer = gaps.AddressCustomer(f, 2, "N")
+            customer.reply(OPENING)
+            customer.reply(f"Change it to {line[y]}?")
+            self.assertEqual(STOP in customer.reply(text), ends, text)
 
         def run(item: str, before: bool = False) -> dict[str, Any]:
             call = {
