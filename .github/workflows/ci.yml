@@ -23,7 +23,7 @@ jobs:
           node-version: "22"
       - run: python -m pip install ".[dev]" pydantic==2.14.3  # pydantic: research harness logic tests
       - run: python -m unittest discover -s tests -v
-      - run: python -m unittest research.test_memory_methods research.test_costing research.test_task_audit research.test_simulator_review research.test_memory_study research.test_staleness research.test_memory_csv research.test_commitment_csv research.test_changed_mind_csv research.test_changed_mind_dated_csv research.test_honcho_features_csv research.test_honcho_stage3_csv research.test_second_model_csv research.test_benchmark research.test_run_status research.test_harness_logic research.test_tau_action research.test_staleness_runner -v
+      - run: python -m unittest research.test_memory_methods research.test_costing research.test_task_audit research.test_simulator_review research.test_memory_study research.test_staleness research.test_memory_csv research.test_commitment_csv research.test_changed_mind_csv research.test_changed_mind_dated_csv research.test_honcho_features_csv research.test_honcho_stage3_csv research.test_second_model_csv research.test_write_it_down_csv research.test_third_model_csv research.test_poisoned_memory_csv research.test_benchmark research.test_run_status research.test_harness_logic research.test_tau_action research.test_staleness_runner -v
       - run: ruff check afterevidence tests research scripts
       - run: ruff format --check afterevidence tests research scripts
       - run: pyright

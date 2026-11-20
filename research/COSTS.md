@@ -297,3 +297,12 @@ credits.
   60), **266.90 credits** recorded, 273.90 charged with 7 aborts at 1.0 (max single call 0.22).
   Together 410.57 recorded of the 1,200 ceiling. Cumulative: **26,404 requests**, about
   **2,885.65 credits** recorded.
+- Studies 10-12 (owner "do all those", 2026-11-19; ceiling raised to 1,350): dev checks 679
+  requests, 78.51 credits recorded (81.51 charged): Study 10 179 / 20.16; Study 11 v1
+  (`mai-code-2-flash`, not used) 144 / 5.94 (7.94 charged); replay debug 27 / 2.27; Study 11 v2
+  (`mai-code-1.1-flash`) 130 / 28.91 (29.91 charged); Study 12 199 / 21.23. Evaluations 4,583
+  requests: Study 10 1,839 of 2,264, **201.63** recorded (234.63 charged, 33 aborts); Study 11 1,367
+  of 1,782, **257.69** (287.69 charged, 30 aborts; about 0.2 credits per request); Study 12 1,377 of
+  2,066, **146.82** (160.82 charged, 14 aborts). Since "do them all" 1,095.22 recorded and 1,182.22
+  charged of the 1,350 ceiling; no overage. Cumulative: **31,666 requests**, about **3,570.30
+  credits** recorded.

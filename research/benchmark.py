@@ -65,6 +65,27 @@ STUDIES = (
         "research.second_model_analysis",
         "research.test_second_model_csv",
     ),
+    (
+        "10",
+        "Does writing the app's facts into Mem0 help, and does a memory tool match memory up front?",
+        "write-it-down-eval-v1-episodes.csv",
+        "research.followups_analysis --study wd",
+        "research.test_write_it_down_csv",
+    ),
+    (
+        "11",
+        "Do the change-of-mind results hold with a third model (mai-code-1.1-flash)?",
+        "third-model-eval-v1-episodes.csv",
+        "research.followups_analysis --study m3",
+        "research.test_third_model_csv",
+    ),
+    (
+        "12",
+        "Does a quoted, disowned instruction stored in memory lead the agent to act on it?",
+        "poisoned-memory-eval-v1-episodes.csv",
+        "research.followups_analysis --study pz",
+        "research.test_poisoned_memory_csv",
+    ),
 )
 
 
