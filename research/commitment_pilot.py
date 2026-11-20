@@ -62,14 +62,29 @@ RETRIEVERS: dict[str, tuple[str, str | None]] = {
     "Fd": ("app", None),
     # Study 10: the application's facts written into Mem0.
     "Mw": ("mem0", None),
+    # Studies 13-17: stale facts (alone, or before the transcripts), injected records, one Mem0
+    # scope shared by every customer, Graphiti and Hindsight.
+    "Fs": ("app", None),
+    "Fsh": ("app", None),
+    "Mz": ("mem0", None),
+    "Hz": ("honcho", None),
+    "Fz": ("app", None),
+    "Ms": ("mem0", None),
+    "Gr": ("graphiti", None),
+    "Hi": ("hindsight", None),
 }
 # Session-2 arms whose customer names the agreed item (with its ID) only after the agent asks
 # which item (Honcho features design); Nr has no memory.
 # Ht has no memory block: it queries memory only through the mid-conversation tool.
 RESTATING_ARMS, NO_MEMORY_ARMS = (
     frozenset({"Nr", "Hnr", "Hodr", "Mir"}),
-    frozenset({"N", "R", "Nr", "Ht", "Tn"}),
+    frozenset({"N", "R", "Nr", "Ht", "Tn", "Tp"}),
 )
+# Study 13: one fixed system sentence for Tp (after the policy and date, before any memory).
+ARM_INSTRUCTIONS = {
+    "Tp": "Before acting on a request that refers to an earlier conversation, call "
+    "recall_customer_memory to check what was agreed."
+}
 MEMORY_TOOL = "recall_customer_memory"
 MEMORY_TOOL_SCHEMA = {
     "type": "function",
@@ -95,6 +110,51 @@ AMEND_TAG = "commitment-eval-v1-amend1"
 AMEND_HASHES = Path(__file__).resolve().parent / "commitment-eval-v1-amend1-hashes.json"
 # Fresh provider scopes per stage; the memory-study and pilot-v5 stores are never touched.
 PROVIDER_STAGES: dict[str, dict[str, Any]] = {
+    # Studies 13-18 (owner "solve all those, close all gaps", 2026-11-20). Dev checks: 4 families x
+    # arms x 12 requests (plus live session 1 for lh and ac); shims from measured per-episode rates.
+    "gx-dev-v1": {
+        "prefix": "cmp-gx-d1-",
+        "workspace": "gaps-dev-v1",
+        "shim_caps": {"mem0": 40, "honcho": 100, "graphiti": 40, "hindsight": 45, "app": 10},
+        "episode_cap": 672,
+        "stop_on_ingest_error": False,
+    },
+    "lh-dev-v1": {
+        "prefix": "cmp-lh-d1-",
+        "workspace": "long-history-dev-v1",
+        "shim_caps": {"mem0": 36, "honcho": 120, "app": 6},
+        "episode_cap": 432,
+        "stop_on_ingest_error": False,
+    },
+    "ac-dev-v1": {
+        "prefix": "cmp-ac-d1-",
+        "workspace": "address-change-dev-v1",
+        "shim_caps": {"mem0": 14, "honcho": 50, "app": 6},
+        "episode_cap": 288,
+        "stop_on_ingest_error": False,
+    },
+    # Provisional until the dev checks: resized from their measured rates before the tags.
+    "gx-eval-v1": {
+        "prefix": "cmp-gx-e1-",
+        "workspace": "gaps-eval-v1",
+        "shim_caps": {"mem0": 300, "honcho": 800, "graphiti": 300, "hindsight": 320, "app": 70},
+        "episode_cap": 3600,
+        "stop_on_ingest_error": False,
+    },
+    "lh-eval-v1": {
+        "prefix": "cmp-lh-e1-",
+        "workspace": "long-history-eval-v1",
+        "shim_caps": {"mem0": 260, "honcho": 960, "app": 40},
+        "episode_cap": 1600,
+        "stop_on_ingest_error": False,
+    },
+    "ac-eval-v1": {
+        "prefix": "cmp-ac-e1-",
+        "workspace": "address-change-eval-v1",
+        "shim_caps": {"mem0": 100, "honcho": 360, "app": 40},
+        "episode_cap": 1300,
+        "stop_on_ingest_error": False,
+    },
     # Studies 10-12 evaluations, sized from the measured dev checks (episodes x 1.25, shims x 1.5).
     "wd-eval-v1": {
         "prefix": "cmp-wd-e1-",
@@ -631,16 +691,20 @@ def transcript(messages: list[dict[str, Any]]) -> str:
     )
 
 
-def session_system(policy: str, arm: str, history: str | None) -> str:
+def session_system(
+    policy: str, arm: str, history: str | None, history_max: int = HISTORY_MAX
+) -> str:
     system = ACTOR_SYSTEM + policy
+    if arm in ARM_INSTRUCTIONS:
+        system += "\n\n" + ARM_INSTRUCTIONS[arm]
     if arm in NO_MEMORY_ARMS:
         return system
     if arm in RETRIEVERS:  # no block when retrieval failed or returned nothing (as v1)
-        if history and len(history) > HISTORY_MAX:
-            raise FatalStop("Provider memory exceeds 8,000 characters.")
+        if history and len(history) > history_max:
+            raise FatalStop(f"Provider memory exceeds {history_max:,} characters.")
         return system + "\n\n" + NEUTRAL_HEADER + history if history else system
-    if not history or len(history) > HISTORY_MAX:
-        raise FatalStop("Session-2 history is missing or exceeds 8,000 characters.")
+    if not history or len(history) > history_max:
+        raise FatalStop(f"Session-2 history is missing or exceeds {history_max:,} characters.")
     header = MEMORY_HEADER if arm == "Hc" else NEUTRAL_HEADER
     return system + "\n\n" + header + history
 
@@ -893,6 +957,14 @@ BUDGETS = {
     "wd-eval": {"stages": ("wd-eval-v1",), "cap": 2264, "credit_stop": 255.0},
     "m3-eval": {"stages": ("m3-eval-v1",), "cap": 1782, "credit_stop": 360.0},
     "pz-eval": {"stages": ("pz-eval-v1",), "cap": 2066, "credit_stop": 225.0},
+    # Studies 13-18 (ceiling 2,650): dev checks sum to <= 1,859 requests and 195 credits.
+    "gx-dev": {"stages": ("gx-dev-v1",), "cap": 907, "credit_stop": 95.0},
+    "lh-dev": {"stages": ("lh-dev-v1",), "cap": 594, "credit_stop": 60.0},
+    "ac-dev": {"stages": ("ac-dev-v1",), "cap": 358, "credit_stop": 40.0},
+    # Provisional until the dev checks (resized before the tags).
+    "gx-eval": {"stages": ("gx-eval-v1",), "cap": 5390, "credit_stop": 620.0},
+    "lh-eval": {"stages": ("lh-eval-v1",), "cap": 2860, "credit_stop": 300.0},
+    "ac-eval": {"stages": ("ac-eval-v1",), "cap": 1800, "credit_stop": 230.0},
 }
 STAGE_BUDGET = {stage: name for name, b in BUDGETS.items() for stage in b["stages"]}
 PHASE1 = [
@@ -902,10 +974,20 @@ PHASE1 = [
     {"session": 2, "family": "C2", "arm": "R"},
 ]
 INFRA_RETRIES, ABORT_CHARGE = 1, 1.0
+# Start-up retries (seconds) for Copilot transport errors; None marks the final attempt.
+STARTUP_RETRY_SECONDS: tuple[float | None, ...] = (60.0, 120.0, 240.0, None)
+
+
+def transport_error(failure: BaseException) -> bool:
+    """An error raised by the Copilot SDK's transport (JSON-RPC, process or credential lookup),
+    not by the task: a session that fails this way is an infrastructure failure."""
+    return type(failure).__module__.split(".")[0] == "copilot"
+
+
 # Seconds to wait for an in-flight provider call before an un-journaled mismatch stops a run.
 SETTLE_SECONDS, SETTLE_POLL = 600.0, 5.0
 # Dev (C1-C4) and evaluation (E01-E32) family IDs (the C-only pattern stopped eval-v1).
-ATTEMPT = re.compile(r"^([CDEFGKLPQRST]\d+-s\d+-\w+?)(?:-a(\d+))?\.json$")
+ATTEMPT = re.compile(r"^([ABCDEFGKLPQRSTUVW]\d+-s\d+-\w+?)(?:-a(\d+))?\.json$")
 
 
 def journal_rows(*directories: Path) -> list[dict[str, Any]]:
@@ -1288,7 +1370,16 @@ async def live_run(
     client = isolated_client()
     try:
         await client.start()
-        selected = next((m for m in await client.list_models() if m.id == model), None)
+        models = None
+        for wait in STARTUP_RETRY_SECONDS:  # a slow credential lookup can fail the first requests
+            try:
+                models = await client.list_models()
+                break
+            except Exception as failure:
+                if not transport_error(failure) or wait is None:
+                    raise
+                await asyncio.sleep(wait)
+        selected = next((m for m in models or [] if m.id == model), None)
         if selected is None or (selected.policy is not None and selected.policy.state != "enabled"):
             raise ValueError("Model is not enabled for this Copilot account.")
         problem = quota_problem(await quota_snapshot(client))
@@ -1334,9 +1425,12 @@ def _vendor_env() -> tuple[Any, Any]:
     return RetailDB, (get_environment, json.loads(Path(RETAIL_DB_PATH).read_text(encoding="utf-8")))
 
 
-def prepare(seed: int | None = None, builder: Any = None) -> dict[str, Any]:
+def prepare(
+    seed: int | None = None, builder: Any = None, reference: Any = None, add: Any = None
+) -> dict[str, Any]:
     """Zero-inference setup: families, isolated DB, validated references, tasks. With a seed,
-    the 32 evaluation families replace the dev families; `builder(base, pool)` supplies others."""
+    the 32 evaluation families replace the dev families; `builder(base, pool)` supplies others.
+    `reference(family)` and `add(db, families)` replace the exchange task (Study 18)."""
     RetailDB, (get_environment, base) = _vendor_env()
     from tau2.data_model.message import AssistantMessage, ToolCall, ToolMessage
     from tau2.data_model.tasks import Task
@@ -1355,14 +1449,14 @@ def prepare(seed: int | None = None, builder: Any = None) -> dict[str, Any]:
             base, tasks, json.loads((data / "split_tasks.json").read_text(encoding="utf-8"))
         )
         families = builder(base, pool) if builder else build_eval_families(base, seed or 0, pool)
-    db = RetailDB.model_validate(add_families(base, families))
+    db = RetailDB.model_validate((add or add_families)(base, families))
 
     def constructor(solo_mode: bool = False, **_: Any) -> Any:
         return get_environment(db=db)
 
     tasks = {}
     for f in families:
-        action = reference_action(f)
+        action = (reference or reference_action)(f)
         task = Task.model_validate(
             {
                 "id": f"commitment-{f['family']}",
@@ -1428,7 +1522,7 @@ async def run_session(
     policy = setup["policy"] + (
         f"\n\n{setup['today']}" if setup.get("today") and job["session"] == 2 else ""
     )
-    system = session_system(policy, arm, history)
+    system = session_system(policy, arm, history, setup.get("history_max", HISTORY_MAX))
     env = setup["constructor"]()
     schemas = [tool.openai_schema for tool in env.get_tools()]
     names = {tool.name for tool in env.get_tools()}
@@ -1582,6 +1676,10 @@ async def run_session(
         status, error = "budget-capped", str(stop)
     except (ValueError, RuntimeError, TypeError, OSError, TimeoutError) as failure:
         status, error = "failed", f"{type(failure).__name__}: {failure}"[:500]
+    except Exception as failure:  # Copilot SDK transport errors subclass Exception directly
+        if not transport_error(failure):
+            raise
+        status, error = "failed", f"{type(failure).__name__}: {failure}"[:500]
     if not messages:
         messages = [m.model_dump(mode="json") for m in orchestrator.get_messages()]
     complete = status == "completed" and termination is not None and "STOP" in termination.upper()
@@ -1605,7 +1703,7 @@ async def run_session(
         }
     else:
         check = EnvironmentEvaluator.calculate_reward(setup["constructor"], task, trajectory)
-        result = oracle(
+        result = (setup.get("oracle") or oracle)(
             family,
             messages,
             complete,

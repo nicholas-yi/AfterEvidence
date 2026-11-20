@@ -64,6 +64,12 @@ def transcript(episode: dict[str, Any]) -> str:
     return "\n".join(f"{names[s]}: {t}" for s, t in turns(episode))
 
 
+def episode_time(episode: dict[str, Any]) -> datetime:
+    """The episode's own time (dated studies pass the session start), else now."""
+    when = episode.get("time")
+    return datetime.fromisoformat(when) if when else datetime.now(timezone.utc)
+
+
 def safe(scope: str) -> str:
     return re.sub(r"[^A-Za-z0-9_-]", "_", scope)
 
@@ -230,7 +236,7 @@ class GraphitiStore:
             name=episode["id"],
             episode_body=transcript(episode),
             source_description="retail customer-service conversation",
-            reference_time=datetime.now(timezone.utc),
+            reference_time=episode_time(episode),
             source=EpisodeType.message,
             group_id=safe(scope),
         )
@@ -283,7 +289,7 @@ class HindsightStore:
             transcript(episode),
             document_id=episode["id"],
             context="retail customer-service conversation",
-            timestamp=datetime.now(timezone.utc).isoformat(),
+            timestamp=episode_time(episode).isoformat(),
         )
         return {"success": bool(getattr(response, "success", True))}
 

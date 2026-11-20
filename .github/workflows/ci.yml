@@ -37,10 +37,10 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v7
-      - name: Parse the sleep guard and worktree helper without running them
+      - name: Parse the sleep guard, worktree helper and run driver without running them
         shell: pwsh
         run: |
-          foreach ($script in 'keep-awake.ps1', 'frozen-worktree.ps1') {
+          foreach ($script in 'keep-awake.ps1', 'frozen-worktree.ps1', 'run-eval.ps1') {
             $tokens = $null
             $errors = $null
             [System.Management.Automation.Language.Parser]::ParseFile(

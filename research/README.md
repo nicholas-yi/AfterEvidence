@@ -2,7 +2,8 @@
 
 This is separate from the local app. It asks whether agent memory helps an agent act correctly
 on tau2-bench retail tasks, whether stale memory misleads it, and whether deletion removes what was
-derived from a conversation. Nine pre-registered studies are complete; their tables, deviations and
+derived from a conversation. Twelve pre-registered studies are complete (Studies 13-18 are
+pre-specified in [DESIGN](DESIGN.md#studies-13-to-18-owner-2026-11-20-solve-all-those-close-all-gaps)); their tables, deviations and
 history are in [RESULTS](RESULTS.md), designs in [DESIGN](DESIGN.md), usage in [COSTS](COSTS.md).
 Every published table is recomputed from a public CSV in CI (`python -m research.benchmark verify`).
 
@@ -14,24 +15,31 @@ Every published table is recomputed from a public CSV in CI (`python -m research
 - Per-study analyses: [memory study](memory_analysis.py) and [Study 2](study2_analysis.py),
   [necessary memory](commitment_analysis.py), [changed mind](changed_mind_analysis.py),
   [dated](changed_mind_dated_analysis.py), [Honcho features](honcho_features_analysis.py),
-  [Honcho Stage 3](honcho_stage3_analysis.py), [second model](second_model_analysis.py); public CSVs
-  in [data/](data/) and [figures](figures.py).
+  [Honcho Stage 3](honcho_stage3_analysis.py), [second model](second_model_analysis.py),
+  [Studies 10-12](followups_analysis.py), [Studies 13-18](gaps_analysis.py); public CSVs in
+  [data/](data/) and [figures](figures.py).
 - [test_harness_logic.py](test_harness_logic.py): customers, leakage checks, ledger and quota guard
   on synthetic fixtures (no benchmark or SDK needed).
 
-**Multi-session harness (Studies 4-9)**
+**Multi-session harness (Studies 4-18)**
 
 - [commitment_pilot.py](commitment_pilot.py): families, scripted customer, actor loop, oracle,
   leakage checks, budget ledger, infrastructure rule and provider retrieval.
 - Stages built on it: [changed_mind.py](changed_mind.py) (Studies 5-6),
   [honcho_features.py](honcho_features.py) (Study 7), [honcho_stage3.py](honcho_stage3.py) (Study 8),
-  [second_model.py](second_model.py) (Study 9).
+  [second_model.py](second_model.py) (Study 9), [followups.py](followups.py) (Studies 10-12),
+  [gaps.py](gaps.py) (Studies 13-18: stale summary, tool prompt, longer history, injected memory,
+  Graphiti and Hindsight, one shared scope, address change).
 - Providers: [memory_gateway.py](memory_gateway.py) (Mem0, Graphiti, Hindsight, Honcho behind one
   HTTP API), [provider_ingest.py](provider_ingest.py), [memory_retrievers.py](memory_retrievers.py),
   [copilot_shim.py](copilot_shim.py) (capped, journaled model endpoint for providers),
   [copilot_backend.py](copilot_backend.py) (capped Copilot client and quota guard).
 - [run_status.py](run_status.py): `python -m research.run_status --root research\runs\commitment\<stage> --budget`
   shows planned versus reported jobs and the ledger without opening any report.
+- Run tooling: [run-eval.ps1](../scripts/run-eval.ps1) (detached driver: shims, gateway, phases,
+  keep-awake), [run_recovery.py](run_recovery.py) (`recover` closes sessions cut by a dead process as
+  infrastructure failures, only with an owner decision on record; `snapshot` hashes every Mem0 store
+  and counts Honcho rows per workspace, read-only).
 
 **Memory study (Studies 1-3)**: [protocol](PROTOCOL-MEMORY.md), [runbook](MEMORY-STUDY.md),
 [memory builders](memory_bank.py), [runner](study_runner.py), [Study 1](study1.py),

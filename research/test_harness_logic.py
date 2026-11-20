@@ -35,6 +35,12 @@ from research.copilot_backend import quota_problem
 from research.tau_copilot import MEMORY_HEADER
 
 
+def cp_arm_instruction() -> str:
+    from research.commitment_pilot import ARM_INSTRUCTIONS
+
+    return ARM_INSTRUCTIONS["Tp"]
+
+
 def family(
     name: str, ids: tuple[str, ...], target: int, rejected: int, stale: int
 ) -> dict[str, Any]:
@@ -274,6 +280,47 @@ class LedgerTests(unittest.TestCase):
             refused = start_refusals([Path(tmp)], 100, 25.0)
             self.assertTrue(refused[0].startswith("un-journaled mismatch"))
 
+    def test_recovery_closes_only_cut_sessions_and_the_ledger_balances(self) -> None:
+        from research.run_recovery import recover
+
+        started = {"event": "copilot-request-started", "call_id": 2, "session": "Q1-s2-Hn"}
+        head = {"event": "session-start", "session": "Q1-s2-Hn", "family": "Q1", "arm": "Hn"}
+        with tempfile.TemporaryDirectory() as tmp:
+            run = Path(tmp)
+            cut = run / "Q1-s2-Hn-a1.calls.jsonl"
+            cut.write_text(
+                "\n".join(json.dumps(r) for r in (head, started)) + "\n", encoding="utf-8"
+            )
+            done = run / "Q2-s2-Hn-a1.calls.jsonl"
+            done.write_text(json.dumps(head) + "\n", encoding="utf-8")
+            (run / "Q2-s2-Hn-a1.json").write_text("{}", encoding="utf-8")
+            with self.assertRaises(ValueError):
+                recover(run, "process died", " ")
+            records = recover(run, "process died", "owner: recover_all")
+            self.assertEqual(
+                [(r["session"], r["aborted_calls"]) for r in records], [("Q1-s2-Hn-a1", [2])]
+            )
+            report = json.loads((run / "Q1-s2-Hn-a1.json").read_text(encoding="utf-8"))
+            self.assertTrue(report["infra_failure"] and report["attempt"] == 1)
+            self.assertEqual((run / "Q2-s2-Hn-a1.json").read_text(encoding="utf-8"), "{}")
+            rows = [json.loads(x) | {"_journal": "j"} for x in cut.read_text().splitlines()]
+            ledger = pilot_ledger(rows)
+            self.assertEqual((ledger["reasons"], ledger["charged_credits"]), ([], 1.0))
+            self.assertEqual(recover(run, "again", "owner: recover_all"), [])  # idempotent
+            history = json.loads((run / "recoveries.json").read_text(encoding="utf-8"))
+            self.assertEqual([h["owner_decision"] for h in history], ["owner: recover_all"] * 2)
+
+    def test_copilot_transport_errors_are_infrastructure(self) -> None:
+        from research.commitment_pilot import transport_error
+
+        class JsonRpcError(Exception):
+            pass
+
+        JsonRpcError.__module__ = "copilot._jsonrpc"
+        self.assertTrue(transport_error(JsonRpcError("token lookup timed out")))
+        self.assertFalse(transport_error(ValueError("malformed action")))
+        self.assertFalse(transport_error(KeyError("item")))
+
     def test_refuses_overage_low_and_unknown_quota(self) -> None:
         def snapshot(**quota: object) -> SimpleNamespace:
             premium = {"premium_interactions": SimpleNamespace(**quota)} if quota else {}
@@ -287,6 +334,221 @@ class LedgerTests(unittest.TestCase):
         self.assertIn(
             "below 50%", quota_problem(snapshot(remaining_percentage=49.9, overage=0.0)) or ""
         )
+
+
+def session_one(root: Path, name: str, orders: str) -> None:
+    for order in orders:
+        messages = [
+            {"role": "assistant", "content": OPENING},
+            {"role": "user", "content": f"Customer line {order}."},
+            {"role": "assistant", "content": f"Agent line {order}."},
+        ]
+        report = {
+            "session": 1,
+            "family": name,
+            "arm": f"S1{order}",
+            "commitment": True,
+            "messages": messages,
+        }
+        (root / f"{name}-s1-S1{order}-a1.json").write_text(json.dumps(report), encoding="utf-8")
+
+
+class GapsTests(unittest.TestCase):
+    """Studies 13-18: generalized dated history, the new customers, the address oracle, app
+    records, the Tp instruction and the analysis (synthetic fixtures)."""
+
+    today = __import__("datetime").date(2026, 11, 20)
+
+    def test_two_session_history_reproduces_studies_6_to_12(self) -> None:
+        from research import changed_mind as cm
+        from research import gaps
+        from research.honcho_stage3 import summarizer_input
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            session_one(root, "D1", "ab")
+            session_one(root, "D2", "a")  # no 1b agreement: excluded everywhere
+            self.assertEqual(gaps.committed(root, gaps.TWO), cm.committed(root))
+            self.assertEqual(
+                gaps.history_text(root, "D1", self.today, gaps.TWO),
+                cm.dated_history_text(root, "D1", self.today),
+            )
+            for order in "ab":
+                self.assertEqual(
+                    gaps.history_text(root, "D1", self.today, gaps.TWO, order),
+                    summarizer_input(root, "D1", self.today, order),
+                )
+            old = cm.dated_inputs(root, self.today, "p-")["D1"]
+            new = gaps.episodes(root, "D1", self.today, gaps.TWO, "p-")
+            self.assertEqual(old["episodes_honcho"], new["honcho"])
+            plain = [{k: v for k, v in e.items() if k != "time"} for e in new["labelled"]]
+            self.assertEqual(old["episodes_mem0"], plain)
+            self.assertEqual(new["labelled"][1]["time"], new["honcho"][1]["times"][0])
+            session_one(root, "V01", "abcde")
+            five = gaps.history_text(root, "V01", self.today, gaps.FIVE)
+            labels = [gaps.label(self.today, gaps.FIVE, o) for o in "abcde"]
+            self.assertEqual([five.index(x) for x in labels], sorted(five.index(x) for x in labels))
+            self.assertNotIn(
+                "Customer line c", gaps.history_text(root, "V01", self.today, gaps.FIVE, "b")
+            )
+
+    def test_long_history_customer_changes_twice_and_stays_target_blind(self) -> None:
+        from research import gaps
+
+        f = gaps.roles(gaps.LH, {**F, "target_position": 0})
+        x, y, w = f["first_id"], f["stale_id"], f["target_id"]
+        self.assertEqual(len({x, y, w, f["rejected_id"]}), 4)
+        first = gaps.LongHistoryCustomer(f, 1, "S1a")
+        first.reply(OPENING)
+        self.assertIn(gaps.cp._option(f, x), first.reply("Several options are in stock."))
+        first.reply(f"Confirming item {x}.")
+        self.assertTrue(first.agreed)
+        for phase in ("S1b", "S1d"):
+            question = gaps.LongHistoryCustomer(f, 1, phase)
+            self.assertFalse(identified(f, question.reply(OPENING)))
+            self.assertIn(STOP, question.reply("It was delivered on Monday."))
+            self.assertTrue(question.agreed)
+        for phase, wanted, earlier in (("S1c", y, x), ("S1e", w, y)):
+            change = gaps.LongHistoryCustomer(f, 1, phase)
+            self.assertEqual(identified(f, change.reply(OPENING)), set())
+            self.assertIn("changed my mind", change.reply(f"Item {earlier}, as before?"))
+            change.reply(f"Confirming item {wanted}.")
+            self.assertTrue(change.agreed, phase)
+        replies = set()
+        for item in (x, y, w):
+            customer = gaps.LongHistoryCustomer(f, 2, "Hn")
+            self.assertFalse(identified(f, customer.reply(OPENING)))
+            replies.add(customer.reply(f"Shall I exchange it for item {item}?"))
+        self.assertEqual(replies, {CONSENT})
+
+    def address_family(self) -> dict[str, Any]:
+        from research import gaps
+
+        f = {**F, "family": "A01", "target_position": 1}
+        addresses = gaps.make_addresses(f, "test")
+        f.update(
+            alternatives=addresses,
+            target_id=addresses[1]["item_id"],
+            rejected_id=addresses[2]["item_id"],
+        )
+        return gaps.roles(gaps.AC, f)
+
+    def test_address_customer_and_oracle(self) -> None:
+        from research import gaps
+
+        f = self.address_family()
+        x, y = f["stale_id"], f["target_id"]
+        line = {i: gaps.alternative(f, i)["options"]["address1"] for i in (x, y)}
+        first = gaps.AddressCustomer(f, 1, "S1a")
+        self.assertEqual(identified(f, first.reply(OPENING)), {x})
+        first.reply(f"Noted: {gaps.address_text(f, x)}.")
+        self.assertTrue(first.agreed)
+        second = gaps.AddressCustomer(f, 1, "S1b")
+        self.assertEqual(identified(f, second.reply(OPENING)), {y})
+        self.assertIn("not it", second.reply(f"So {line[x]}?"))
+        second.reply(f"Noted: {line[y]}.")
+        self.assertTrue(second.agreed)
+        replies = set()
+        for item in [v["item_id"] for v in f["alternatives"]]:
+            customer = gaps.AddressCustomer(f, 2, "N")
+            self.assertFalse(identified(f, customer.reply(OPENING)))
+            self.assertFalse(identified(f, customer.reply("Which address did we agree?")))
+            replies.add(
+                customer.reply(f"Change it to {gaps.alternative(f, item)['options']['address1']}?")
+            )
+        self.assertEqual(replies, {gaps.ADDRESS_CONSENT})
+
+        def run(item: str, before: bool = False) -> dict[str, Any]:
+            call = {
+                "name": "modify_pending_order_address",
+                "arguments": gaps.address_action({**f, "target_id": item})["arguments"],
+            }
+            consent = {"role": "user", "content": gaps.ADDRESS_CONSENT}
+            act_ = {"role": "assistant", "tool_calls": [call]}
+            messages = [act_, consent] if before else [consent, act_]
+            return gaps.address_oracle(f, messages, True, item == y)
+
+        self.assertTrue(run(y)["success"])
+        self.assertEqual((run(x)["success"], run(x)["wrong_variant_attempts"]), (False, 1))
+        self.assertEqual(
+            gaps.executed(
+                f,
+                [
+                    {
+                        "role": "assistant",
+                        "tool_calls": [
+                            {
+                                "name": "modify_pending_order_address",
+                                "arguments": {"address1": line[x]},
+                            }
+                        ],
+                    }
+                ],
+            ),
+            [x],
+        )
+        self.assertFalse(run(y, before=True)["success"])
+
+    def test_app_records_tool_instruction_and_injected_record(self) -> None:
+        from research import gaps
+
+        f = gaps.roles(gaps.GX, {**F, "family": "D1", "target_position": 0})
+        x, y, z = f["stale_id"], f["target_id"], f["injected_id"]
+        record = gaps.injected_record(f, self.today)
+        self.assertIn(z, record)
+        self.assertFalse({x, y} & identified(f, record))
+        steps = [
+            {"after": "a", "facts": [f"Agreed item {x}."]},
+            {"after": "b", "facts": [f"Changed to item {y}."]},
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            session_one(Path(tmp), "D1", "ab")
+            text = {
+                arm: gaps.app_memory(gaps.GX, arm, f, steps, Path(tmp), self.today)["text"]
+                for arm in gaps.APP_ARMS
+            }
+        self.assertTrue(y in text["Fd"] and x not in text["Fd"] and z not in text["Fd"])
+        self.assertTrue(z in text["Fz"] and y in text["Fz"])
+        self.assertTrue(x in text["Fs"] and y not in text["Fs"])
+        self.assertTrue(text["Fsh"].index(x) < text["Fsh"].index("Earlier session"))
+        self.assertIn(cp_arm_instruction(), session_system("P", "Tp", None))
+        self.assertNotIn(cp_arm_instruction(), session_system("P", "Tn", None))
+        self.assertNotIn(cp_arm_instruction(), session_system("P", "Hn", "dialogue"))
+        with self.assertRaises(FatalStop):
+            session_system("P", "Hn", "x" * (HISTORY_MAX + 1))
+        self.assertIn(
+            "x" * (HISTORY_MAX + 1), session_system("P", "Hn", "x" * (HISTORY_MAX + 1), 16000)
+        )
+
+    def test_analysis_blocks_and_foreign_items(self) -> None:
+        from research import gaps_analysis as ga
+
+        families = {
+            n: {"family": n, "product_id": p, "target_id": t, "stale_id": s}
+            for n, p, t, s in (
+                ("U01", "P", "1", "2"),
+                ("U02", "P", "3", "1"),
+                ("U03", "Q", "5", "6"),
+            )
+        }
+        self.assertEqual(ga.foreign_items(families, "U01"), {"3"})
+        self.assertEqual(ga.foreign_items(families, "U03"), set())
+        rows: list[dict[str, Any]] = []
+        for n in ("U01", "U02", "U03"):
+            rows += [
+                {"family": n, "session": 1, "arm": a, "commitment": True} for a in ("S1a", "S1b")
+            ]
+            for arm, ok, foreign in (("Mi", True, 0), ("Ms", n == "U03", int(n != "U03"))):
+                rows.append(
+                    {"family": n, "session": 2, "arm": arm, "success": ok, "foreign": foreign}
+                )
+        result = ga.analyse("gx", rows)
+        self.assertEqual(result["complete_arms"], ["Mi", "Ms"])
+        self.assertEqual(result["arms"]["Hn"], {"status": "not run"})
+        test = result["study17_primary"]["tests"]["Ms vs Mi (success)"]
+        self.assertIn("p_holm", test)
+        self.assertEqual(result["arms"]["Ms"]["foreign"], 2)
+        self.assertEqual(result["study13_primary"]["tests"], {})
 
 
 if __name__ == "__main__":
