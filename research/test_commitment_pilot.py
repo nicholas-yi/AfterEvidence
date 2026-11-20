@@ -3576,10 +3576,33 @@ class GapsDryPassTests(unittest.TestCase):
                 texts.append(text)
                 return [f"Summary {len(texts)}."]
 
-            with mock.patch(
-                "research.provider_ingest.post",
-                side_effect=self._gateway(run, families, calls, design),
-            ):
+            gateway = self._gateway(run, families, calls, design)
+
+            import urllib.error
+
+            def failing(path: str, body: dict[str, Any], **kwargs: Any) -> dict[str, Any]:
+                if path == "/ingest" and body["provider"] == "honcho" and "D2" in body["scope"]:
+                    raise urllib.error.URLError("Honcho unavailable")  # e.g. Docker stopped
+                return gateway(path, body, **kwargs)
+
+            with mock.patch("research.provider_ingest.post", side_effect=failing):
+                stopped = g.providers(
+                    design,
+                    setup,
+                    run,
+                    source,
+                    today,
+                    design.dev_stage,
+                    sorted(families),
+                    summarizer=summarizer,
+                )
+            self.assertTrue(stopped["refused"] and stopped["ingestion_errors"])
+            self.assertFalse(list((run / "memory").glob("*.json")))  # no retrieval written
+            done = json.loads((run / "ingested.json").read_text(encoding="utf-8"))
+            self.assertNotIn("Hod:D2", done)
+            self.assertIn("Hod:D1", done)
+            first_pass = len(calls["/ingest"])  # failed writes never reached the store
+            with mock.patch("research.provider_ingest.post", side_effect=gateway):
                 result = g.providers(
                     design,
                     setup,
@@ -3591,6 +3614,11 @@ class GapsDryPassTests(unittest.TestCase):
                     summarizer=summarizer,
                 )
             self.assertEqual((result["refused"], result["ingestion_errors"]), ([], []))
+            # the retry re-ingests only the failed episodes; every other write already succeeded
+            self.assertEqual(
+                sorted(b["scope"] for b in calls["/ingest"][first_pass:]),
+                ["customer:cmp-gx-d2-D2"] * 2 + ["customer:cmp-gx-d2-z-D2"] * 2,
+            )
 
             def stem(scope: str) -> str:
                 scope = scope.removeprefix("customer:")
@@ -3599,13 +3627,13 @@ class GapsDryPassTests(unittest.TestCase):
             self.assertEqual(
                 Counter((b["provider"], stem(b["scope"])) for b in calls["/ingest"]),
                 {
-                    ("mem0", "cmp-gx-d1-"): 8,
-                    ("mem0", "cmp-gx-d1-z-"): 8,
-                    ("mem0", "cmp-gx-d1-s-shared"): 8,
-                    ("honcho", "cmp-gx-d1-"): 8,
-                    ("honcho", "cmp-gx-d1-z-"): 8,
-                    ("graphiti", "cmp-gx-d1-"): 8,
-                    ("hindsight", "cmp-gx-d1-"): 8,
+                    ("mem0", "cmp-gx-d2-"): 8,
+                    ("mem0", "cmp-gx-d2-z-"): 8,
+                    ("mem0", "cmp-gx-d2-s-shared"): 8,
+                    ("honcho", "cmp-gx-d2-"): 8,
+                    ("honcho", "cmp-gx-d2-z-"): 8,
+                    ("graphiti", "cmp-gx-d2-"): 8,
+                    ("hindsight", "cmp-gx-d2-"): 8,
                 },
             )
             graph = [b["episode"] for b in calls["/ingest"] if b["provider"] == "graphiti"]
@@ -3613,8 +3641,8 @@ class GapsDryPassTests(unittest.TestCase):
             self.assertEqual(len(texts), 8)  # after 1a and after 1b, per family
             self.assertEqual(texts[0], g.history_text(source, "D1", today, g.TWO, "a"))
             for path, prefix in (
-                ("/mem0/facts", "cmp-gx-d1-z-"),
-                ("/honcho/facts", "cmp-gx-d1-z-"),
+                ("/mem0/facts", "cmp-gx-d2-z-"),
+                ("/honcho/facts", "cmp-gx-d2-z-"),
             ):
                 self.assertEqual(len(calls[path]), 4)
                 for body in calls[path]:

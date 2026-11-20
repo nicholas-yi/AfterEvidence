@@ -516,6 +516,16 @@ or caching) was not established. Mem0 needed one gateway fix before this check
 matches only: it does not detect paraphrased or derived facts, so it is not
 evidence of complete semantic erasure.
 
+**Derived copies (a design note from Studies 8 and 10, not a measurement).** The strongest arms in
+Studies 8, 10 and 11 store *application-written* facts: one summarizer pass over several
+conversations, written into Honcho as conclusions or into Mem0 as verbatim memories. Each fact is
+attached to the latest session only, but its content comes from all of them. So deleting an earlier
+conversation through the provider's own API (the operation Study 3 tested) leaves a fact derived
+from it in place; deleting by session ID removes a fact only if its own session is deleted. Erasure
+must follow lineage: the application has to record which conversations each fact came from and
+delete or rewrite the fact when any of them is erased. This was not tested; Study 3's probe would not
+detect it, because a summarized fact need not repeat a literal identifier.
+
 ### Deviations from the protocol
 
 1. **Five Study 1 harness failures.** Four episodes lost their report when a

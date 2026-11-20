@@ -136,7 +136,7 @@ GX = Design(
     key="gx",
     studies="Studies 13, 15, 16 and 17: stale summary and tool prompt; injected memory; Graphiti "
     "and Hindsight; one Mem0 scope for every customer",
-    dev_stage="gx-dev-v1",
+    dev_stage="gx-dev-v2",  # v1 stopped by host events during ingestion (preserved)
     eval_stage="gx-eval-v1",
     tag="gaps-eval-v1",
     arms=("Hn", "Fd", "Fs", "Fsh", "Tn", "Tp", "Mi", "Mz", "Fz", "Hod", "Hz", "Ms", "Gr", "Hi"),
@@ -819,12 +819,14 @@ def providers(
     for sub in ("facts", "memory", "injected"):
         (directory / sub).mkdir(parents=True, exist_ok=True)
 
-    def ingest(provider: str, scope: str, items: list[dict[str, Any]], what: str) -> None:
+    def ingest(provider: str, scope: str, items: list[dict[str, Any]], what: str) -> bool:
         rows = provider_ingest.ingest_provider(provider, scope, items, ledger, cp.GATEWAY)
         caps = cp.shim_problems(directory, cfg["shim_caps"])
         if caps:
             raise cp.FatalStop(f"Shim cap: {caps}")
-        errors.extend(f"ingestion failed: {what}" for r in rows if r["status"] != "ok")
+        failed = [f"ingestion failed: {what} {r['episode']}" for r in rows if r["status"] != "ok"]
+        errors.extend(failed)
+        return not failed
 
     done_path = directory / "ingested.json"
     done = set(json.loads(done_path.read_text(encoding="utf-8"))) if done_path.exists() else set()
@@ -836,9 +838,9 @@ def providers(
                     continue
                 prefix = scopes(stage)[arm]
                 items = episodes(source, family, today, design.phases, prefix)[kind]
-                ingest(provider, scope_of(stage, arm, family), items, f"{arm} {family}")
-                done.add(f"{arm}:{family}")
-                done_path.write_text(json.dumps(sorted(done)) + "\n", encoding="utf-8")
+                if ingest(provider, scope_of(stage, arm, family), items, f"{arm} {family}"):
+                    done.add(f"{arm}:{family}")
+                    done_path.write_text(json.dumps(sorted(done)) + "\n", encoding="utf-8")
             path = directory / "facts" / f"{family}.json"
             record = (
                 json.loads(path.read_text(encoding="utf-8")) if path.exists() else {"steps": []}
@@ -878,6 +880,10 @@ def providers(
                 )
     except cp.FatalStop as stop:
         return {"refused": [str(stop)]}
+    if errors:
+        # Stop before any retrieval record is written: a failed write is investigated (and any
+        # partial write cleaned up) as an infrastructure event, never scored as an arm's memory.
+        return {"refused": ["ingestion errors; no retrieval written"], "ingestion_errors": errors}
     queue = None
     if {"Hod", "Hz"} & arms:
         queue = {}

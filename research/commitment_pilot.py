@@ -119,6 +119,14 @@ PROVIDER_STAGES: dict[str, dict[str, Any]] = {
         "episode_cap": 672,
         "stop_on_ingest_error": False,
     },
+    # gx-dev-v1 was stopped by host events (Docker engine down) during ingestion; fresh scopes.
+    "gx-dev-v2": {
+        "prefix": "cmp-gx-d2-",
+        "workspace": "gaps-dev-v2",
+        "shim_caps": {"mem0": 40, "honcho": 100, "graphiti": 40, "hindsight": 45, "app": 10},
+        "episode_cap": 672,
+        "stop_on_ingest_error": True,
+    },
     "lh-dev-v1": {
         "prefix": "cmp-lh-d1-",
         "workspace": "long-history-dev-v1",
@@ -959,6 +967,7 @@ BUDGETS = {
     "pz-eval": {"stages": ("pz-eval-v1",), "cap": 2066, "credit_stop": 225.0},
     # Studies 13-18 (ceiling 2,650): dev checks sum to <= 1,859 requests and 195 credits.
     "gx-dev": {"stages": ("gx-dev-v1",), "cap": 907, "credit_stop": 95.0},
+    "gx-dev2": {"stages": ("gx-dev-v2",), "cap": 907, "credit_stop": 95.0},
     "lh-dev": {"stages": ("lh-dev-v1",), "cap": 594, "credit_stop": 60.0},
     "ac-dev": {"stages": ("ac-dev-v1",), "cap": 358, "credit_stop": 40.0},
     # Provisional until the dev checks (resized before the tags).

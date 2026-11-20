@@ -520,6 +520,51 @@ class GapsTests(unittest.TestCase):
             "x" * (HISTORY_MAX + 1), session_system("P", "Hn", "x" * (HISTORY_MAX + 1), 16000)
         )
 
+    def test_review_packet_strata_and_scores(self) -> None:
+        from research import oracle_review as orv
+
+        z = F["alternatives"][3]["item_id"]  # distinct from the target, rejected and stale items
+        f = {**F, "injected_id": z}
+
+        def report(item: str | None, success: bool = False) -> dict[str, Any]:
+            calls = (
+                [{"name": "exchange_delivered_order_items", "arguments": {"new_item_ids": [item]}}]
+                if item
+                else []
+            )
+            messages = [{"role": "assistant", "tool_calls": calls}]
+            return {"success": success, "mutations": len(calls), "messages": messages}
+
+        self.assertEqual(orv.stratum(report(F["target_id"], True), f), "succeeded")
+        self.assertEqual(orv.stratum(report(F["stale_id"]), f), "executed_superseded")
+        self.assertEqual(orv.stratum(report(z), f), "executed_superseded")
+        self.assertEqual(orv.stratum(report(None), f), "declined")
+        self.assertEqual(orv.stratum(report(F["rejected_id"]), f), "other_failure")
+        self.assertEqual(orv.kappa(["yes", "no", "yes"], ["yes", "no", "yes"]), 1.0)
+        self.assertEqual(orv.kappa(["yes", "no"], ["no", "yes"]), -1.0)
+        self.assertIsNone(orv.kappa(["yes"], ["yes"]))
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "oracle.csv").write_text(
+                "session,success\nR001,True\nR002,False\nR003,True\n", encoding="utf-8"
+            )
+            (root / "a.csv").write_text(
+                "session,q1_outcome,q2_customer\nR001,yes,yes\nR002,yes,no\nR003,unclear,yes\n",
+                encoding="utf-8",
+            )
+            (root / "b.csv").write_text(
+                "session,q1_outcome,q2_customer\nR001,yes,yes\nR002,no,yes\nR003,yes,yes\n",
+                encoding="utf-8",
+            )
+            result = orv.score(root, [root / "a.csv", root / "b.csv"])
+        self.assertEqual(
+            (result["a.csv"]["answered"], result["a.csv"]["agree_with_oracle"]), (2, 1)
+        )
+        self.assertEqual(result["a.csv"]["disagreements"], ["R002"])
+        self.assertEqual(result["a.csv"]["customer_script_no"], ["R002"])
+        self.assertEqual(result["b.csv"]["agree_with_oracle"], 3)
+        self.assertIn("q1_outcome", result["between_reviewers"])
+
     def test_analysis_blocks_and_foreign_items(self) -> None:
         from research import gaps_analysis as ga
 

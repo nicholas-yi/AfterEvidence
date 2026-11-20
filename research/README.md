@@ -40,6 +40,9 @@ Every published table is recomputed from a public CSV in CI (`python -m research
   keep-awake), [run_recovery.py](run_recovery.py) (`recover` closes sessions cut by a dead process as
   infrastructure failures, only with an owner decision on record; `snapshot` hashes every Mem0 store
   and counts Honcho rows per workspace, read-only).
+- [oracle_review.py](oracle_review.py): a seeded, stratified human-review packet of session-2
+  transcripts with the memory each agent saw (written under `research/runs` only; reviewers answer
+  before seeing the oracle), and `score` for agreement with the oracle and Cohen's kappa.
 
 **Memory study (Studies 1-3)**: [protocol](PROTOCOL-MEMORY.md), [runbook](MEMORY-STUDY.md),
 [memory builders](memory_bank.py), [runner](study_runner.py), [Study 1](study1.py),
