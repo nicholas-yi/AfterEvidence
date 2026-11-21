@@ -57,6 +57,7 @@ OWNER = (
 SOURCES = (*fu.SOURCES, "gaps.py", "gaps_analysis.py", "memory_gateway.py")
 MEMORY_TOOL_CAP = s3.MEMORY_TOOL_CAP
 WD_SEED, M3_SEED, PZ_SEED = 1639419516, 222626205, 165991869  # Studies 10-12 (avoided)
+GX_SEED, LH_SEED, AC_SEED = 4285321613, 1667118752, 3426908224  # Studies 13-18 (avoided by 19-20)
 # Credits per request for the caps; replaced by the dev check's measured rates when higher.
 RATES = {
     "episodes": 0.1253,
@@ -95,6 +96,44 @@ STREAMS = {
 APP_ARMS = ("Fd", "Fz", "Fs", "Fsh")
 TOOL_ARMS = ("Tn", "Tp")
 ADDRESS_CONSENT = "Yes, please proceed with that address change."
+# Studies 19-20: after consent, the customer ends on a completion report. Replayed on every recorded
+# session of Studies 4-18 before the tags: it never fires before the agent's last write, keeps every
+# ending cp.DONE found, and ends 12 of the 16 sessions that ran to the request cap after a correct
+# change. A report counts when no conditional or negating word precedes it in its sentence.
+COMPLETED = re.compile(
+    r"\b(?:is|was|has|have|'s|are)\s+(?:now\s+)?(?:already\s+)?(?:been\s+)?(?:successfully\s+)?"
+    r"(?:complete|completed|processed|submitted|applied|placed|requested|updated|changed)\b"
+    r"|\bsuccessfully\s+(?:exchanged|processed|submitted|applied|completed|placed|requested"
+    r"|updated|changed)\b"
+    r"|\b(?:i|we)(?:'ve| have)\s+(?:now\s+)?(?:successfully\s+)?(?:submitted|processed|completed"
+    r"|applied|placed|requested|updated|changed)\b"
+    r"|\brequest is (?:now )?confirmed\b|\bstatus is now\b"
+)
+NOT_YET = re.compile(
+    r"\b(?:once|when|after|until|if|before|will|would|can|could|should|shall|please|confirm|need"
+    r"|needs|ready|no|not|never|yet)\b|n't\b"
+)
+
+
+def reported_done(lowered: str) -> bool:
+    for sentence in re.split(r"(?<=[.!?])\s+|\n+", lowered.replace("\u2019", "'")):
+        for hit in COMPLETED.finditer(sentence):
+            if not NOT_YET.search(sentence[: hit.start()]):
+                return True
+    return False
+
+
+def reporting(customer: type) -> type:
+    """The design's customer, ending on reported_done instead of its own completion pattern."""
+
+    class Reporting(customer):  # type: ignore[valid-type,misc]
+        def completed(self, lowered: str) -> bool:
+            return reported_done(lowered)
+
+    Reporting.__name__ = customer.__name__
+    return Reporting
+
+
 # After consent, a completion report ends the session. The exchange pattern (cp.DONE) missed "Your
 # shipping address change ... is complete" in the ac dev check (B03 Fd), so the customer repeated
 # its consent until the request cap; address changes are also reported as "updated" or "changed".
@@ -140,6 +179,13 @@ class Design:
     )
     history_max: int = cp.HISTORY_MAX
     model: str = "claude-haiku-5.5"
+    task: str = ""  # the task a replication repeats (gx, lh or ac); "" means the design's own key
+    owner: str = ""  # the approval recorded in every plan; "" means OWNER
+    reported_done: bool = False  # Studies 19-20: the customer ends on COMPLETED reports
+
+    @property
+    def base(self) -> str:
+        return self.task or self.key
 
 
 GX = Design(
@@ -247,7 +293,63 @@ AC = Design(
     phases=TWO,
     kind="address",
 )
-DESIGNS = {d.key: d for d in (GX, LH, AC)}
+OWNER_19 = (
+    'Owner (ask_user, 2026-11-21): "do the second model reinforcement"; gpt-6-luna; the three '
+    "strongest Study 13 and 15 findings plus Study 14's five-conversation task; ceiling raised by "
+    "200 to 3,075 credits (raise_200)."
+)
+GM = dataclasses.replace(
+    GX,
+    key="gm",
+    studies="Study 19: Studies 13 and 15 with a second model (gpt-6-luna)",
+    dev_stage="gm-dev-v1",
+    eval_stage="gm-eval-v1",
+    tag="second-model-gaps-eval-v1",
+    arms=("Hn", "Fd", "Fs", "Fsh", "Tn", "Tp", "Mi", "Mz", "Fz", "Hod", "Hz"),
+    letter="H",
+    first=("Ines", "Jules", "Klaus", "Lior", "Maren", "Nils", "Odile", "Pavel"),
+    last=(
+        "Ibsen",
+        "Janssen",
+        "Kowalczyk",
+        "Lindqvist",
+        "Moreau",
+        "Nakashima",
+        "Oyelaran",
+        "Petrakis",
+    ),
+    descriptions={a: GX.descriptions[a] for a in GX.descriptions if a not in ("Ms", "Gr", "Hi")},
+    model="gpt-6-luna",
+    task="gx",
+    owner=OWNER_19,
+    reported_done=True,
+)
+LM = dataclasses.replace(
+    LH,
+    key="lm",
+    studies="Study 20: Study 14 with a second model (gpt-6-luna)",
+    dev_stage="lm-dev-v1",
+    eval_stage="lm-eval-v1",
+    tag="second-model-long-history-eval-v1",
+    letter="J",
+    dev_letter="N",
+    first=("Anneke", "Bruno", "Clio", "Dmitri", "Esme", "Felix", "Greta", "Hamish"),
+    last=(
+        "Achterberg",
+        "Bergstrom",
+        "Castellanos",
+        "Drummond",
+        "Eriksen",
+        "Fitzwilliam",
+        "Grimaldi",
+        "Halvorsen",
+    ),
+    model="gpt-6-luna",
+    task="lh",
+    owner=OWNER_19,
+    reported_done=True,
+)
+DESIGNS = {d.key: d for d in (GX, LH, AC, GM, LM)}
 
 
 # Dated history over any number of session-1 sessions (two sessions reproduce Studies 6-12).
@@ -442,7 +544,7 @@ class AddressCustomer(cp.ScriptedCustomer):
             return self._end("I'll come back another time.")
         if self.confirmed:
             lowered = agent_text.casefold()
-            if cp.DONE.search(lowered) or ADDRESS_DONE.search(lowered):
+            if self.completed(lowered) or ADDRESS_DONE.search(lowered):
                 return self._end("Thanks, that's all.")
             return ADDRESS_CONSENT
         if len(named) == 1:
@@ -560,8 +662,20 @@ def address_oracle(
     }
 
 
-def avoid_families(base: dict[str, Any], pool: list[str]) -> list[dict[str, Any]]:
-    """Every earlier study's families (names and IDs are not reused)."""
+_AVOID: dict[tuple[int, tuple[str, ...], bool], list[dict[str, Any]]] = {}
+
+
+def avoid_families(
+    base: dict[str, Any], pool: list[str], later: bool = False
+) -> list[dict[str, Any]]:
+    """Every earlier study's families (names and IDs are not reused); cached per DB and pool."""
+    key = (id(base), tuple(pool), later)
+    if key not in _AVOID:
+        _AVOID[key] = _avoid_families(base, pool, later)
+    return [dict(f) for f in _AVOID[key]]
+
+
+def _avoid_families(base: dict[str, Any], pool: list[str], later: bool) -> list[dict[str, Any]]:
     from research import second_model as m2
 
     out = (
@@ -575,6 +689,11 @@ def avoid_families(base: dict[str, Any], pool: list[str]) -> list[dict[str, Any]
     )
     for spec, seed in ((fu.WD, WD_SEED), (fu.M3, M3_SEED), (fu.PZ, PZ_SEED)):
         out += fu.build_eval(spec, base, pool, seed)
+    if later:  # Studies 19-20 also avoid Studies 13-18 (evaluation and live dev families)
+        for design, seed in ((GX, GX_SEED), (LH, LH_SEED), (AC, AC_SEED)):
+            out += build(design, base, pool, seed, earlier=True)
+            if design.dev_letter:
+                out += build(design, base, pool, dev_seed(design), dev=True, earlier=True)
     return out
 
 
@@ -589,19 +708,26 @@ def roles(design: Design, family: dict[str, Any]) -> dict[str, Any]:
     extra = alternatives[(p + 3) % len(alternatives)]["item_id"]
     family["stale_id"] = alternatives[(p + 2) % len(alternatives)]["item_id"]
     family["kind"] = design.kind
-    if design.key == "gx":
+    if design.base == "gx":
         family["injected_id"] = extra
-    if design.key == "lh":
+    if design.base == "lh":
         family["first_id"] = extra
     return family
 
 
 def build(
-    design: Design, base: dict[str, Any], pool: list[str], seed: int, dev: bool = False
+    design: Design,
+    base: dict[str, Any],
+    pool: list[str],
+    seed: int,
+    dev: bool = False,
+    earlier: bool = False,
 ) -> list[dict[str, Any]]:
-    avoid = avoid_families(base, pool)
+    # `earlier`: rebuild a Study 13-18 design exactly as tagged (its own avoid list).
+    later = design.key in ("gm", "lm") and not earlier
+    avoid = avoid_families(base, pool, later)
     if design.dev_letter and not dev:
-        avoid += build(design, base, pool, dev_seed(design), dev=True)
+        avoid += build(design, base, pool, dev_seed(design), dev=True, earlier=earlier)
     namespace = f"AE-{(design.dev_stage if dev else design.tag).upper()}-{seed}"
     families = cp.build_eval_families(
         base,
@@ -656,7 +782,9 @@ def validate(design: Design, setup: dict[str, Any]) -> dict[str, Any]:
         "gx": hf.RestatingCustomer,  # the changed-mind customer outside the restating arms
         "lh": LongHistoryCustomer,
         "ac": AddressCustomer,
-    }[design.key]
+    }[design.base]
+    if design.reported_done:
+        setup["customer"] = reporting(setup["customer"])
     if design.kind == "address":
         setup["oracle"] = address_oracle
     setup["history_max"] = design.history_max
@@ -982,6 +1110,15 @@ ANALYSIS = {
         "Holm across three: Mi, Hod and Fd each vs Hn on success. Secondary: the same pairs on "
         "executing the superseded address X."
     ),
+    "gm": (
+        "Study 13 and 15 blocks exactly as in gx (separate Holm families): Fsh vs Fs and Tp vs Tn on "
+        "success; executing Z, Mz vs Mi, Hz vs Hod and Fz vs Fd. Secondary as in gx. Comparisons "
+        "with Claude Haiku 5.5 (gx) are descriptive only (different families and model)."
+    ),
+    "lm": (
+        "As lh: Holm across three, Mi, Hod and Fd each vs Hn on success; secondary on executing a "
+        "superseded item. Comparisons with lh are descriptive only."
+    ),
 }
 
 
@@ -1003,7 +1140,8 @@ def plan(
     return {
         "stage": stage,
         "studies": design.studies,
-        "owner": OWNER,
+        "owner": design.owner or OWNER,
+        "completion": "COMPLETED (Studies 19-20)" if design.reported_done else "cp.DONE",
         "model": design.model,
         "provider_llm": f"{design.model} (every shim started with --model {design.model})",
         "task": "address change on a pending order" if design.kind == "address" else "exchange",

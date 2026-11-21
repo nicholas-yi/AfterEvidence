@@ -3850,6 +3850,101 @@ class GapsDryPassTests(unittest.TestCase):
         for a, b in combinations(sorted(built), 2):
             self.assertFalse(built[a] & built[b], (a, b))
 
+    def test_second_model_designs_dry_pass(self) -> None:
+        """Studies 19-20: gpt-6-luna replications of gx (frozen D1-D4) and lh (live session 1)."""
+        from unittest import mock
+
+        g, today = self.g, self.today
+        for design in (g.GM, g.LM):
+            with self.subTest(design=design.key), tempfile.TemporaryDirectory() as tmp:
+                run = Path(tmp) / "run"
+                run.mkdir()
+                if design.dev_letter:
+                    setup = g.setup_for(design, run, today)
+                    families, source = setup["families"], run
+                else:
+                    (Path(tmp) / "src").mkdir()
+                    families = g.prepare(design)["families"]
+                    source = _first_session_source(Path(tmp) / "src", families)
+                    setup = g.setup_for(design, source, today)
+                self.assertEqual(design.model, "gpt-6-luna")
+                for label, cap in PROVIDER_STAGES[design.dev_stage]["shim_caps"].items():
+                    shim_journal(run, label, cap)
+                plan_for = {a: "Y" for a in design.arms} | {"Tn": "decline", "Tp": "recallY"}
+                prompts: dict[str, list[str]] = {}
+                policy = self._policy(families, plan_for, prompts)
+                first = [
+                    {"session": 1, "family": f, "arm": f"S1{o}"}
+                    for f in sorted(families)
+                    for o in design.phases
+                ]
+                public = g.plan(
+                    design,
+                    setup,
+                    "dry",
+                    today,
+                    design.dev_stage,
+                    7,
+                    {},
+                    first if design.dev_letter else None,
+                )
+                self.assertEqual(public["model"], "gpt-6-luna")
+                self.assertEqual(public["completion"], "COMPLETED (Studies 19-20)")
+                if design.dev_letter:
+                    jobs = [j for j in public["jobs"] if j["session"] == 1]
+                    self.assertEqual(
+                        self._run(design, setup, run, jobs, policy, run)["refused"], []
+                    )
+                calls: dict[str, list[Any]] = {}
+                with mock.patch(
+                    "research.provider_ingest.post",
+                    side_effect=self._gateway(run, families, calls, design),
+                ):
+                    result = g.providers(
+                        design,
+                        setup,
+                        run,
+                        source,
+                        today,
+                        design.dev_stage,
+                        g.committed(source, design.phases),
+                        summarizer=lambda text: ["The current agreement."],
+                    )
+                self.assertEqual((result["refused"], result["ingestion_errors"]), ([], []))
+                self.assertNotIn("graphiti", {b["provider"] for b in calls["/ingest"]})
+                jobs = [j for j in public["jobs"] if j["session"] == 2]
+                outcome = self._run(design, setup, run, jobs, policy, source)
+                self.assertEqual(outcome["refused"], [])
+                summary = g.dev_summary(design, run, setup, source, today, outcome)
+                self.assertEqual((summary["verdict"], summary["dropped_arms"]), ("PASS", []))
+                rows = [r for r in summary["rows"] if r["arm"] not in ("Tn",)]
+                self.assertTrue(all(r["success"] for r in rows), rows)
+
+    def test_second_model_families_avoid_studies_13_to_18(self) -> None:
+        g, commit = self.g, "6" * 40
+
+        def keys(families: Any) -> set[Any]:
+            return {
+                x for f in families for x in (f["user_id"], f["order_id"], (f["first"], f["last"]))
+            }
+
+        from research import commitment_pilot as cp
+
+        base, pool = cp._vendor_env()[1][1], g.hf.prepare()["pool"]
+        earlier = keys(g.avoid_families(base, pool, later=True))
+        built = {}
+        for design in (g.GM, g.LM):
+            families = list(g.prepare(design, g.eval_seed(commit, design.tag))["families"].values())
+            self.assertEqual(
+                sorted(f["family"] for f in families),
+                [f"{design.letter}{i:02d}" for i in range(1, 33)],
+            )
+            built[design.key] = keys(families)
+            self.assertFalse(earlier & built[design.key], design.key)
+        built["lm-dev"] = keys(g.prepare(g.LM)["families"].values())
+        self.assertFalse(earlier & built["lm-dev"])
+        self.assertFalse(built["gm"] & built["lm"] or built["lm"] & built["lm-dev"])
+
 
 if __name__ == "__main__":
     unittest.main()

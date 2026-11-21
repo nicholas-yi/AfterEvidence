@@ -1,5 +1,6 @@
-"""Pre-specified analyses of Studies 13 to 18 (research/gaps.py; tags gaps-eval-v1,
-long-history-eval-v1 and address-change-eval-v1).
+"""Pre-specified analyses of Studies 13 to 20 (research/gaps.py; tags gaps-eval-v1,
+long-history-eval-v1, address-change-eval-v1, and for the gpt-6-luna replications (gm, lm)
+second-model-gaps-eval-v1 and second-model-long-history-eval-v1).
 
 Standard library only, so CI can recompute the published tables from the public CSVs. Unit: family;
 a family without every session-1 agreement is excluded from every arm. Only arms complete for every
@@ -89,6 +90,37 @@ STUDIES: dict[str, dict[str, Any]] = {
         },
     },
     "lh": {
+        "phases": ("a", "b", "c", "d", "e"),
+        "arms": ("Hn", "Mi", "Hod", "Fd"),
+        "blocks": {
+            "primary_success": tuple((a, b, "success") for a, b in PROVIDER_PAIRS),
+            "secondary_superseded": tuple((a, b, "superseded") for a, b in PROVIDER_PAIRS),
+        },
+    },
+    # Studies 19-20 (gpt-6-luna): the Study 13/15 and Study 14 designs, pre-specified identically.
+    "gm": {
+        "phases": ("a", "b"),
+        "arms": ("Hn", "Fd", "Fs", "Fsh", "Tn", "Tp", "Mi", "Mz", "Fz", "Hod", "Hz"),
+        "blocks": {
+            "study13_primary": (("Fsh", "Fs", "success"), ("Tp", "Tn", "success")),
+            "study13_secondary": (
+                ("Fs", "Fd", "success"),
+                ("Fsh", "Hn", "success"),
+                ("Fs", "Fd", "stale"),
+            ),
+            "study15_primary": (
+                ("Mz", "Mi", "injected"),
+                ("Hz", "Hod", "injected"),
+                ("Fz", "Fd", "injected"),
+            ),
+            "study15_secondary": (
+                ("Mz", "Mi", "success"),
+                ("Hz", "Hod", "success"),
+                ("Fz", "Fd", "success"),
+            ),
+        },
+    },
+    "lm": {
         "phases": ("a", "b", "c", "d", "e"),
         "arms": ("Hn", "Mi", "Hod", "Fd"),
         "blocks": {
@@ -286,7 +318,7 @@ def analyse(study: str, rows: list[dict[str, Any]], planned_families: int = 32) 
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Pre-specified analyses of Studies 13 to 18.")
+    parser = argparse.ArgumentParser(description="Pre-specified analyses of Studies 13 to 20.")
     parser.add_argument("--study", choices=sorted(STUDIES), required=True)
     source = parser.add_mutually_exclusive_group(required=True)
     source.add_argument(

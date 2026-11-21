@@ -577,6 +577,31 @@ class GapsTests(unittest.TestCase):
         self.assertEqual(result["b.csv"]["agree_with_oracle"], 3)
         self.assertIn("q1_outcome", result["between_reviewers"])
 
+    def test_reported_done_ends_on_reports_only(self) -> None:
+        from research import gaps
+
+        reports = {
+            "Your exchange for order #W1 has been requested: the lamp will be exchanged for item 2.": True,
+            "The exchange has already been processed, so I have not made a second one.": True,
+            "The address change has been applied.": True,
+            "Your exchange request is confirmed for order #W1.": True,
+            "Once the exchange is complete, you will get an email.": False,
+            "Order #W1 (delivered; no exchange has been processed on it yet).": False,
+            "Please confirm that the item list above is complete.": False,
+            "After it is processed the status will change.": False,
+            "I'll submit the exchange now.": False,
+        }
+        for text, done in reports.items():
+            self.assertEqual(gaps.reported_done(text.casefold()), done, text)
+        customer_type = gaps.reporting(hf.RestatingCustomer)
+        self.assertEqual(customer_type.__name__, "RestatingCustomer")
+        text = "The exchange is now requested for order #W1; it will arrive soon."  # not cp.DONE
+        for kind, ends in ((customer_type, True), (hf.RestatingCustomer, False)):
+            customer = kind(F, 2, "Hn")
+            customer.reply(OPENING)
+            customer.reply(f"Shall I exchange it for item {F['target_id']}?")
+            self.assertEqual(STOP in customer.reply(text), ends, kind)
+
     def test_analysis_blocks_and_foreign_items(self) -> None:
         from research import gaps_analysis as ga
 

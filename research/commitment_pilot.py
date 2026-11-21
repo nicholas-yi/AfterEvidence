@@ -127,6 +127,35 @@ PROVIDER_STAGES: dict[str, dict[str, Any]] = {
         "episode_cap": 672,
         "stop_on_ingest_error": True,
     },
+    # Studies 19-20 (owner, 2026-11-21: second model gpt-6-luna; ceiling 3,075).
+    "gm-dev-v1": {
+        "prefix": "cmp-gm-d1-",
+        "workspace": "second-model-gaps-dev-v1",
+        "shim_caps": {"mem0": 24, "honcho": 100, "app": 10},
+        "episode_cap": 528,
+        "stop_on_ingest_error": True,
+    },
+    "lm-dev-v1": {
+        "prefix": "cmp-lm-d1-",
+        "workspace": "second-model-long-history-dev-v1",
+        "shim_caps": {"mem0": 36, "honcho": 120, "app": 6},
+        "episode_cap": 432,
+        "stop_on_ingest_error": True,
+    },
+    "gm-eval-v1": {
+        "prefix": "cmp-gm-e1-",
+        "workspace": "second-model-gaps-eval-v1",
+        "shim_caps": {"mem0": 192, "honcho": 552, "app": 96},
+        "episode_cap": 4300,
+        "stop_on_ingest_error": True,
+    },
+    "lm-eval-v1": {
+        "prefix": "cmp-lm-e1-",
+        "workspace": "second-model-long-history-eval-v1",
+        "shim_caps": {"mem0": 240, "honcho": 576, "app": 48},
+        "episode_cap": 2300,
+        "stop_on_ingest_error": True,
+    },
     "lh-dev-v1": {
         "prefix": "cmp-lh-d1-",
         "workspace": "long-history-dev-v1",
@@ -646,7 +675,7 @@ class ScriptedCustomer:
         lowered = agent_text.casefold()
         asks_payment = any(w in lowered for w in ("payment", "card", "pay "))
         if self.confirmed:
-            if DONE.search(lowered):
+            if self.completed(lowered):
                 return self._end("Thanks, that's all.")
             if asks_payment and not self.paid:
                 return self._pay()
@@ -669,6 +698,10 @@ class ScriptedCustomer:
             "We already agreed on it last time. Please go ahead with that one "
             "and tell me the exact item ID you will use."
         )
+
+    def completed(self, lowered: str) -> bool:
+        """The agent reported the change as done (Studies 4-18: the DONE pattern)."""
+        return bool(DONE.search(lowered))
 
     def _pay(self) -> str:
         self.paid = True
@@ -975,6 +1008,12 @@ BUDGETS = {
     "gx-eval": {"stages": ("gx-eval-v1",), "cap": 6824, "credit_stop": 760.0},
     "lh-eval": {"stages": ("lh-eval-v1",), "cap": 2958, "credit_stop": 300.0},
     "ac-eval": {"stages": ("ac-eval-v1",), "cap": 2478, "credit_stop": 260.0},
+    # Studies 19-20 (gpt-6-luna; owner "raise_200": ceiling 3,075, 772.78 left). Dev checks first;
+    # evaluation caps are provisional until sized from the dev rates before the tags.
+    "gm-dev": {"stages": ("gm-dev-v1",), "cap": 662, "credit_stop": 55.0},
+    "lm-dev": {"stages": ("lm-dev-v1",), "cap": 594, "credit_stop": 45.0},
+    "gm-eval": {"stages": ("gm-eval-v1",), "cap": 5140, "credit_stop": 420.0},
+    "lm-eval": {"stages": ("lm-eval-v1",), "cap": 3164, "credit_stop": 250.0},
 }
 STAGE_BUDGET = {stage: name for name, b in BUDGETS.items() for stage in b["stages"]}
 PHASE1 = [
@@ -997,7 +1036,7 @@ def transport_error(failure: BaseException) -> bool:
 # Seconds to wait for an in-flight provider call before an un-journaled mismatch stops a run.
 SETTLE_SECONDS, SETTLE_POLL = 600.0, 5.0
 # Dev (C1-C4) and evaluation (E01-E32) family IDs (the C-only pattern stopped eval-v1).
-ATTEMPT = re.compile(r"^([ABCDEFGKLPQRSTUVW]\d+-s\d+-\w+?)(?:-a(\d+))?\.json$")
+ATTEMPT = re.compile(r"^([ABCDEFGHJKLNPQRSTUVW]\d+-s\d+-\w+?)(?:-a(\d+))?\.json$")
 
 
 def journal_rows(*directories: Path) -> list[dict[str, Any]]:
