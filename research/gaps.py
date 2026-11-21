@@ -296,7 +296,8 @@ AC = Design(
 OWNER_19 = (
     'Owner (ask_user, 2026-11-21): "do the second model reinforcement"; gpt-6-luna; the three '
     "strongest Study 13 and 15 findings plus Study 14's five-conversation task; ceiling raised by "
-    "200 to 3,075 credits (raise_200)."
+    "200 to 3,075 credits (raise_200), then after the dev checks by 100 to 3,175 (raise_100) so "
+    "every arm fits at caps."
 )
 GM = dataclasses.replace(
     GX,

@@ -145,15 +145,15 @@ PROVIDER_STAGES: dict[str, dict[str, Any]] = {
     "gm-eval-v1": {
         "prefix": "cmp-gm-e1-",
         "workspace": "second-model-gaps-eval-v1",
-        "shim_caps": {"mem0": 192, "honcho": 552, "app": 96},
-        "episode_cap": 4300,
+        "shim_caps": {"mem0": 192, "honcho": 480, "app": 96},
+        "episode_cap": 3310,
         "stop_on_ingest_error": True,
     },
     "lm-eval-v1": {
         "prefix": "cmp-lm-e1-",
         "workspace": "second-model-long-history-eval-v1",
-        "shim_caps": {"mem0": 240, "honcho": 576, "app": 48},
-        "episode_cap": 2300,
+        "shim_caps": {"mem0": 240, "honcho": 528, "app": 48},
+        "episode_cap": 2070,
         "stop_on_ingest_error": True,
     },
     "lh-dev-v1": {
@@ -1008,12 +1008,12 @@ BUDGETS = {
     "gx-eval": {"stages": ("gx-eval-v1",), "cap": 6824, "credit_stop": 760.0},
     "lh-eval": {"stages": ("lh-eval-v1",), "cap": 2958, "credit_stop": 300.0},
     "ac-eval": {"stages": ("ac-eval-v1",), "cap": 2478, "credit_stop": 260.0},
-    # Studies 19-20 (gpt-6-luna; owner "raise_200": ceiling 3,075, 772.78 left). Dev checks first;
-    # evaluation caps are provisional until sized from the dev rates before the tags.
+    # Studies 19-20 (gpt-6-luna; owner "raise_200" then "raise_100": ceiling 3,175). Evaluation caps
+    # from the dev checks; conservative at caps 487.0 + 334.7 = 821.7 of the 830.89 left.
     "gm-dev": {"stages": ("gm-dev-v1",), "cap": 662, "credit_stop": 55.0},
     "lm-dev": {"stages": ("lm-dev-v1",), "cap": 594, "credit_stop": 45.0},
-    "gm-eval": {"stages": ("gm-eval-v1",), "cap": 5140, "credit_stop": 420.0},
-    "lm-eval": {"stages": ("lm-eval-v1",), "cap": 3164, "credit_stop": 250.0},
+    "gm-eval": {"stages": ("gm-eval-v1",), "cap": 4078, "credit_stop": 495.0},
+    "lm-eval": {"stages": ("lm-eval-v1",), "cap": 2886, "credit_stop": 335.0},
 }
 STAGE_BUDGET = {stage: name for name, b in BUDGETS.items() for stage in b["stages"]}
 PHASE1 = [
