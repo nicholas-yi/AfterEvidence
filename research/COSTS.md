@@ -306,3 +306,13 @@ credits.
   2,066, **146.82** (160.82 charged, 14 aborts). Since "do them all" 1,095.22 recorded and 1,182.22
   charged of the 1,350 ceiling; no overage. Cumulative: **31,666 requests**, about **3,570.30
   credits** recorded.
+- Studies 13-18 (owner "solve all those, close all gaps", 2026-11-20; ceiling raised by 1,300 to
+  2,650, then by 225 to 2,875): dev checks 1,176 requests, 130.07 credits recorded (131.07 charged):
+  gx v1 (stopped by host events, not used) 38 / 3.76; gx v2 614 / 71.05; lh 283 / 28.00 (29.00
+  charged, one abort after a process kill); ac 241 / 27.26. Evaluations 9,099 requests: gx (tag
+  `gaps-eval-v1`) 5,111 of 6,824 (episodes 4,099, Mem0 186, Honcho 354, Graphiti 279, Hindsight 131,
+  app 62), **581.14** recorded (582.14 charged, one Graphiti shim abort); lh (`long-history-eval-v1`)
+  2,445 of 2,958, **248.26**; ac (`address-change-eval-v1`) 1,543 of 2,478, **158.53**; max single
+  call 0.47. Together 1,118.00 recorded, 1,120.00 charged; since "do them all" 2,302.22 charged of
+  the 2,875 ceiling; no overage. Cumulative: **41,941 requests**, about **4,688.30 credits**
+  recorded.

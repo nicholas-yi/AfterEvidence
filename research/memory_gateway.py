@@ -186,7 +186,8 @@ class Mem0Store:
 class GraphitiStore:
     def __init__(self) -> None:
         self.client = None
-        self.uuids_path = STATE / "graphiti-episodes.json"
+        # Per-stage state (it used the memory-study directory until Studies 13-18; see DESIGN).
+        self.uuids_path = state() / "graphiti-episodes.json"
         self.uuids: dict[str, str] = (
             json.loads(self.uuids_path.read_text()) if self.uuids_path.exists() else {}
         )

@@ -27,6 +27,7 @@ from typing import Any
 
 RUNS = Path(__file__).resolve().parent / "runs"
 STAGES = (
+    "cm-eval-v1",
     "cm-dated-eval-v1",
     "hf-eval-v1",
     "hf3-eval-v1",
@@ -117,6 +118,10 @@ def memory_shown(directory: Path, report: dict[str, Any]) -> str:
         return record.get("text") or f"(no memory block: {record.get('error') or 'empty'})"
     if arm in ("Hn", "Hnr"):
         plan = json.loads((directory / "plan.json").read_text(encoding="utf-8"))
+        if "today_utc" not in plan:  # Study 5: labelled, undated transcripts
+            from research import changed_mind as cm
+
+            return cm.labelled_history(directory, family)
         today = dt.date.fromisoformat(plan["today_utc"])
         sessions = plan.get("sessions") or {}
         from research import gaps
@@ -271,7 +276,7 @@ def score(packet: Path, reviews: list[Path]) -> dict[str, Any]:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Human-review packet for Studies 6-18.")
+    parser = argparse.ArgumentParser(description="Human-review packet for Studies 5-18.")
     sub = parser.add_subparsers(dest="command", required=True)
     b = sub.add_parser("build")
     b.add_argument("--out", type=Path, required=True)

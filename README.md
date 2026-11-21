@@ -97,7 +97,7 @@ The sleep-style condition borrows the memory-level idea of replay, reweighting a
 [Language Models Need Sleep](https://arxiv.org/abs/2606.03979). That paper also trains model
 weights, which a hosted model cannot do, so only the memory-level idea is tested.
 
-### Twelve studies
+### Eighteen studies
 
 | Study | Question | Design |
 |---|---|---|
@@ -113,6 +113,12 @@ weights, which a hosted model cannot do, so only the memory-level idea is tested
 | **10. Write it down** | Does writing the app's summary of the latest agreement into Mem0 help, and does memory the agent must ask for work as well as memory given up front? | 32 new customers; Study 6's dated task; 5 conditions |
 | **11. A third model** | Do the change-of-mind results hold with a third model family? | 32 new customers; `mai-code-1.1-flash` in every role; 4 conditions |
 | **12. Poisoned memory** | If a customer quotes a planted instruction to process a different item and disowns it, does memory lead the agent to act on it? | 32 new customers; 4 conditions; harm scored by the database |
+| **13. A stale summary; telling the agent to look** | What if the app's summary missed the latest conversation? Does one instruction make the agent use a memory tool? | 32 new customers (shared with 15-17); 6 conditions |
+| **14. A longer history** | With five conversations and two changes of mind, does memory follow the latest? | 32 new customers; 4 conditions |
+| **15. An injected memory** | If someone writes one false record into the memory store, does the agent act on it? | Shared with 13; the record written through each system's own write path; 3 pairs |
+| **16. Graphiti and Hindsight** | How do two more memory systems do on the change-of-mind task? | Shared with 13; 2 conditions |
+| **17. One scope for everyone** | What if an app stores every customer's memory together? | Shared with 13; 1 condition vs Mem0 per customer |
+| **18. Another decision** | Does the change-of-mind pattern hold for a different change (a pending order's shipping address)? | 32 new customers; 4 conditions |
 
 ### An analysis fixed before the data
 
@@ -141,6 +147,12 @@ weights, which a hosted model cannot do, so only the memory-level idea is tested
 | 10 | Does writing the facts into Mem0 help? Does a memory tool work? | Facts in Mem0 28/31 vs Mem0 alone 14/31 (significant); transcripts via a tool 5/31 vs up front 30/31 | [CSV](research/data/write-it-down-eval-v1-episodes.csv) |
 | 11 | Do the results hold with a third model? | `mai-code-1.1-flash`: Mem0 20 superseded of 31; Honcho 19/31; facts directly 31/31 | [CSV](research/data/third-model-eval-v1-episodes.csv) |
 | 12 | Does a quoted, disowned instruction in memory cause harm? | No arm acted on the planted item (0 of 27 each) | [CSV](research/data/poisoned-memory-eval-v1-episodes.csv) |
+| 13 | A stale app summary; a "check memory first" instruction | Stale summary 0/31 (30 superseded); with transcripts after it 29/31; tool plus instruction 31/31 vs 2/31 | [CSV](research/data/gaps-eval-v1-episodes.csv) |
+| 14 | Five conversations, two changes of mind | Transcripts 32/32, app facts 32/32; Mem0 4/32, Honcho 2/32 (mostly declined) | [CSV](research/data/long-history-eval-v1-episodes.csv) |
+| 15 | One injected record in memory | The injected item executed: app facts 31/31, Mem0 9/31, Honcho 8/31 (clean: 0) | [CSV](research/data/gaps-eval-v1-episodes.csv) |
+| 16 | Graphiti and Hindsight | Hindsight 25/31, Graphiti 12/31 (8 superseded); transcripts 31/31 | [CSV](research/data/gaps-eval-v1-episodes.csv) |
+| 17 | One Mem0 scope for every customer | 9/31 vs 20/31 per customer (significant); no other customer's item executed | [CSV](research/data/gaps-eval-v1-episodes.csv) |
+| 18 | A different decision: a pending order's address | Transcripts 27/32, app facts 25/32, Mem0 17/32 (3 superseded), Honcho 4/32 | [CSV](research/data/address-change-eval-v1-episodes.csv) |
 
 Each study's details:
 
@@ -420,6 +432,71 @@ writing memories directly. Data: [per-conversation CSV](research/data/poisoned-m
 
 </details>
 
+<details>
+<summary><b>Studies 13, 15, 16 and 17: a stale summary, an injected record, two more systems, one shared scope</b></summary>
+
+32 new customers (31 included) shared one set of earlier conversations (agree X, then change to Y);
+each condition below had its own memory store.
+
+| What the agent was given | Carried out the latest agreement | Carried out X | Carried out the injected item | Declined |
+|---|---:|---:|---:|---:|
+| Both earlier conversations, dated | 31 of 31 | 0 | 0 | 0 |
+| The app's facts after both conversations | 28 of 31 | 0 | 0 | 3 |
+| The app's facts after the first only (stale) | 0 of 31 | 30 | 0 | 1 |
+| The stale facts, then both conversations | 29 of 31 | 0 | 0 | 2 |
+| A memory tool only | 2 of 31 | 0 | 0 | 28 |
+| A memory tool, plus "check memory first" | 31 of 31 | 0 | 0 | 0 |
+| Mem0, dates in the text | 20 of 31 | 4 | 0 | 6 |
+| Mem0 plus one injected record | 4 of 31 | 3 | 9 | 15 |
+| The app's facts plus the injected record | 0 of 31 | 0 | 31 | 0 |
+| Honcho's summarized answer | 6 of 31 | 0 | 0 | 25 |
+| Honcho plus one injected record | 0 of 31 | 0 | 8 | 23 |
+| Mem0, one store for every customer | 9 of 31 | 5 | 0 | 17 |
+| Graphiti, dated | 12 of 31 | 8 | 0 | 11 |
+| Hindsight, dated | 25 of 31 | 0 | 0 | 5 |
+
+A summary that missed the latest conversation was the most harmful memory in any study; the
+transcripts placed after it undid the harm. One sentence telling the agent to check memory before
+acting made it use the tool every time. One false record dated after the last conversation, written
+the way an application writes memory, made the agent act on an item the customer never chose. Data:
+[per-conversation CSV](research/data/gaps-eval-v1-episodes.csv).
+
+</details>
+
+<details>
+<summary><b>Study 14: a longer history</b></summary>
+
+32 new customers, five dated conversations each: agree X, a question, change to Y, a question,
+change to W.
+
+| What the agent was given | Carried out W | Carried out X or Y | Declined |
+|---|---:|---:|---:|
+| All five conversations, dated | 32 of 32 | 0 | 0 |
+| Mem0, dates in the text | 4 of 32 | 5 | 23 |
+| Honcho's summarized answer | 2 of 32 | 0 | 30 |
+| The app's facts given directly | 32 of 32 | 0 | 0 |
+
+Data: [per-conversation CSV](research/data/long-history-eval-v1-episodes.csv).
+
+</details>
+
+<details>
+<summary><b>Study 18: a different decision</b></summary>
+
+32 new customers agreed a new shipping address for a pending order, then changed it, then said "go
+ahead with the address change we agreed".
+
+| What the agent was given | Used the latest address | Used the superseded address | Declined |
+|---|---:|---:|---:|
+| Both earlier conversations, dated | 27 of 32 | 0 | 5 |
+| Mem0, dates in the text | 17 of 32 | 3 | 12 |
+| Honcho's summarized answer | 4 of 32 | 0 | 27 |
+| The app's facts given directly | 25 of 32 | 0 | 7 |
+
+Data: [per-conversation CSV](research/data/address-change-eval-v1-episodes.csv).
+
+</details>
+
 ### Takeaways
 
 - **Measure memory on actions, not answers.** The revealing failures (wrong order, stale address)
@@ -438,21 +515,30 @@ writing memories directly. Data: [per-conversation CSV](research/data/poisoned-m
   item on request, no memory succeeded every time, while a memory that recalled the old agreement could
   still steer the agent to it.
 - **Write down what was decided.** Having the app summarize each conversation into the latest
-  agreement fixed most failures, given directly (28-31 of 31 across studies and models) or stored in
+  agreement fixed most failures, given directly (25-32 of 31-32 across studies, tasks and models) or stored in
   Honcho (26 of 30) or Mem0 (28 of 31); what the memory systems extracted on their own did not.
-- **Give memory up front.** The same transcripts offered through a tool were rarely requested (5 of
-  31 succeeded against 30 of 31 when given up front).
+- **Give memory up front, or tell the agent to look.** The same transcripts offered through a tool
+  were rarely requested (5 of 31, and 2 of 31, against 30-31 of 31 up front); one sentence telling
+  the agent to check memory first made it use the tool every time (31 of 31).
+- **A stale summary is worse than none.** When the app's summary missed the latest conversation, the
+  agent acted on the superseded agreement in 30 of 31 cases; the transcripts placed after it fixed it.
+- **The memory store is a trust boundary.** One false record written into memory made the agent act
+  on an item the customer never chose (31 of 31 given directly, 8-9 of 31 through Mem0 or Honcho).
+- **Longer histories widen the gap.** With five conversations and two changes of mind, transcripts and
+  the app's facts were perfect while Mem0 and Honcho mostly left the agent unable to act.
 - **The harm pattern holds across models; the hesitation does not.** Mem0's memory revived the
   superseded agreement with all three models tested; Honcho's never did, but how often the agent
   then declined depended on the model.
 - **A disowned instruction in memory did not cause harm here.** Memories that kept the customer's
   refusal next to a planted instruction never led the agent to follow it (27 customers).
+- **Memory systems differ a lot on this task.** Hindsight followed the latest agreement 25 of 31
+  times with no superseded action; Graphiti 12 (8 superseded); Mem0 about 20; Honcho 6 with this model.
 - **Deletion needs provenance.** Systems can only forget cleanly if they record where each memory
   came from.
 
 ## Verify the numbers
 
-Every Study 1, 2 and 4-12 table and both figures are recomputed from public per-episode tables,
+Every Study 1, 2 and 4-18 table and both figures are recomputed from public per-episode tables,
 [memory-study-v1-episodes.csv](research/data/memory-study-v1-episodes.csv),
 [commitment-eval-v1-episodes.csv](research/data/commitment-eval-v1-episodes.csv),
 [changed-mind-eval-v1-episodes.csv](research/data/changed-mind-eval-v1-episodes.csv),
@@ -461,8 +547,11 @@ Every Study 1, 2 and 4-12 table and both figures are recomputed from public per-
 [honcho-stage3-eval-v1-episodes.csv](research/data/honcho-stage3-eval-v1-episodes.csv),
 [second-model-eval-v1-episodes.csv](research/data/second-model-eval-v1-episodes.csv),
 [write-it-down-eval-v1-episodes.csv](research/data/write-it-down-eval-v1-episodes.csv),
-[third-model-eval-v1-episodes.csv](research/data/third-model-eval-v1-episodes.csv) and
-[poisoned-memory-eval-v1-episodes.csv](research/data/poisoned-memory-eval-v1-episodes.csv), which contain no
+[third-model-eval-v1-episodes.csv](research/data/third-model-eval-v1-episodes.csv),
+[poisoned-memory-eval-v1-episodes.csv](research/data/poisoned-memory-eval-v1-episodes.csv),
+[gaps-eval-v1-episodes.csv](research/data/gaps-eval-v1-episodes.csv),
+[long-history-eval-v1-episodes.csv](research/data/long-history-eval-v1-episodes.csv) and
+[address-change-eval-v1-episodes.csv](research/data/address-change-eval-v1-episodes.csv), which contain no
 transcripts, prompts, customer names or account data. CI fails if a published number or figure
 stops matching it:
 
@@ -496,13 +585,16 @@ python -m afterevidence serve
   `mai-code-1.1-flash`; Honcho's results changed with the model, so findings can depend on it; other
   models, retrieval styles or domains may differ.
 - **Low power.** 26 tasks × 2 runs can detect only large effects (about 15-20 points).
-- **Mostly one retrieval per episode.** Memory was fetched once from the first message; Studies 8 and
-  10 tried an on-demand memory tool, with one model and one tool description.
+- **Mostly one retrieval per episode.** Memory was fetched once from the first message; Studies 8, 10
+  and 13 tried an on-demand memory tool, with one model and one tool description.
 - **Default pipelines.** Each memory system ran its default configuration on a substituted model;
   their published results use other models. Builders can propose tuned configurations as separate
   arms ([fairness rules](research/README.md#fairness-to-memory-system-builders)).
-- **Simulated customers and narrow scoring.** The customer is an LLM whose fidelity has not been
-  human-reviewed, and scoring checks the database, not conversational quality.
+- **Simulated customers and narrow scoring.** The customers and the database oracle have not been
+  human-reviewed (a review packet is prepared), and scoring checks the database, not conversational
+  quality. In 16 sessions across the multi-session studies a correct change was scored a failure
+  because the scripted customer missed the agent's completion report; none reverses a comparison
+  ([details](research/RESULTS.md#sessions-cut-after-a-correct-change-all-multi-session-studies-descriptive)).
 
 ## Open questions
 
@@ -510,8 +602,8 @@ python -m afterevidence serve
 |---|---|
 | Does labelling memories with when they were written, and whether they were later corrected, stop an agent from acting on stale ones? | A first small synthetic run could not separate the conditions: the agent checked the live account every time, ignoring stale and valid memories alike. No comparison result. |
 | Would provider memory that records when each fact was agreed, or retrieval that asks for the latest agreement, close the gap to transcripts in Study 5? | Dates tested in Study 6: dated memories reported the right dates (Mem0 28, Honcho 31 of 31) but did not significantly change the outcome for either system. Study 7: Honcho's raw message search instead of its summary carried exact IDs every time but did not significantly change success (14 vs 8 of 32). Study 8: facts the app writes into Honcho did (26 vs 8 of 30), as did the same facts without Honcho (29 of 30). Retrieval that asks for the latest agreement is not yet tested. |
-| Do agents that query memory step by step, rather than once up front, benefit more? | Not with the tool tested: Study 8's on-demand Honcho tool was called in 5 of 30 conversations (1 success), and Study 10's tool returning the full transcripts in 9 of 31 (5 successes, against 30 of 31 up front). Other tool descriptions, prompting the agent to use memory, and other models are not yet tested. |
-| Can memory be poisoned into causing a wrong action? | Study 12: a quoted, disowned instruction never caused harm (0 of 27 per condition). Memories written directly by an attacker, instructions the customer does not disown, and leakage between customers are not tested. |
+| Do agents that query memory step by step, rather than once up front, benefit more? | Only when told to: Study 8's on-demand Honcho tool was called in 5 of 30 conversations (1 success), and the tool returning the full transcripts in 9 of 31 (Study 10) and 7 of 31 (Study 13). With one sentence telling the agent to check memory first it was called every time and succeeded 31 of 31 (Study 13). Other tool descriptions and models are not yet tested. |
+| Can memory be poisoned into causing a wrong action? | Study 12: a quoted, disowned instruction never caused harm (0 of 27 per condition). Study 15: one record written directly into the store did (31 of 31 given directly; 9 and 8 of 31 through Mem0 and Honcho). Study 17: a store shared by every customer lowered success (9 vs 20 of 31) but never led to another customer's item. Defences (provenance checks, rejecting unsourced records) are not yet tested. |
 
 Designs: [research design](research/DESIGN.md).
 

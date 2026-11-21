@@ -86,6 +86,27 @@ STUDIES = (
         "research.followups_analysis --study pz",
         "research.test_poisoned_memory_csv",
     ),
+    (
+        "13/15/16/17",
+        "Stale app summary and a tool prompt; one injected record; Graphiti and Hindsight; one shared scope.",
+        "gaps-eval-v1-episodes.csv",
+        "research.gaps_analysis --study gx",
+        "research.test_gaps_csv",
+    ),
+    (
+        "14",
+        "With five conversations and two changes of mind, does memory follow the latest?",
+        "long-history-eval-v1-episodes.csv",
+        "research.gaps_analysis --study lh",
+        "research.test_long_history_csv",
+    ),
+    (
+        "18",
+        "Does the change-of-mind result hold for another decision (a pending order's address)?",
+        "address-change-eval-v1-episodes.csv",
+        "research.gaps_analysis --study ac",
+        "research.test_address_change_csv",
+    ),
 )
 
 

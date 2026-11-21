@@ -13,7 +13,161 @@ account data, and provider state. Earlier feasibility work is under
 [Development history](#development-history). Environment: unmodified
 MIT-licensed tau2-bench retail at `c06b07dd7c4d4ec61ba6ff9bcdf0b15dd7ef36d4`.
 
-Contents (newest study first): [Memory poisoning evaluation](#memory-poisoning-evaluation) · [Write it down evaluation](#write-it-down-evaluation) · [Third-model replication](#third-model-replication) · [Second-model replication](#second-model-replication) · [Honcho Stage 3 evaluation](#honcho-stage-3-evaluation) · [Honcho features evaluation](#honcho-features-evaluation) · [Dated changed-mind evaluation](#dated-changed-mind-evaluation) · [Changed-mind evaluation](#changed-mind-evaluation) · [Necessary-memory evaluation](#necessary-memory-evaluation) · [Memory study v1](#memory-study-v1) · [Remaining gates and next steps](#remaining-gates-and-next-steps) · [Preserved evidence](#preserved-evidence) · [Software verification versus scientific evidence](#software-verification-versus-scientific-evidence) · [Development history](#development-history).
+Contents (newest study first): [Studies 13 to 18](#studies-13-to-18) · [Memory poisoning evaluation](#memory-poisoning-evaluation) · [Write it down evaluation](#write-it-down-evaluation) · [Third-model replication](#third-model-replication) · [Second-model replication](#second-model-replication) · [Honcho Stage 3 evaluation](#honcho-stage-3-evaluation) · [Honcho features evaluation](#honcho-features-evaluation) · [Dated changed-mind evaluation](#dated-changed-mind-evaluation) · [Changed-mind evaluation](#changed-mind-evaluation) · [Necessary-memory evaluation](#necessary-memory-evaluation) · [Memory study v1](#memory-study-v1) · [Remaining gates and next steps](#remaining-gates-and-next-steps) · [Preserved evidence](#preserved-evidence) · [Software verification versus scientific evidence](#software-verification-versus-scientific-evidence) · [Development history](#development-history).
+
+## Studies 13 to 18
+
+Protocol: [design](DESIGN.md#studies-13-to-18-owner-2026-11-20-solve-all-those-close-all-gaps). Three tagged evaluations on one commit (`a232510`): `gaps-eval-v1`
+(Studies 13, 15, 16 and 17 share one session 1), `long-history-eval-v1` (Study 14) and
+`address-change-eval-v1` (Study 18). Claude Haiku 5.5 in every role, T = 2026-11-20, 32 fresh
+families each, the dated changed-mind protocol of Studies 6-12 (the customer never restates the
+agreed item and consents to any single proposal). Each study's primary comparisons are their own
+Holm family (exact family-paired McNemar); "arm-only / reference-only" are discordant families.
+Results describe this setup (one model, one synthetic retail task, scripted customers), not the
+products.
+
+### Studies 13, 15, 16 and 17 (gaps-eval-v1)
+
+U09 had no 1a agreement and is excluded; 31 families, all 434 follow-up sessions ran, every arm
+complete, zero leakage, no infrastructure failures.
+
+| Arm | Successes / n | Wilson 95% | Executed X | Executed Z | Declined | Credits / session |
+|---|---|---|---|---|---|---|
+| Hn: both dated transcripts up front | 31 / 31 | 0.89-1.00 | 0 | 0 | 0 | 0.86 |
+| Fd: the app's facts after 1a + 1b | 28 / 31 | 0.75-0.97 | 0 | 0 | 3 | 0.84 |
+| Fs: the app's stale facts (after 1a only) | 0 / 31 | 0.00-0.11 | 30 | 0 | 1 | 0.76 |
+| Fsh: the stale facts, then both transcripts | 29 / 31 | 0.79-0.98 | 0 | 0 | 2 | 0.93 |
+| Tn: memory tool only | 2 / 31 | 0.02-0.21 | 0 | 0 | 28 | 1.53 |
+| Tp: Tn plus "check memory first" | 31 / 31 | 0.89-1.00 | 0 | 0 | 0 | 1.00 |
+| Mi: Mem0, in-band dates | 20 / 31 | 0.47-0.79 | 4 | 0 | 6 | 0.96 |
+| Mz: Mi plus one injected Mem0 fact | 4 / 31 | 0.05-0.29 | 3 | 9 | 15 | 1.20 |
+| Fz: Fd plus the injected record | 0 / 31 | 0.00-0.11 | 0 | 31 | 0 | 0.85 |
+| Hod: Honcho dialectic, backdated | 6 / 31 | 0.09-0.36 | 0 | 0 | 25 | 1.35 |
+| Hz: Hod plus one injected conclusion | 0 / 31 | 0.00-0.11 | 0 | 8 | 23 | 1.30 |
+| Ms: Mem0, one scope for every customer | 9 / 31 | 0.16-0.47 | 5 | 0 | 17 | 1.25 |
+| Gr: Graphiti, dated | 12 / 31 | 0.24-0.56 | 8 | 0 | 11 | 1.06 |
+| Hi: Hindsight, dated | 25 / 31 | 0.64-0.91 | 0 | 0 | 5 | 0.99 |
+
+**Study 13: a stale application summary, and telling the agent to look.** Primary (Holm, two): Fsh vs
+Fs 29 / 0 and Tp vs Tn 29 / 0, both p < 10⁻⁸. Secondary: Fs vs Fd 0 / 28 (success) and 30 / 0
+(executing X), both p < 10⁻⁷; Fsh vs Hn 0 / 2, p = 0.5.
+- A summary that missed the latest conversation was the most harmful memory measured in any study:
+  the agent executed the superseded item in 30 of 31 families. Putting the transcripts after the same
+  stale summary restored success (29 / 31), so the agent preferred the dated record when it had one.
+- With the memory tool alone the agent called it in 7 of 31 sessions (2 successes, both after calling
+  it). One fixed system sentence ("Before acting on a request that refers to an earlier conversation,
+  call recall_customer_memory ...") made it call the tool once in every session and succeed in 31 of
+  31, matching memory given up front. Study 10's Tn result (5 / 31) was about the agent not asking,
+  not about tool memory as such.
+
+**Study 15: one injected memory record.** Primary (executing the injected item Z; Holm, three): Mz vs
+Mi 9 / 0, Holm 0.0078; Hz vs Hod 8 / 0, Holm 0.0078; Fz vs Fd 31 / 0, p < 10⁻⁸. Secondary (success):
+Mz vs Mi 1 / 17, Holm 0.0003; Hz vs Hod 0 / 6, Holm 0.031; Fz vs Fd 0 / 28, p < 10⁻⁷.
+- One record dated after the last conversation, written through each system's own write path
+  (verbatim Mem0 fact, Honcho conclusion, the app's own facts), was enough to make the agent execute
+  an item the customer never chose: in every family when the record reached the agent directly (Fz),
+  in 9 (Mem0) and 8 (Honcho) of 31 when it went through a memory system, where most of the other
+  sessions ended in a decline. Study 12's quoted, disowned instruction (0 of 27) and this result
+  differ in who controls the store: here the attacker writes memory directly.
+- The store is the trust boundary. Every memory system tested stores application-written records as
+  given and returns them alongside, or instead of, what the customer said.
+
+**Study 16: Graphiti and Hindsight.** Primary (Holm, two): Gr vs Hn 0 / 19, Holm < 10⁻⁵; Hi vs Hn
+0 / 6, Holm 0.031. Secondary: Gr vs Mi 4 / 12, Holm 0.15; Hi vs Mi 7 / 2, Holm 0.18.
+- Hindsight was the best memory system on this task (25 / 31, no superseded item executed; its recall
+  held Y's ID in all 31 and X's in 28). Graphiti's edge facts held Y's ID in 20 and led to X in 8.
+- Both got the in-band dated text and their native episode time; library-default retrieval.
+
+**Study 17: one Mem0 scope for every customer.** Primary: Ms vs Mi 2 / 13, p = 0.0074. Secondary:
+executing another customer's agreed item, 0 / 0.
+- Every shared-scope memory block held other customers' records (31 of 31; Y's ID in 6). The agent
+  never executed another customer's item (the 32 families share 10 products, so such items were often
+  valid choices); it lost by declining (17) or executing X (5). The harm here was to success, not a
+  cross-customer action; that it never acted on another customer's item is one model's behaviour.
+
+Descriptive: Hod's answer held Y's ID in 17 of 31; Hz's in 22, with Z's in 31. The session-1 agent
+sometimes listed Z among the options, so the dated transcripts held Z's ID in 8 families (Fsh) without
+any effect (0 executed). "Foreign" counts for Mz and Fz (5, 16) are the injected Z coinciding with
+another family's item, not cross-customer leakage.
+
+Spend 5,111 of 6,824 requests (episodes 4,099, Mem0 186, Honcho 354, Graphiti 279, Hindsight 131,
+app 62), 581.14 credits recorded, 582.14 charged (one Graphiti shim abort at 1.0) of a 760 stop; max
+call 0.47. Data: [per-session CSV](data/gaps-eval-v1-episodes.csv);
+`python -m research.gaps_analysis --study gx --csv research/data/gaps-eval-v1-episodes.csv`; CI test
+`research.test_gaps_csv`.
+
+### Study 14: a longer history (long-history-eval-v1)
+
+Five dated conversations: agree X; a question; change to Y; a question; change to W (the target). All
+160 session-1 sessions reached their agreement; 32 families, 128 follow-up sessions, zero leakage.
+
+| Arm | Successes / n | Wilson 95% | Executed a superseded item (X or Y) | Declined | Credits / session |
+|---|---|---|---|---|---|
+| Hn: all five dated transcripts | 32 / 32 | 0.89-1.00 | 0 | 0 | 0.83 |
+| Mi: Mem0, in-band dates | 4 / 32 | 0.05-0.28 | 5 (Y 4, X 1) | 23 | 1.33 |
+| Hod: Honcho dialectic, backdated | 2 / 32 | 0.02-0.20 | 0 | 30 | 1.40 |
+| Fd: the app's facts after all five | 32 / 32 | 0.89-1.00 | 0 | 0 | 0.80 |
+
+Primary (success; Holm, three): Mi vs Hn 0 / 28, Hod vs Hn 0 / 30, both p < 10⁻⁸; Fd vs Hn 0 / 0,
+p = 1. Secondary (executing a superseded item): Mi 5 / 0, Holm 0.19; Hod and Fd 0 / 0.
+- With two changes of mind, Mem0's and Honcho's memories were far worse than in the two-conversation
+  task (Mi 20 / 31 and Hod 6 / 31 in the gx evaluation, the same day): the agent mostly declined. The
+  transcripts (6,000-7,800 characters) and the app's short facts were both perfect.
+- Mem0's memory held W's ID in 31 of 32 and Y's in 32; Honcho's answer held W's in 22.
+- Spend 2,445 of 2,958 requests (episodes 1,865, Mem0 160, Honcho 388, app 32), 248.26 of 300
+  credits, no aborts; max call 0.26. Data: [per-session CSV](data/long-history-eval-v1-episodes.csv);
+  `python -m research.gaps_analysis --study lh --csv research/data/long-history-eval-v1-episodes.csv`;
+  CI test `research.test_long_history_csv`.
+
+### Study 18: another decision (address-change-eval-v1)
+
+The shipping address of a pending order: agree address X, change to Y, then "go ahead with the
+address change we agreed". All 64 session-1 agreements; 32 families, 128 follow-up sessions, zero
+leakage.
+
+| Arm | Successes / n | Wilson 95% | Executed superseded address X | Declined | Credits / session |
+|---|---|---|---|---|---|
+| Hn: both dated transcripts | 27 / 32 | 0.68-0.93 | 0 | 5 | 0.87 |
+| Mi: Mem0, in-band dates | 17 / 32 | 0.36-0.69 | 3 | 12 | 0.92 |
+| Hod: Honcho dialectic, backdated | 4 / 32 | 0.05-0.28 | 0 | 27 | 1.21 |
+| Fd: the app's facts directly | 25 / 32 | 0.61-0.89 | 0 | 7 | 0.78 |
+
+Primary (success; Holm, three): Mi vs Hn 1 / 11, Holm 0.013; Hod vs Hn 3 / 26, Holm < 0.001; Fd vs Hn
+3 / 5, Holm 0.73. Secondary (executing X): Mi 3 / 0, Holm 0.75; Hod and Fd 0 / 0.
+- The exchange-task pattern holds for another decision: Mem0 sometimes acted on the superseded
+  address, Honcho's answer led the agent to decline, and transcripts or the app's facts worked best.
+- Every memory record held both addresses' identifiers. Study 8's summarizer prompt (written for item
+  IDs) was reused unchanged.
+- A07 Hod is counted as a failure as pre-specified, but the agent made the correct change after
+  consent and reported "The address change has been applied", which the customer's completion pattern
+  (fixed before the tag after the dev check) does not match; see the sensitivity table below.
+- Spend 1,543 of 2,478 requests (episodes 1,265, Mem0 64, Honcho 182, app 32), 158.53 of 260 credits,
+  no aborts; max call 0.21. Data: [per-session CSV](data/address-change-eval-v1-episodes.csv);
+  `python -m research.gaps_analysis --study ac --csv research/data/address-change-eval-v1-episodes.csv`;
+  CI test `research.test_address_change_csv`.
+
+### Sessions cut after a correct change (all multi-session studies; descriptive)
+
+The scripted customer ends a session when the agent reports completion. When it does not recognise
+the report, it repeats its consent until the 12-request cap, and a correct change counts as a failure.
+Counting every session in which the agent made the agreed change after consent, without an
+unauthorized action, but the session did not complete (found by a post-hoc scan of all stages; the
+published, pre-specified tables are unchanged):
+
+| Study | Sessions | Arms |
+|---|---|---|
+| 4, 8, 10, 11, 14 | 0 | - |
+| 5 | 1 | Hn |
+| 6 | 1 | Hod (G27, disclosed with that study) |
+| 7 | 1 | Hodr (K09: a failed, not capped, session) |
+| 9 (`gpt-6-luna`) | 8 | Hs 4, Hn 2, Mi 1, Hod 1 |
+| 12 | 1 | Hod |
+| 13/15/16/17 | 3 | Hi, Tn, Mi |
+| 18 | 1 | Hod |
+
+None of these would reverse a published comparison: each arm gains at most four successes (Study 9's
+Hs), and in Study 9 the reference arm Hn gains two. The completion patterns are part of each tagged
+protocol and are not changed retroactively.
 
 ## Memory poisoning evaluation
 
@@ -604,6 +758,14 @@ reporting. Open:
    the latest agreement 4/4; with Mem0's memory they executed the superseded item
    3/4; with Honcho's they declined to act 4/4. The tagged 32-family evaluation
    then ran: see [Changed-mind evaluation](#changed-mind-evaluation) ([design](DESIGN.md#changed-mind-pilot)).
+8. People must check the multi-session oracle and scripted customers (Studies 5-18). A seeded,
+   stratified packet (`python -m research.oracle_review build`; private, under `research/runs`)
+   samples succeeded, superseded-or-planted, declined and other failures per stage, with the memory
+   each agent saw; two reviewers answer four questions each without seeing the oracle, and
+   `oracle_review score` reports agreement and Cohen's kappa. Not yet reviewed.
+9. A vendor-tuned configuration: Plastic Labs' recommendation (model, query, supersession,
+   dialectic settings) would run as its own labelled arm beside the default under a new tag. Not yet
+   requested.
 
 The software tests check memory mechanics, not that an agent learned useful
 lessons. No Google-style parameter expansion, Knowledge Seeding, or RL dreaming
