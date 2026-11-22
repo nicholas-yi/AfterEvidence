@@ -316,3 +316,10 @@ credits.
   call 0.47. Together 1,118.00 recorded, 1,120.00 charged; since "do them all" 2,302.22 charged of
   the 2,875 ceiling; no overage. Cumulative: **41,941 requests**, about **4,688.30 credits**
   recorded.
+- Studies 19-20 (owner 2026-11-21: second model `gpt-6-luna`; ceiling raised to 3,075, then 3,175):
+  dev checks gm 353 / 25.36 and lm 268 / 16.53; evaluations gm (tag `second-model-gaps-eval-v1`)
+  3,257 of 4,078 requests, **224.18** recorded (225.18 charged, one abort after a host sleep), lm
+  (`second-model-long-history-eval-v1`) 2,124 of 2,886, **132.93** (133.93 charged, one abort); about
+  0.07 credits per request; max single call 0.37. Together 398.99 recorded, 401.00 charged; since "do
+  them all" 2,703.22 charged of the 3,175 ceiling; no overage. Cumulative: **47,943 requests**,
+  about **5,087.30 credits** recorded.

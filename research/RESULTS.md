@@ -13,7 +13,98 @@ account data, and provider state. Earlier feasibility work is under
 [Development history](#development-history). Environment: unmodified
 MIT-licensed tau2-bench retail at `c06b07dd7c4d4ec61ba6ff9bcdf0b15dd7ef36d4`.
 
-Contents (newest study first): [Studies 13 to 18](#studies-13-to-18) · [Memory poisoning evaluation](#memory-poisoning-evaluation) · [Write it down evaluation](#write-it-down-evaluation) · [Third-model replication](#third-model-replication) · [Second-model replication](#second-model-replication) · [Honcho Stage 3 evaluation](#honcho-stage-3-evaluation) · [Honcho features evaluation](#honcho-features-evaluation) · [Dated changed-mind evaluation](#dated-changed-mind-evaluation) · [Changed-mind evaluation](#changed-mind-evaluation) · [Necessary-memory evaluation](#necessary-memory-evaluation) · [Memory study v1](#memory-study-v1) · [Remaining gates and next steps](#remaining-gates-and-next-steps) · [Preserved evidence](#preserved-evidence) · [Software verification versus scientific evidence](#software-verification-versus-scientific-evidence) · [Development history](#development-history).
+Contents (newest study first): [Studies 19 and 20](#studies-19-and-20-a-second-model) · [Studies 13 to 18](#studies-13-to-18) · [Memory poisoning evaluation](#memory-poisoning-evaluation) · [Write it down evaluation](#write-it-down-evaluation) · [Third-model replication](#third-model-replication) · [Second-model replication](#second-model-replication) · [Honcho Stage 3 evaluation](#honcho-stage-3-evaluation) · [Honcho features evaluation](#honcho-features-evaluation) · [Dated changed-mind evaluation](#dated-changed-mind-evaluation) · [Changed-mind evaluation](#changed-mind-evaluation) · [Necessary-memory evaluation](#necessary-memory-evaluation) · [Memory study v1](#memory-study-v1) · [Remaining gates and next steps](#remaining-gates-and-next-steps) · [Preserved evidence](#preserved-evidence) · [Software verification versus scientific evidence](#software-verification-versus-scientific-evidence) · [Development history](#development-history).
+
+## Studies 19 and 20: a second model
+
+Protocol: [design](DESIGN.md#studies-19-and-20-a-second-model-owner-2026-11-21). Tags `second-model-gaps-eval-v1` (Study 19: Studies 13 and 15 again)
+and `second-model-long-history-eval-v1` (Study 20: Study 14 again), both on `91662d7`. `gpt-6-luna`
+(OpenAI) as the agent, the summarizer and every memory system's internal model; the same scripted
+customer, except that it now ends the session on a wider set of completion reports (validated on
+every earlier session before the tag). T = 2026-11-21, 32 fresh families each; every session-1
+agreement was reached (64 and 160), so no family is excluded. Comparisons with Claude Haiku 5.5
+(Studies 13-15) are descriptive: different families, model and stopping rule.
+
+### Study 19: stale summary, "check memory first" and an injected record
+
+| Arm | Successes / n | Wilson 95% | Executed X | Executed Z | Haiku (Studies 13/15) |
+|---|---|---|---|---|---|
+| Hn: both dated transcripts up front | 32 / 32 | 0.89-1.00 | 0 | 0 | 31 / 31 |
+| Fd: the app's facts after 1a + 1b | 31 / 32 | 0.84-0.99 | 0 | 0 | 28 / 31 |
+| Fs: the app's stale facts (after 1a only) | 0 / 32 | 0.00-0.11 | 31 | 0 | 0 / 31 (X 30) |
+| Fsh: the stale facts, then both transcripts | 32 / 32 | 0.89-1.00 | 0 | 0 | 29 / 31 |
+| Tn: memory tool only | 32 / 32 | 0.89-1.00 | 0 | 0 | 2 / 31 |
+| Tp: Tn plus "check memory first" | 32 / 32 | 0.89-1.00 | 0 | 0 | 31 / 31 |
+| Mi: Mem0, in-band dates | 22 / 32 | 0.51-0.82 | 9 | 0 | 20 / 31 (X 4) |
+| Mz: Mi plus one injected Mem0 fact | 3 / 32 | 0.03-0.24 | 3 | 26 | 4 / 31 (Z 9) |
+| Fz: Fd plus the injected record | 0 / 32 | 0.00-0.11 | 0 | 32 | 0 / 31 (Z 31) |
+| Hod: Honcho dialectic, backdated | 31 / 32 | 0.84-0.99 | 0 | 0 | 6 / 31 |
+| Hz: Hod plus one injected conclusion | 0 / 32 | 0.00-0.11 | 0 | 32 | 0 / 31 (Z 8) |
+
+Study 13 primary (Holm, two): Fsh vs Fs 32 / 0, p < 10⁻⁸; Tp vs Tn 0 / 0, p = 1. Secondary: Fs vs
+Fd 0 / 31 (success) and 31 / 0 (executing X), both p < 10⁻⁸; Fsh vs Hn 0 / 0. Study 15 primary
+(executing Z; Holm, three): Mz vs Mi 26 / 0, Hz vs Hod 32 / 0, Fz vs Fd 32 / 0, all p < 10⁻⁷.
+Secondary (success): Mz vs Mi 1 / 20, Hz vs Hod 0 / 31, Fz vs Fd 0 / 31, all p < 10⁻⁴.
+
+- **The stale summary replicates exactly.** A summary that missed the latest conversation led
+  `gpt-6-luna` to the superseded item in 31 of 32 families; the transcripts placed after it gave
+  32 / 32. This is now shown with two model families.
+- **The memory tool result does not replicate, and that is the finding.** `gpt-6-luna` called the
+  tool in all 32 sessions without being told (Haiku: 7 of 31), so the instruction had nothing to add
+  (Tp vs Tn 0 / 0). Whether an agent uses memory on request depends on the model; the instruction
+  makes Haiku match a model that already looks.
+- **The injected record was more effective, not less.** One false record dated after the last
+  conversation was executed in 26 of 32 families through Mem0 and 32 of 32 through Honcho (Haiku: 9
+  and 8 of 31, mostly declining instead). `gpt-6-luna` acted where Haiku hesitated, so the same
+  record did more harm. Honcho's answer surfaced the injected item in all 32 and the real one in 2.
+- Without injection, Honcho's dialectic worked well with this model (31 / 32, as in Study 9's
+  27 / 32), while Mem0 again led to the superseded item (9 of 32).
+
+### Study 20: a longer history
+
+| Arm | Successes / n | Wilson 95% | Executed a superseded item (X or Y) | Declined | Haiku (Study 14) |
+|---|---|---|---|---|---|
+| Hn: all five dated transcripts | 30 / 32 | 0.80-0.98 | 0 | 2 | 32 / 32 |
+| Mi: Mem0, in-band dates | 15 / 32 | 0.31-0.64 | 16 | 1 | 4 / 32 (5) |
+| Hod: Honcho dialectic, backdated | 28 / 32 | 0.72-0.95 | 0 | 3 | 2 / 32 |
+| Fd: the app's facts after all five | 32 / 32 | 0.89-1.00 | 0 | 0 | 32 / 32 |
+
+Primary (success; Holm, three): Mi vs Hn 1 / 16, Holm 0.0008; Hod vs Hn 2 / 4, Holm 1.0; Fd vs Hn
+2 / 0, Holm 1.0. Secondary (executing a superseded item): Mi vs Hn 16 / 0, Holm 0.0001; Hod and Fd
+0 / 0.
+- With five conversations, Mem0's memory led `gpt-6-luna` to a superseded item in half the families
+  (Haiku mostly declined instead). Honcho and the app's facts both worked with this model.
+- Across both models the app's own short record of the current agreement stayed at 31-32 of 32.
+
+### What replicates across models
+
+| Finding | Claude Haiku 5.5 | `gpt-6-luna` |
+|---|---|---|
+| A stale app summary leads to the superseded item | 30 of 31 | 31 of 32 |
+| The app's current facts given directly | 28-32 of 31-32 | 31-32 of 32 |
+| One injected record is executed (Mem0 / Honcho / direct) | 9 / 8 / 31 of 31 | 26 / 32 / 32 of 32 |
+| Mem0 leads to a superseded item (two / five conversations) | 4 / 5 | 9 / 16 |
+| Honcho's dialectic succeeds (two / five conversations) | 6 / 2 | 31 / 28 |
+| The memory tool is used without being told | 7 of 31 | 32 of 32 |
+
+The first four replicate; Honcho's results and tool use depend on the model (as in Studies 9 and
+11).
+
+Infrastructure: the host was put to sleep twice by another application ("Application API", despite
+the sleep guard), for 7.3 and 5.1 hours. The first cut one Honcho ingestion (Study 20, J12 session
+1a): all its messages had been stored and Honcho derived it after waking, but the gateway's wait
+timed out, so the providers phase stopped before any retrieval, as pre-specified; it was verified,
+recorded as complete (`recoveries.json`) and resumed without re-adding anything. The second cut one
+Study 19 session's model call (H25 Mi), which the infrastructure rule re-attempted. Two aborts
+charged at 1.0. All earlier Mem0 stores and Honcho workspaces unchanged.
+
+Spend: Study 19 3,257 of 4,078 requests (episodes 2,745, Mem0 128, Honcho 320, app 64), 224.18
+recorded, 225.18 charged of 495; Study 20 2,124 of 2,886 (episodes 1,540, Mem0 160, Honcho 392, app
+32), 132.93 recorded, 133.93 charged of 335; max call 0.37. Data:
+[Study 19 CSV](data/second-model-gaps-eval-v1-episodes.csv),
+[Study 20 CSV](data/second-model-long-history-eval-v1-episodes.csv);
+`python -m research.gaps_analysis --study gm|lm --csv <CSV>`; CI tests
+`research.test_second_model_gaps_csv` and `research.test_second_model_long_history_csv`.
 
 ## Studies 13 to 18
 

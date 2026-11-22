@@ -107,6 +107,20 @@ STUDIES = (
         "research.gaps_analysis --study ac",
         "research.test_address_change_csv",
     ),
+    (
+        "19",
+        "Do the stale-summary, check-memory and injected-record findings hold with gpt-6-luna?",
+        "second-model-gaps-eval-v1-episodes.csv",
+        "research.gaps_analysis --study gm",
+        "research.test_second_model_gaps_csv",
+    ),
+    (
+        "20",
+        "Does the five-conversation result hold with gpt-6-luna?",
+        "second-model-long-history-eval-v1-episodes.csv",
+        "research.gaps_analysis --study lm",
+        "research.test_second_model_long_history_csv",
+    ),
 )
 
 

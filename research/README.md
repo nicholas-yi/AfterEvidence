@@ -2,7 +2,7 @@
 
 This is separate from the local app. It asks whether agent memory helps an agent act correctly
 on tau2-bench retail tasks, whether stale memory misleads it, and whether deletion removes what was
-derived from a conversation. Eighteen pre-registered studies are complete; their tables, deviations and
+derived from a conversation. Twenty pre-registered studies are complete; their tables, deviations and
 history are in [RESULTS](RESULTS.md), designs in [DESIGN](DESIGN.md), usage in [COSTS](COSTS.md).
 Every published table is recomputed from a public CSV in CI (`python -m research.benchmark verify`).
 

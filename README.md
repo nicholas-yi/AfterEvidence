@@ -97,7 +97,7 @@ The sleep-style condition borrows the memory-level idea of replay, reweighting a
 [Language Models Need Sleep](https://arxiv.org/abs/2606.03979). That paper also trains model
 weights, which a hosted model cannot do, so only the memory-level idea is tested.
 
-### Eighteen studies
+### Twenty studies
 
 | Study | Question | Design |
 |---|---|---|
@@ -119,6 +119,8 @@ weights, which a hosted model cannot do, so only the memory-level idea is tested
 | **16. Graphiti and Hindsight** | How do two more memory systems do on the change-of-mind task? | Shared with 13; 2 conditions |
 | **17. One scope for everyone** | What if an app stores every customer's memory together? | Shared with 13; 1 condition vs Mem0 per customer |
 | **18. Another decision** | Does the change-of-mind pattern hold for a different change (a pending order's shipping address)? | 32 new customers; 4 conditions |
+| **19. Studies 13 and 15 with a second model** | Do the stale-summary, tool and injected-record findings hold with `gpt-6-luna`? | 32 new customers; 11 conditions |
+| **20. Study 14 with a second model** | Does the five-conversation result hold with `gpt-6-luna`? | 32 new customers; 4 conditions |
 
 ### An analysis fixed before the data
 
@@ -153,6 +155,8 @@ weights, which a hosted model cannot do, so only the memory-level idea is tested
 | 16 | Graphiti and Hindsight | Hindsight 25/31, Graphiti 12/31 (8 superseded); transcripts 31/31 | [CSV](research/data/gaps-eval-v1-episodes.csv) |
 | 17 | One Mem0 scope for every customer | 9/31 vs 20/31 per customer (significant); no other customer's item executed | [CSV](research/data/gaps-eval-v1-episodes.csv) |
 | 18 | A different decision: a pending order's address | Transcripts 27/32, app facts 25/32, Mem0 17/32 (3 superseded), Honcho 4/32 | [CSV](research/data/address-change-eval-v1-episodes.csv) |
+| 19 | Studies 13 and 15 with `gpt-6-luna` | Stale summary 0/32 (31 superseded) replicates; injected record executed via Mem0 26, Honcho 32, directly 32 of 32; tool used unprompted 32/32 | [CSV](research/data/second-model-gaps-eval-v1-episodes.csv) |
+| 20 | Study 14 with `gpt-6-luna` | Transcripts 30/32, app facts 32/32, Honcho 28/32; Mem0 15/32 with 16 superseded | [CSV](research/data/second-model-long-history-eval-v1-episodes.csv) |
 
 Each study's details:
 
@@ -497,6 +501,28 @@ Data: [per-conversation CSV](research/data/address-change-eval-v1-episodes.csv).
 
 </details>
 
+<details>
+<summary><b>Studies 19 and 20: the strongest findings with a second model</b></summary>
+
+`gpt-6-luna` played the agent, the summarizer and each memory system's internal model, on 32 new
+customers per study (64 in total).
+
+| Finding | Claude Haiku 5.5 | `gpt-6-luna` |
+|---|---|---|
+| A stale app summary led to the superseded item | 30 of 31 | 31 of 32 |
+| The transcripts placed after that summary fixed it | 29 of 31 | 32 of 32 |
+| One injected record was acted on (Mem0 / Honcho / given directly) | 9 / 8 / 31 of 31 | 26 / 32 / 32 of 32 |
+| Mem0 led to a superseded item (two / five conversations) | 4 / 5 | 9 / 16 |
+| Honcho's answer succeeded (two / five conversations) | 6 / 2 | 31 / 28 |
+| The agent used the memory tool without being told | 7 of 31 | 32 of 32 |
+
+The stale-summary harm, the injected-record harm and Mem0's revival of superseded agreements
+replicate; the injected record did more harm with the model that acted more readily. Honcho's
+results and tool use depend on the model. Data: [Study 19 CSV](research/data/second-model-gaps-eval-v1-episodes.csv),
+[Study 20 CSV](research/data/second-model-long-history-eval-v1-episodes.csv).
+
+</details>
+
 ### Takeaways
 
 - **Measure memory on actions, not answers.** The revealing failures (wrong order, stale address)
@@ -517,15 +543,19 @@ Data: [per-conversation CSV](research/data/address-change-eval-v1-episodes.csv).
 - **Write down what was decided.** Having the app summarize each conversation into the latest
   agreement fixed most failures, given directly (25-32 of 31-32 across studies, tasks and models) or stored in
   Honcho (26 of 30) or Mem0 (28 of 31); what the memory systems extracted on their own did not.
-- **Give memory up front, or tell the agent to look.** The same transcripts offered through a tool
-  were rarely requested (5 of 31, and 2 of 31, against 30-31 of 31 up front); one sentence telling
-  the agent to check memory first made it use the tool every time (31 of 31).
+- **Give memory up front, or tell the agent to look.** Claude Haiku 5.5 rarely asked a memory tool
+  (2-5 of 31 succeeded, against 30-31 up front); one sentence telling it to check memory first made
+  it use the tool every time (31 of 31). `gpt-6-luna` used the tool unprompted (32 of 32), so whether
+  an agent looks depends on the model.
 - **A stale summary is worse than none.** When the app's summary missed the latest conversation, the
-  agent acted on the superseded agreement in 30 of 31 cases; the transcripts placed after it fixed it.
+  agent acted on the superseded agreement in 30 of 31 cases (31 of 32 with a second model); the
+  transcripts placed after it fixed it.
 - **The memory store is a trust boundary.** One false record written into memory made the agent act
-  on an item the customer never chose (31 of 31 given directly, 8-9 of 31 through Mem0 or Honcho).
+  on an item the customer never chose: 31 of 31 given directly and 8-9 of 31 through Mem0 or Honcho
+  with Claude Haiku 5.5; 26-32 of 32 through either with `gpt-6-luna`, which acts more readily.
 - **Longer histories widen the gap.** With five conversations and two changes of mind, transcripts and
-  the app's facts were perfect while Mem0 and Honcho mostly left the agent unable to act.
+  the app's facts were near perfect with both models, while Mem0 left the agent unable to act (Haiku)
+  or acting on a superseded agreement (16 of 32 with `gpt-6-luna`).
 - **The harm pattern holds across models; the hesitation does not.** Mem0's memory revived the
   superseded agreement with all three models tested; Honcho's never did, but how often the agent
   then declined depended on the model.
@@ -538,7 +568,7 @@ Data: [per-conversation CSV](research/data/address-change-eval-v1-episodes.csv).
 
 ## Verify the numbers
 
-Every Study 1, 2 and 4-18 table and both figures are recomputed from public per-episode tables,
+Every Study 1, 2 and 4-20 table and both figures are recomputed from public per-episode tables,
 [memory-study-v1-episodes.csv](research/data/memory-study-v1-episodes.csv),
 [commitment-eval-v1-episodes.csv](research/data/commitment-eval-v1-episodes.csv),
 [changed-mind-eval-v1-episodes.csv](research/data/changed-mind-eval-v1-episodes.csv),
@@ -550,8 +580,10 @@ Every Study 1, 2 and 4-18 table and both figures are recomputed from public per-
 [third-model-eval-v1-episodes.csv](research/data/third-model-eval-v1-episodes.csv),
 [poisoned-memory-eval-v1-episodes.csv](research/data/poisoned-memory-eval-v1-episodes.csv),
 [gaps-eval-v1-episodes.csv](research/data/gaps-eval-v1-episodes.csv),
-[long-history-eval-v1-episodes.csv](research/data/long-history-eval-v1-episodes.csv) and
-[address-change-eval-v1-episodes.csv](research/data/address-change-eval-v1-episodes.csv), which contain no
+[long-history-eval-v1-episodes.csv](research/data/long-history-eval-v1-episodes.csv),
+[address-change-eval-v1-episodes.csv](research/data/address-change-eval-v1-episodes.csv),
+[second-model-gaps-eval-v1-episodes.csv](research/data/second-model-gaps-eval-v1-episodes.csv) and
+[second-model-long-history-eval-v1-episodes.csv](research/data/second-model-long-history-eval-v1-episodes.csv), which contain no
 transcripts, prompts, customer names or account data. CI fails if a published number or figure
 stops matching it:
 
@@ -581,9 +613,10 @@ python -m afterevidence serve
 ## Limitations
 
 - **Three models, one domain.** Most studies use Claude Haiku 5.5 in every role, on retail customer
-  service. Studies 9 and 11 repeated the change-of-mind task with `gpt-6-luna` and
-  `mai-code-1.1-flash`; Honcho's results changed with the model, so findings can depend on it; other
-  models, retrieval styles or domains may differ.
+  service. Studies 9, 11, 19 and 20 repeated the change-of-mind tasks with `gpt-6-luna` and
+  `mai-code-1.1-flash`; the stale-summary, injected-record and Mem0 findings held, while Honcho's
+  results and memory-tool use changed with the model. Other models, retrieval styles or domains may
+  differ.
 - **Low power.** 26 tasks × 2 runs can detect only large effects (about 15-20 points).
 - **Mostly one retrieval per episode.** Memory was fetched once from the first message; Studies 8, 10
   and 13 tried an on-demand memory tool, with one model and one tool description.
@@ -602,8 +635,8 @@ python -m afterevidence serve
 |---|---|
 | Does labelling memories with when they were written, and whether they were later corrected, stop an agent from acting on stale ones? | A first small synthetic run could not separate the conditions: the agent checked the live account every time, ignoring stale and valid memories alike. No comparison result. |
 | Would provider memory that records when each fact was agreed, or retrieval that asks for the latest agreement, close the gap to transcripts in Study 5? | Dates tested in Study 6: dated memories reported the right dates (Mem0 28, Honcho 31 of 31) but did not significantly change the outcome for either system. Study 7: Honcho's raw message search instead of its summary carried exact IDs every time but did not significantly change success (14 vs 8 of 32). Study 8: facts the app writes into Honcho did (26 vs 8 of 30), as did the same facts without Honcho (29 of 30). Retrieval that asks for the latest agreement is not yet tested. |
-| Do agents that query memory step by step, rather than once up front, benefit more? | Only when told to: Study 8's on-demand Honcho tool was called in 5 of 30 conversations (1 success), and the tool returning the full transcripts in 9 of 31 (Study 10) and 7 of 31 (Study 13). With one sentence telling the agent to check memory first it was called every time and succeeded 31 of 31 (Study 13). Other tool descriptions and models are not yet tested. |
-| Can memory be poisoned into causing a wrong action? | Study 12: a quoted, disowned instruction never caused harm (0 of 27 per condition). Study 15: one record written directly into the store did (31 of 31 given directly; 9 and 8 of 31 through Mem0 and Honcho). Study 17: a store shared by every customer lowered success (9 vs 20 of 31) but never led to another customer's item. Defences (provenance checks, rejecting unsourced records) are not yet tested. |
+| Do agents that query memory step by step, rather than once up front, benefit more? | Only when told to: Study 8's on-demand Honcho tool was called in 5 of 30 conversations (1 success), and the tool returning the full transcripts in 9 of 31 (Study 10) and 7 of 31 (Study 13). With one sentence telling the agent to check memory first it was called every time and succeeded 31 of 31 (Study 13). `gpt-6-luna` called it unprompted in 32 of 32 (Study 19). Other tool descriptions are not yet tested. |
+| Can memory be poisoned into causing a wrong action? | Study 12: a quoted, disowned instruction never caused harm (0 of 27 per condition). Study 15: one record written directly into the store did (31 of 31 given directly; 9 and 8 of 31 through Mem0 and Honcho; 26 and 32 of 32 with `gpt-6-luna`, Study 19). Study 17: a store shared by every customer lowered success (9 vs 20 of 31) but never led to another customer's item. Defences (provenance checks, rejecting unsourced records) are not yet tested. |
 
 Designs: [research design](research/DESIGN.md).
 
