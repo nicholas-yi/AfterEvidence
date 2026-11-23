@@ -38,6 +38,8 @@ STAGES = (
     "gx-eval-v1",
     "lh-eval-v1",
     "ac-eval-v1",
+    "gm-eval-v1",
+    "lm-eval-v1",
 )
 STRATA = ("succeeded", "executed_superseded", "declined", "other_failure")
 SEED = 20261120
@@ -276,7 +278,7 @@ def score(packet: Path, reviews: list[Path]) -> dict[str, Any]:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Human-review packet for Studies 5-18.")
+    parser = argparse.ArgumentParser(description="Human-review packet for Studies 5-20.")
     sub = parser.add_subparsers(dest="command", required=True)
     b = sub.add_parser("build")
     b.add_argument("--out", type=Path, required=True)

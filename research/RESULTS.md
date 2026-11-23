@@ -849,7 +849,7 @@ reporting. Open:
    the latest agreement 4/4; with Mem0's memory they executed the superseded item
    3/4; with Honcho's they declined to act 4/4. The tagged 32-family evaluation
    then ran: see [Changed-mind evaluation](#changed-mind-evaluation) ([design](DESIGN.md#changed-mind-pilot)).
-8. People must check the multi-session oracle and scripted customers (Studies 5-18). A seeded,
+8. People must check the multi-session oracle and scripted customers (Studies 5-20). A seeded,
    stratified packet (`python -m research.oracle_review build`; private, under `research/runs`)
    samples succeeded, superseded-or-planted, declined and other failures per stage, with the memory
    each agent saw; two reviewers answer four questions each without seeing the oracle, and
