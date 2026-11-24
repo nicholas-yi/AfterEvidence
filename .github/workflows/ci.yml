@@ -3,6 +3,9 @@ name: Validate
 on:
   push:
   pull_request:
+  schedule:
+    - cron: "17 6 * * 1" # weekly: also run the slow research dry passes
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -21,9 +24,11 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: "22"
-      - run: python -m pip install ".[dev]" pydantic==2.14.3  # pydantic: research harness logic tests
+      - run: python -m pip install ".[dev]" pydantic==2.14.3 # pydantic: research harness logic tests
       - run: python -m unittest discover -s tests -v
-      - run: python -m unittest research.test_memory_methods research.test_costing research.test_task_audit research.test_simulator_review research.test_memory_study research.test_staleness research.test_published_tables research.test_benchmark research.test_run_status research.test_harness_logic research.test_tau_action research.test_staleness_runner -v
+      # Every published number from the public CSVs, plus research tests that need no benchmark;
+      # tests that need the pinned benchmark or SDK skip themselves here and run in `research`.
+      - run: python -m unittest discover -s research/tests -t . -v
       - run: ruff check afterevidence tests research scripts
       - run: ruff format --check afterevidence tests research scripts
       - run: pyright
@@ -32,6 +37,34 @@ jobs:
       - name: Verify installed web assets
         working-directory: ${{ runner.temp }}
         run: python -c "from importlib.resources import files; assert files('afterevidence').joinpath('static/index.html').is_file()"
+
+  research:
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    env:
+      AFTEREVIDENCE_SLOW: ${{ (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && '1' || '0' }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Check out the pinned benchmark and Copilot SDK
+        run: |
+          lock=research/locks/benchmark-lock.json
+          pin() { python -c "import json, sys; print(json.load(open('$lock'))[sys.argv[1]])" "$1"; }
+          fetch() {
+            git init -q "$1"
+            git -C "$1" fetch -q --depth 1 "$2" "$3"
+            git -C "$1" checkout -q FETCH_HEAD
+          }
+          fetch research/vendor/tau2-bench "$(pin repository)" "$(pin commit)"
+          fetch research/vendor/copilot-sdk "$(pin copilot_sdk_repository)" "$(pin copilot_sdk_commit)"
+      - name: Install the pinned research dependencies
+        working-directory: research
+        run: python -m pip install -r requirements.txt -c locks/dependencies.lock.txt
+      - run: python -m pip install ".[dev]"
+      - run: python -m unittest discover -s research/tests -t . -v
+      - run: pyright --project research/pyrightconfig.json --pythonpath "$(which python)"
 
   windows-script:
     runs-on: windows-latest

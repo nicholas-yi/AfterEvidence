@@ -7,11 +7,11 @@ import sqlite3
 from collections.abc import Sequence
 from pathlib import Path
 
-from .runner import run_suite, verify_report
-from .application import Application
 from .app_evaluation import evaluate_application
-from .packs import PACKS
+from .application import Application
 from .ollama import Ollama, OllamaError
+from .packs import PACKS
+from .runner import run_suite, verify_report
 from .store import StateChanged, Store
 from .web import serve
 

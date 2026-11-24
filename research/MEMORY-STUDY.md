@@ -8,16 +8,16 @@ billed calls are Copilot requests, all journaled and counted toward one cap.
 ## Architecture
 
 ```text
-benchmark episode (research.tau_copilot, research venv)
+benchmark episode (research.harness.tau_copilot, research venv)
   actor + user simulator -> Copilot SDK (isolated sessions, journaled)
   memory retrieval, once, from the customer's first message
-     |- internal conditions: research.memory_retrievers (stdlib, local embeddings)
-     '- providers: HTTP -> research.memory_gateway (providers venv)
+     |- internal conditions: research.harness.memory_retrievers (stdlib, local embeddings)
+     '- providers: HTTP -> research.harness.memory_gateway (providers venv)
            |- Mem0 (in process, Qdrant on disk)
            |- Graphiti (in process) -> Neo4j container
            |- Hindsight container
            '- Honcho API + deriver containers (Postgres/pgvector, Redis)
-provider LLM calls -> research.copilot_shim (one per provider, metered, token-protected)
+provider LLM calls -> research.harness.copilot_shim (one per provider, metered, token-protected)
 embeddings -> Ollama nomic-embed-text (local, not billed)
 ```
 
@@ -61,13 +61,13 @@ Secrets (shim token, Neo4j password) live in git-ignored `research/providers/`.
    8814 Honcho), each with its own journal and request cap:
 
    ```powershell
-   .\research\.venv\Scripts\python.exe -m research.copilot_shim --label mem0 --port 8811 `
+   .\research\.venv\Scripts\python.exe -m research.harness.copilot_shim --label mem0 --port 8811 `
      --requests 600 --journal research\runs\memory-study\shims\mem0-study1.calls.jsonl `
      --token <token> --host 0.0.0.0
    ```
 
    Bind to `0.0.0.0` only for shims that containers call; the token is mandatory.
-5. **Gateway**: `research\.venv-providers\Scripts\python.exe -m research.memory_gateway --config research\providers\gateway.json`.
+5. **Gateway**: `research\.venv-providers\Scripts\python.exe -m research.harness.memory_gateway --config research\providers\gateway.json`.
    Later pilots use their own config with the optional `state`, `honcho_workspace`
    and `honcho_reasoning_level` keys so they never touch the study's stores.
 
@@ -78,14 +78,14 @@ All commands from the repository root. Outputs go under the git-ignored
 
 | Step | Command | Model calls |
 |---|---|---|
-| Learning-pool episodes | `python -m research.study_runner <jobs-bank.json>` | Actor + simulator |
-| Internal memories | `python -m research.memory_bank --bank …/bank --out …/memory` | Builder (journaled) |
-| Provider ingestion | `python -m research.provider_ingest --episodes …/memory/episodes.json --providers mem0 graphiti hindsight honcho --scope bank --ledger …` | Provider shims |
-| Study 1 | `python -m research.study1 --tag memory-study-v1` | Actor + simulator + retrieval |
-| Study 2 | `python -m research.study2 --families …/study2-families.json` | Actor + simulator + provider shims |
-| Study 3 | `python -m research.lifecycle` | Provider shims (ingestion only) |
-| Analysis | `python -m research.memory_analysis --root …/study1 --conditions none raw … --out …` | None |
-| Simulator review packet | `python -m research.simulator_review …/study1/*/task-*.json --jobs …/study1/jobs.json --output …/review/study1-worksheet.md --index …/review/study1-index.csv` (likewise bank, study2) | None |
+| Learning-pool episodes | `python -m research.harness.study_runner <jobs-bank.json>` | Actor + simulator |
+| Internal memories | `python -m research.harness.memory_bank --bank …/bank --out …/memory` | Builder (journaled) |
+| Provider ingestion | `python -m research.harness.provider_ingest --episodes …/memory/episodes.json --providers mem0 graphiti hindsight honcho --scope bank --ledger …` | Provider shims |
+| Study 1 | `python -m research.studies.study1 --tag memory-study-v1` | Actor + simulator + retrieval |
+| Study 2 | `python -m research.studies.study2 --families …/study2-families.json` | Actor + simulator + provider shims |
+| Study 3 | `python -m research.studies.lifecycle` | Provider shims (ingestion only) |
+| Analysis | `python -m research.analysis.memory_analysis --root …/study1 --conditions none raw … --out …` | None |
+| Simulator review packet | `python -m research.harness.simulator_review …/study1/*/task-*.json --jobs …/study1/jobs.json --output …/review/study1-worksheet.md --index …/review/study1-index.csv` (likewise bank, study2) | None |
 
 The runner counts every started request in the study directory before each
 episode and skips anything whose output already exists, so an interrupted run

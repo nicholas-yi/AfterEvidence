@@ -3,14 +3,15 @@
 Run a study phase by phase with its shims and gateway (Windows PowerShell only).
 
 .DESCRIPTION
-Detached driver for `research.followups` (-Study wd|m3|pz) and `research.gaps` (-Runner gaps;
--Study gx|lh|ac) dev checks and evaluations. Run it from a frozen tag worktree
-(scripts/frozen-worktree.ps1); dev checks run from the working tree. It starts the study's Copilot shims (-Shims label = "port,cap") and
-the memory gateway, runs the phases in order under the keep-awake guard, then stops its services.
+Detached driver for the followups (-Study wd|m3|pz) and gaps (-Runner gaps; -Study gx|lh|ac|gm|lm)
+studies' dev checks and evaluations. Run it from a frozen tag worktree (scripts/frozen-worktree.ps1);
+dev checks run from the working tree. Module paths follow the worktree's layout (research/<group>/
+since the package layout, research/ before it). It starts the study's Copilot shims
+(-Shims label = "port,cap") and the memory gateway, runs the phases in order under the keep-awake guard, then stops its services.
 
 A phase that exits non-zero stops the driver, with one exception: if its log shows a Copilot
 credential failure AND -RecoveryDecision records an owner decision, sessions cut mid-call are closed
-as infrastructure failures (research.run_recovery) and the phase is retried, at most -Tries times.
+as infrastructure failures (run_recovery) and the phase is retried, at most -Tries times.
 Without a recorded decision nothing is recovered. Logs go to research/runs/commitment/<Stage>.
 
 Example:
@@ -36,6 +37,9 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 Set-Location $Worktree
+function Module($group, $name) {
+    if (Test-Path (Join-Path $Worktree "research\$group\$name.py")) { "research.$group.$name" } else { "research.$name" }
+}
 $py = Join-Path $Worktree 'research\.venv\Scripts\python.exe'
 $pyp = Join-Path $Worktree 'research\.venv-providers\Scripts\python.exe'
 $run = Join-Path $Worktree ("research\runs\commitment\" + $Stage)
@@ -47,7 +51,7 @@ $token = (Get-Content (Join-Path $Worktree 'research\providers\shim-token.txt') 
 $procs = @()
 foreach ($label in $Shims.Keys) {
     $port, $cap = $Shims[$label].Split(',')
-    $shimArgs = @('-m', 'research.copilot_shim', '--label', $label, '--port', $port, '--requests', $cap,
+    $shimArgs = @('-m', (Module harness copilot_shim), '--label', $label, '--port', $port, '--requests', $cap,
         '--journal', ('"' + (Join-Path $run "shims\$label.calls.jsonl") + '"'), '--token', $token, '--model', $Model)
     if ($label -in 'honcho', 'hindsight') { $shimArgs += @('--host', '0.0.0.0') }  # reached from Docker
     $procs += Start-Process $py -ArgumentList $shimArgs -PassThru -WindowStyle Hidden `
@@ -68,7 +72,7 @@ $gwConfig = Join-Path $run "gateway-$Stage.json"
 $env:MEM0_TELEMETRY = 'False'
 $env:AFTEREVIDENCE_GATEWAY = "http://127.0.0.1:$GatewayPort"
 if ($Shims.ContainsKey('app')) { $env:AFTEREVIDENCE_APP_SHIM = "http://127.0.0.1:$($Shims['app'].Split(',')[0])/v1/chat/completions" }
-$procs += Start-Process $pyp -ArgumentList @('-m', 'research.memory_gateway', '--config', ('"' + $gwConfig + '"'), '--port', $GatewayPort) `
+$procs += Start-Process $pyp -ArgumentList @('-m', (Module harness memory_gateway), '--config', ('"' + $gwConfig + '"'), '--port', $GatewayPort) `
     -PassThru -WindowStyle Hidden -RedirectStandardOutput (Join-Path $run 'gateway.log') -RedirectStandardError (Join-Path $run 'gateway.err')
 Start-Sleep 30
 $ErrorActionPreference = 'Continue'  # Python logs to stderr; that must not stop the driver
@@ -81,12 +85,12 @@ foreach ($phase in $Phases) {
     for ($try = 1; $try -le $Tries; $try++) {
         $plog = Join-Path $run ("$phase-try$try.log")
         $selector = if ($Runner -eq 'gaps') { '--design' } else { '--study' }
-        & $py -m "research.$Runner" $selector $Study --stage $RunStage --phase $phase --approved-requests $Approved --note $Note *> $plog
+        & $py -m (Module studies $Runner) $selector $Study --stage $RunStage --phase $phase --approved-requests $Approved --note $Note *> $plog
         $status = $LASTEXITCODE
         Say "phase $phase try $try exit $status"
         if ($status -eq 0 -or $try -eq $Tries -or -not $RecoveryDecision) { break }
         if (-not (Select-String -Path $plog -Pattern $credential -Quiet)) { break }
-        & $py -m research.run_recovery recover $run 'process stopped by a Copilot SDK credential error' $RecoveryDecision | Out-Null
+        & $py -m (Module harness run_recovery) recover $run 'process stopped by a Copilot SDK credential error' $RecoveryDecision | Out-Null
         Say "recovered cut sessions; retrying after a pause"
         Start-Sleep 180
     }

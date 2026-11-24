@@ -123,7 +123,7 @@ feasibility gate and on a frozen, committed/tagged protocol.
   the account's overage/budget settings.
 - Since 2026-11-17 every live run and every shim refuses to start if Copilot reports
   no premium quota, any overage use, or less than 50% of the monthly allowance left
-  ([copilot_backend.py](copilot_backend.py) `quota_problem`). It checks at start, not
+  ([copilot_backend.py](harness/copilot_backend.py) `quota_problem`). It checks at start, not
   per call; a spending limit in the account's GitHub billing settings is the backstop.
 - Older incompatible SDK/runtime, unavailable-model, relative-path, and
   too-small-limit attempts failed before inference. Their started journals
@@ -183,7 +183,7 @@ were not reallocated.
 | **Cohort total** | **162** | **1,345,173** | **51,146** | **16.0597800** |
 
 - About **$0.1606 in allowance value**; 198 of the 360 approved requests unused.
-- Every started request has a completed billing snapshot (`research.costing`).
+- Every started request has a completed billing snapshot (`research.harness.costing`).
 - Observed 0.099 credits per request, below the 0.103-0.110 planning range,
   because no task reached its 30-request cap. Scored episodes averaged 17.1
   requests and about 1.74 credits.

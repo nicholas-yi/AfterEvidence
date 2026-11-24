@@ -262,15 +262,15 @@ class HarnessContracts(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "existing.json"
             path.write_text("{}", encoding="utf-8")
-            with patch(
-                "afterevidence.__main__.Ollama",
-                side_effect=AssertionError("Model access not allowed"),
+            with (
+                patch(
+                    "afterevidence.__main__.Ollama",
+                    side_effect=AssertionError("Model access not allowed"),
+                ),
+                contextlib.redirect_stderr(io.StringIO()),
+                self.assertRaises(SystemExit) as error,
             ):
-                with (
-                    contextlib.redirect_stderr(io.StringIO()),
-                    self.assertRaises(SystemExit) as error,
-                ):
-                    main(["evaluate-app", "--output", str(path)])
+                main(["evaluate-app", "--output", str(path)])
             self.assertEqual(error.exception.code, 2)
             self.assertEqual(path.read_text(encoding="utf-8"), "{}")
 

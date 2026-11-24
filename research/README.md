@@ -8,63 +8,33 @@ Every published table is recomputed from a public CSV in CI (`python -m research
 
 ## Code map
 
-**Public benchmark and analyses (no model calls; CI runs them)**
+| Folder | What it holds |
+|---|---|
+| [benchmark.py](benchmark.py), [published.py](published.py), [figures.py](figures.py) | The public benchmark: `list` the studies and `verify` every published number and figure against the [public CSVs](data/) (no model calls; CI runs it) |
+| [analysis/](analysis/) | One pre-specified analysis per study (CSV or private run to table), sharing [common.py](analysis/common.py) (rows, cohort, paired tests, command line) and [stats.py](analysis/stats.py) (exact McNemar, Holm, Wilson) |
+| [harness/](harness/) | What every study runs on: [commitment_pilot.py](harness/commitment_pilot.py) (families, scripted customer, actor loop, oracle, leakage checks, budget ledger, infrastructure rule, provider retrieval), [memory_gateway.py](harness/memory_gateway.py) (Mem0, Graphiti, Hindsight, Honcho behind one HTTP API), [copilot_shim.py](harness/copilot_shim.py) and [copilot_backend.py](harness/copilot_backend.py) (capped, journaled model access and quota guard), [freeze.py](harness/freeze.py) (frozen sources and protocol tags), run tooling ([run_status.py](harness/run_status.py), [run_recovery.py](harness/run_recovery.py)), the [human-review packet](harness/oracle_review.py), and the Studies 1-3 builders ([memory_bank.py](harness/memory_bank.py), [study_runner.py](harness/study_runner.py), [memory_methods.py](harness/memory_methods.py)) |
+| [studies/](studies/) | One runner per study: [study1.py](studies/study1.py), [study2.py](studies/study2.py), [lifecycle.py](studies/lifecycle.py) (Study 3), [changed_mind.py](studies/changed_mind.py) (5-6), [honcho_features.py](studies/honcho_features.py) (7), [honcho_stage3.py](studies/honcho_stage3.py) (8), [second_model.py](studies/second_model.py) (9), [followups.py](studies/followups.py) (10-12), [gaps.py](studies/gaps.py) (13-20) and the [staleness diagnostic](studies/staleness_runner.py); Study 4 runs from the harness |
+| [tests/](tests/) | Research tests; [support.py](tests/support.py) holds light helpers, [fixtures.py](tests/fixtures.py) the benchmark-backed fake actor |
+| [tools/](tools/) | Early one-off utilities kept for the record: the SDK micro-pilot, the quota check and a partial-episode replay |
+| [locks/](locks/) | Pins: [benchmark and SDK](locks/benchmark-lock.json), [dependency constraints](locks/dependencies.lock.txt), [providers](locks/providers.lock.txt) |
 
-- [benchmark.py](benchmark.py): `list` the studies, `verify` every published table and figure.
-- Per-study analyses: [memory study](memory_analysis.py) and [Study 2](study2_analysis.py),
-  [necessary memory](commitment_analysis.py), [changed mind](changed_mind_analysis.py),
-  [dated](changed_mind_dated_analysis.py), [Honcho features](honcho_features_analysis.py),
-  [Honcho Stage 3](honcho_stage3_analysis.py), [second model](second_model_analysis.py),
-  [Studies 10-12](followups_analysis.py), [Studies 13-18](gaps_analysis.py); public CSVs in
-  [data/](data/) and [figures](figures.py).
-- [test_harness_logic.py](test_harness_logic.py): customers, leakage checks, ledger and quota guard
-  on synthetic fixtures (no benchmark or SDK needed).
+Studies 1-3 also have a [protocol](PROTOCOL-MEMORY.md) and [runbook](MEMORY-STUDY.md). The native
+preflight (`python -m research.harness.native_scoring --tasks 0 1 2`) deliberately exits nonzero for
+the pinned task 2 reference lookup failure; do not treat a reference-control trajectory as agent
+success.
 
-**Multi-session harness (Studies 4-18)**
-
-- [commitment_pilot.py](commitment_pilot.py): families, scripted customer, actor loop, oracle,
-  leakage checks, budget ledger, infrastructure rule and provider retrieval.
-- Stages built on it: [changed_mind.py](changed_mind.py) (Studies 5-6),
-  [honcho_features.py](honcho_features.py) (Study 7), [honcho_stage3.py](honcho_stage3.py) (Study 8),
-  [second_model.py](second_model.py) (Study 9), [followups.py](followups.py) (Studies 10-12),
-  [gaps.py](gaps.py) (Studies 13-18: stale summary, tool prompt, longer history, injected memory,
-  Graphiti and Hindsight, one shared scope, address change).
-- Providers: [memory_gateway.py](memory_gateway.py) (Mem0, Graphiti, Hindsight, Honcho behind one
-  HTTP API), [provider_ingest.py](provider_ingest.py), [memory_retrievers.py](memory_retrievers.py),
-  [copilot_shim.py](copilot_shim.py) (capped, journaled model endpoint for providers),
-  [copilot_backend.py](copilot_backend.py) (capped Copilot client and quota guard).
-- [run_status.py](run_status.py): `python -m research.run_status --root research\runs\commitment\<stage> --budget`
-  shows planned versus reported jobs and the ledger without opening any report.
-- Run tooling: [run-eval.ps1](../scripts/run-eval.ps1) (detached driver: shims, gateway, phases,
-  keep-awake), [run_recovery.py](run_recovery.py) (`recover` closes sessions cut by a dead process as
-  infrastructure failures, only with an owner decision on record; `snapshot` hashes every Mem0 store
-  and counts Honcho rows per workspace, read-only).
-- [oracle_review.py](oracle_review.py): a seeded, stratified human-review packet of session-2
-  transcripts with the memory each agent saw (written under `research/runs` only; reviewers answer
-  before seeing the oracle), and `score` for agreement with the oracle and Cohen's kappa.
-
-**Memory study (Studies 1-3)**: [protocol](PROTOCOL-MEMORY.md), [runbook](MEMORY-STUDY.md),
-[memory builders](memory_bank.py), [runner](study_runner.py), [Study 1](study1.py),
-[Study 2](study2.py), [Study 3](lifecycle.py), [source-aware memory controls](memory_methods.py),
-[providers lock](providers.lock.txt).
-
-**Supporting tools**: [native scorer preflight](native_scoring.py), [task audit](task_audit.py),
-[simulator-review worksheets](simulator_review.py), the [staleness diagnostic](staleness.py) and its
-[runner](staleness_runner.py), early feasibility drivers ([local model](tau_pilot.py),
-[SDK micro-pilot](copilot_micro.py), [native Copilot pilot](tau_copilot.py)), and
-`python -m research.copilot_quota`. The native preflight (`python -m research.native_scoring --tasks 0 1 2`)
-deliberately exits nonzero for the pinned task 2 reference lookup failure; do not treat a
-reference-control trajectory as agent success.
-
-Pins: [benchmark and SDK](benchmark-lock.json), [dependency constraints](dependencies.lock.txt).
+Tags made before the package layout (every study tag up to `second-model-long-history-eval-v1`)
+keep the flat layout: there a module is `research.<name>` (for example `research.gaps`), and
+[run-eval.ps1](../scripts/run-eval.ps1) picks whichever layout its worktree has.
 
 ## Validate and run
 
 ```powershell
-python -m research.benchmark verify                       # published tables, from the CSVs
-python -m unittest research.test_harness_logic -v         # harness logic (needs pydantic only)
-.\research\.venv\Scripts\python.exe -m unittest research.test_commitment_pilot   # fake-backend dry passes (pinned benchmark; slow)
-.\research\.venv\Scripts\python.exe -m pyright --project research\pyrightconfig.json
+python -m research.benchmark verify                          # every published number, from the CSVs
+python -m unittest discover -s research/tests -t . -v        # research tests (benchmark ones skip without it)
+$env:AFTEREVIDENCE_SLOW = "1"                                # also run the slow fake-backend dry passes
+.\research\.venv\Scripts\python.exe -m unittest discover -s research/tests -t .
+pyright --project research\pyrightconfig.json --pythonpath research\.venv\Scripts\python.exe
 ```
 
 Every live stage is a dry run unless given `--approved-requests` equal to its recorded cap and a
@@ -83,22 +53,21 @@ spending limit in the account's billing settings.
 
 ### Add a memory system to the benchmark
 
-1. In [memory_gateway.py](memory_gateway.py), write a store with `ingest(scope, episode)`,
+1. In [memory_gateway.py](harness/memory_gateway.py), write a store with `ingest(scope, episode)`,
    `search(scope, query) -> list[str]`, `delete(scope, episode_id)` and `dump(scope)`, and register
    it in `store()`. Scopes are `customer:<prefix><family>`; an episode is
    `{"id", "lines": [(speaker, text), ...], "times": [ISO time per line] (optional)}`.
-2. Add a retrieval arm to `RETRIEVERS` in [commitment_pilot.py](commitment_pilot.py) and to the
-   stage's arm list (for example in [honcho_features.py](honcho_features.py)).
-3. Run the fake-backend dry passes (`python -m unittest research.test_commitment_pilot`), then a
-   capped dev check; an evaluation needs an annotated protocol tag before its families are generated.
-4. Publish the per-session CSV, its analysis and a CSV test, and add the study to
-   [benchmark.py](benchmark.py) so `verify` covers it.
+2. Add a retrieval arm to `RETRIEVERS` in [commitment_pilot.py](harness/commitment_pilot.py) and to the
+   stage's arm list (for example in [honcho_features.py](studies/honcho_features.py)).
+3. Run the research tests with the slow dry passes (`AFTEREVIDENCE_SLOW=1`), then a capped dev check; an evaluation needs an annotated protocol tag before its families are generated.
+4. Publish the per-session CSV and its analysis, and add a `Table` with the published numbers to
+   [published.py](published.py) so `verify` and CI check them.
 
 ### Fairness to memory-system builders
 
 - **Defaults first, stated exactly.** Each system runs its open-source default pipeline at a pinned
   version (Mem0 `mem0ai==2.2.1`, Graphiti `graphiti-core==0.31.2`, Hindsight `hindsight-client==1.2.0`,
-  Honcho server `5c7d24b` with `honcho-ai==2.9.0`; [providers lock](providers.lock.txt)), with every
+  Honcho server `5c7d24b` with `honcho-ai==2.9.0`; [providers lock](locks/providers.lock.txt)), with every
   internal LLM call served by the study's model through a capped shim. The settings each study used
   (reasoning level, search mode, timestamps, workspaces) are in its [design](DESIGN.md) rows and the
   gateway code; vendors' managed platforms and published scores use other models and settings.
@@ -138,7 +107,7 @@ The research environment requires Python 3.12 and is separate from the
 dependency-free application. The validated native setup is Windows; other
 platforms are not certified by the current runs.
 
-Create separate checkouts at the exact revisions in `benchmark-lock.json`:
+Create separate checkouts at the exact revisions in `locks/benchmark-lock.json`:
 
 ```powershell
 git clone --no-checkout https://github.com/sierra-research/tau2-bench.git research\vendor\tau2-bench
@@ -148,7 +117,7 @@ git -C research\vendor\copilot-sdk sparse-checkout set python
 git -C research\vendor\copilot-sdk checkout --detach ed814e4134fdba86e2e88b82dcac85b1c125ed8a
 cd research
 uv venv --python 3.12 .venv
-uv pip install --python .venv\Scripts\python.exe -r requirements.txt -c dependencies.lock.txt
+uv pip install --python .venv\Scripts\python.exe -r requirements.txt -c locks/dependencies.lock.txt
 .\.venv\Scripts\python.exe -m copilot download-runtime --version 1.0.111-0
 cd ..
 copilot login

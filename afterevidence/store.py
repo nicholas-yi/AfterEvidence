@@ -6,7 +6,7 @@ from collections import defaultdict
 from collections.abc import Generator
 from contextlib import closing, contextmanager
 from dataclasses import asdict, dataclass, replace
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from hashlib import sha256
 from pathlib import Path
 from uuid import uuid4
@@ -23,7 +23,7 @@ class StateChanged(RuntimeError):
 
 
 def now() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+    return datetime.now(UTC).isoformat(timespec="seconds")
 
 
 def normalized(value: str) -> str:

@@ -7,9 +7,9 @@ from pathlib import Path
 from unittest.mock import patch
 from uuid import UUID
 
-from afterevidence.application import Application, FIELD_HINTS, parse_cards, parse_facts
+from afterevidence.application import FIELD_HINTS, Application, parse_cards, parse_facts
 from afterevidence.ollama import Ollama, OllamaError, Reply
-from afterevidence.packs import Card, ExtractedFact, PACKS, get_pack, plans
+from afterevidence.packs import PACKS, Card, ExtractedFact, get_pack, plans
 from afterevidence.runner import canonical
 from afterevidence.store import Episode, StateChanged, Store
 
@@ -180,14 +180,16 @@ class ApplicationTests(unittest.TestCase):
         )
 
     def test_source_order_does_not_depend_on_uuid_when_timestamps_match(self) -> None:
-        with patch("afterevidence.store.now", return_value="2026-11-12T12:00:00+00:00"):
-            with patch("afterevidence.store.uuid4", side_effect=[UUID(int=2), UUID(int=1)]):
-                first = self.store.add_episode(
-                    "project", "Atlas", "First observation.", "First", "notes"
-                )
-                second = self.store.add_episode(
-                    "project", "Atlas", "Later correction.", "Second", "notes"
-                )
+        with (
+            patch("afterevidence.store.now", return_value="2026-11-12T12:00:00+00:00"),
+            patch("afterevidence.store.uuid4", side_effect=[UUID(int=2), UUID(int=1)]),
+        ):
+            first = self.store.add_episode(
+                "project", "Atlas", "First observation.", "First", "notes"
+            )
+            second = self.store.add_episode(
+                "project", "Atlas", "Later correction.", "Second", "notes"
+            )
         self.assertEqual(
             [episode.id for episode in self.store.snapshot("project").episodes],
             [first.id, second.id],
@@ -547,11 +549,13 @@ class ApplicationTests(unittest.TestCase):
     def test_cloud_tag_aliases_are_rejected_even_with_local_metadata(self) -> None:
         for name in ("qwen:cloud", "qwen:4b-cloud"):
             client = Ollama(name)
-            with patch.object(
-                client, "models", return_value=[{"name": name, "size": 1, "digest": "test"}]
+            with (
+                patch.object(
+                    client, "models", return_value=[{"name": name, "size": 1, "digest": "test"}]
+                ),
+                self.assertRaisesRegex(OllamaError, "Only an already-installed local model"),
             ):
-                with self.assertRaisesRegex(OllamaError, "Only an already-installed local model"):
-                    client.selected_model()
+                client.selected_model()
 
 
 if __name__ == "__main__":

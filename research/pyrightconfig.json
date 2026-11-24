@@ -1,8 +1,6 @@
 {
-  "include": ["*.py"],
-  "exclude": ["vendor", ".venv", ".venv-providers", "providers", "runs", "cache", "memory_gateway.py"],
-  "venvPath": ".",
-  "venv": ".venv",
-  "extraPaths": ["..", "vendor\\copilot-sdk\\python", "vendor\\tau2-bench\\src"],
+  "include": ["."],
+  "exclude": ["vendor", ".venv", ".venv-providers", "providers", "runs", "cache", "harness/memory_gateway.py"],
+  "extraPaths": ["..", "vendor/copilot-sdk/python", "vendor/tau2-bench/src"],
   "typeCheckingMode": "standard"
 }

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import json
 import io
+import json
 import tempfile
 import threading
 import unittest
@@ -10,12 +10,13 @@ from pathlib import Path
 from urllib.error import HTTPError
 from urllib.request import ProxyHandler, Request, build_opener
 
-from afterevidence.application import Application
+from test_application import ScriptedModel, facts_output
+
 from afterevidence.app_evaluation import RecordedModel
+from afterevidence.application import Application
 from afterevidence.ollama import Ollama, OllamaError
 from afterevidence.store import Store
 from afterevidence.web import create_server
-from test_application import ScriptedModel, facts_output
 
 
 class WebTests(unittest.TestCase):

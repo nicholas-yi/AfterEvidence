@@ -251,25 +251,26 @@ Designs: [research design](research/DESIGN.md).
 No model, credentials or benchmark download needed:
 
 ```powershell
-python -m pip install ".[dev]"
-python -m unittest discover -s tests -v
-python -m research.benchmark verify
+python -m pip install ".[dev]" pydantic==2.14.3
+python -m unittest discover -s tests -v                   # the local app
+python -m unittest discover -s research/tests -t . -v     # every published number, plus harness logic
 ruff check afterevidence tests research scripts
 pyright
 ```
+
+Tests that need the pinned benchmark run in a separate CI job; see the
+[research setup](research/README.md#validate-and-run).
 
 ## Code tour
 
 | Path | What it does |
 |---|---|
-| [`research/PROTOCOL-MEMORY.md`](research/PROTOCOL-MEMORY.md) | The analysis protocol, git-tagged `memory-study-v1` before any test episode |
-| [`research/RESULTS.md`](research/RESULTS.md) | Full tables, failure causes and deviations |
-| [`research/memory_bank.py`](research/memory_bank.py) | Builds the in-house memories: transcripts, lessons, sleep-style lessons, workflows |
-| [`research/memory_gateway.py`](research/memory_gateway.py) | Adapters for Mem0, Graphiti, Hindsight and Honcho |
-| [`research/tau_copilot.py`](research/tau_copilot.py) | Runs one τ²-bench episode with the agent, simulated customer and memory |
-| [`research/memory_analysis.py`](research/memory_analysis.py) | Statistics, including recomputation from the public CSV |
-| [`research/figures.py`](research/figures.py) | Draws the README figures from the public CSV |
-| [`research/data/`](research/data/memory-study-v1-episodes.csv) | The public per-episode table |
+| [`research/README.md`](research/README.md) | The research code map, setup and how to add a memory system |
+| [`research/RESULTS.md`](research/RESULTS.md) | Full tables, failure causes and deviations; designs in [`DESIGN.md`](research/DESIGN.md) |
+| [`research/published.py`](research/published.py) | Every published number, checked against the [public CSVs](research/data/) |
+| [`research/analysis/`](research/analysis/) | The pre-specified analysis of each study |
+| [`research/harness/`](research/harness/) | The shared harness: episodes, scripted customers, memory-system adapters, budgets |
+| [`research/studies/`](research/studies/) | One runner per study |
 | [`afterevidence/`](afterevidence/) | The local memory app: extraction, store, revision and web UI |
 | [`tests/`](tests/) | App, lifecycle and documentation tests |
 

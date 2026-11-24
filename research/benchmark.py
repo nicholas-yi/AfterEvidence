@@ -13,7 +13,7 @@ import unittest
 
 from research.published import TABLES
 
-VERIFY = "research.test_published_tables"
+VERIFY = "research.tests.test_published_tables"
 
 
 def listing() -> str:

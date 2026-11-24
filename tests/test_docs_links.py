@@ -41,9 +41,12 @@ def broken_links() -> list[str]:
             resolved = (source.parent / path).resolve() if path else source
             if not resolved.exists():
                 problems.append(f"{name}: missing {target}")
-            elif anchor and resolved.suffix == ".md":
-                if anchor not in slugs(resolved.read_text(encoding="utf-8")):
-                    problems.append(f"{name}: no anchor {target}")
+            elif (
+                anchor
+                and resolved.suffix == ".md"
+                and anchor not in slugs(resolved.read_text(encoding="utf-8"))
+            ):
+                problems.append(f"{name}: no anchor {target}")
     return problems
 
 

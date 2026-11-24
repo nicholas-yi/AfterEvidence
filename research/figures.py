@@ -17,9 +17,10 @@ from html import escape
 from pathlib import Path
 from typing import Any
 
-from research.memory_analysis import STUDY1_CONDITIONS, STUDY2_CONDITIONS, tables_from_csv
+from research import REPOSITORY
+from research.analysis.memory_analysis import STUDY1_CONDITIONS, STUDY2_CONDITIONS, tables_from_csv
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = REPOSITORY
 CSV = ROOT / "research" / "data" / "memory-study-v1-episodes.csv"
 OUT = ROOT / "docs" / "figures"
 POWER_MULTIPLIER = 2.80  # z(0.975) + z(0.80): smallest effect detectable with 80% power
@@ -175,7 +176,7 @@ def memory_effects(tables: dict[str, Any], theme: dict[str, str]) -> str:
         svg.rect(x(-outer), top, x(outer) - x(-outer), bottom - top, t["band"], 0.10)
         svg.rect(x(-inner), top, x(inner) - x(-inner), bottom - top, t["band"], 0.14)
         svg.line(x(0), top - 4, x(0), bottom, t["muted"], 1.2)
-        for index, (condition, effect) in enumerate(zip(conditions, effects)):
+        for index, (condition, effect) in enumerate(zip(conditions, effects, strict=True)):
             cy = top + row * index + row / 2
             difference, low, high = effect["exact"]
             svg.text(label_w - 12, cy + 4, NAMES[condition], anchor="end")

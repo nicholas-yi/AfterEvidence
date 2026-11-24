@@ -27,7 +27,15 @@ target-version = "py311"
 extend-exclude = ["research/vendor", "research/.venv", "research/runs", "research/cache"]
 
 [tool.ruff.lint]
-select = ["E4", "E7", "E9", "F"]
+# Pyflakes and core errors, import order, likely bugs, modern syntax, simplifications,
+# comprehension and return style, and a complexity ceiling.
+select = ["E4", "E7", "E9", "F", "I", "B", "UP", "SIM", "C4", "C90", "PIE", "RET", "PERF", "RUF"]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 20
+
+[tool.ruff.lint.isort]
+known-first-party = ["afterevidence", "research", "scripts"]
 
 [tool.pyright]
 include = ["afterevidence", "tests"]

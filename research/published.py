@@ -16,7 +16,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from research import (
+from research import RESEARCH
+from research.analysis import (
     changed_mind_analysis,
     changed_mind_dated_analysis,
     commitment_analysis,
@@ -28,7 +29,7 @@ from research import (
     second_model_analysis,
 )
 
-DATA = Path(__file__).resolve().parent / "data"
+DATA = RESEARCH / "data"
 CREDITS_DELTA = 0.0011
 
 
@@ -84,7 +85,9 @@ def arms(keys: str, table: Mapping[str, tuple[Any, ...]]) -> dict[str, dict[str,
 def discordant(table: Mapping[str, tuple[Any, ...]], p: str = "p_holm") -> dict[str, Any]:
     """Per test: (arm-only, reference-only discordant families[, p-value])."""
     return arms(f"arm_only reference_only {p}", {k: v for k, v in table.items() if len(v) == 3}) | {
-        k: dict(zip(("arm_only", "reference_only"), v)) for k, v in table.items() if len(v) < 3
+        k: dict(zip(("arm_only", "reference_only"), v, strict=False))
+        for k, v in table.items()
+        if len(v) < 3
     }
 
 
@@ -113,7 +116,7 @@ def mismatches(expected: Any, actual: Any, path: str = "") -> list[str]:
             return [f"{path}: {actual!r} != {list(expected)!r}"]
         return [
             m
-            for i, (e, a) in enumerate(zip(expected, actual))
+            for i, (e, a) in enumerate(zip(expected, actual, strict=True))
             for m in mismatches(e, a, f"{path}[{i}]")
         ]
     if isinstance(expected, Approx):
@@ -132,7 +135,7 @@ TABLES: tuple[Table, ...] = (
         study="1-2",
         question="Does memory of other customers, or of the same customer's earlier sessions, help?",
         csv="memory-study-v1-episodes.csv",
-        command="research.memory_analysis",
+        command="research.analysis.memory_analysis",
         analyse=lambda path: memory_analysis.tables_from_csv(path),
         fields=memory_analysis.EPISODE_FIELDS,
         rows=572,
@@ -203,7 +206,7 @@ TABLES: tuple[Table, ...] = (
         study="4",
         question="When a task is impossible without memory, does memory let the agent finish it?",
         csv="commitment-eval-v1-episodes.csv",
-        command="research.commitment_analysis",
+        command="research.analysis.commitment_analysis",
         analyse=_plain(commitment_analysis.analyse),
         fields=commitment_analysis.FIELDS,
         rows=157,
@@ -239,7 +242,7 @@ TABLES: tuple[Table, ...] = (
         study="5",
         question="After a change of mind, does memory make the agent act on the latest agreement?",
         csv="changed-mind-eval-v1-episodes.csv",
-        command="research.changed_mind_analysis",
+        command="research.analysis.changed_mind_analysis",
         analyse=_plain(changed_mind_analysis.analyse),
         fields=changed_mind_analysis.FIELDS,
         rows=219,
@@ -284,7 +287,7 @@ TABLES: tuple[Table, ...] = (
         study="6",
         question="With real time between conversations, does dating the memories help?",
         csv="changed-mind-dated-eval-v1-episodes.csv",
-        command="research.changed_mind_dated_analysis",
+        command="research.analysis.changed_mind_dated_analysis",
         analyse=_plain(changed_mind_dated_analysis.analyse),
         fields=changed_mind_dated_analysis.FIELDS,
         rows=219,
@@ -339,7 +342,7 @@ TABLES: tuple[Table, ...] = (
         study="7",
         question="Does Honcho's message search beat its dialectic, and does memory harm a helpful customer?",
         csv="honcho-features-eval-v1-episodes.csv",
-        command="research.honcho_features_analysis",
+        command="research.analysis.honcho_features_analysis",
         analyse=_plain(honcho_features_analysis.analyse),
         fields=honcho_features_analysis.FIELDS,
         rows=256,
@@ -389,7 +392,7 @@ TABLES: tuple[Table, ...] = (
         study="8",
         question="Do Honcho's dreaming, an on-demand memory tool, or facts the app writes into Honcho help?",
         csv="honcho-stage3-eval-v1-episodes.csv",
-        command="research.honcho_stage3_analysis",
+        command="research.analysis.honcho_stage3_analysis",
         analyse=_plain(honcho_stage3_analysis.analyse),
         fields=honcho_stage3_analysis.FIELDS,
         rows=214,
@@ -448,7 +451,7 @@ TABLES: tuple[Table, ...] = (
         study="9",
         question="Do the change-of-mind results hold with a second model (gpt-6-luna) in every role?",
         csv="second-model-eval-v1-episodes.csv",
-        command="research.second_model_analysis",
+        command="research.analysis.second_model_analysis",
         analyse=_plain(second_model_analysis.analyse),
         fields=second_model_analysis.FIELDS,
         rows=192,
@@ -497,7 +500,7 @@ TABLES: tuple[Table, ...] = (
         study="10",
         question="Does writing the app's facts into Mem0 help, and does a memory tool match memory up front?",
         csv="write-it-down-eval-v1-episodes.csv",
-        command="research.followups_analysis --study wd",
+        command="research.analysis.followups_analysis --study wd",
         analyse=_study(followups_analysis.analyse, "wd"),
         fields=followups_analysis.FIELDS,
         rows=219,
@@ -539,7 +542,7 @@ TABLES: tuple[Table, ...] = (
         study="11",
         question="Do the change-of-mind results hold with a third model (mai-code-1.1-flash)?",
         csv="third-model-eval-v1-episodes.csv",
-        command="research.followups_analysis --study m3",
+        command="research.analysis.followups_analysis --study m3",
         analyse=_study(followups_analysis.analyse, "m3"),
         fields=followups_analysis.FIELDS,
         rows=188,
@@ -582,7 +585,7 @@ TABLES: tuple[Table, ...] = (
         study="12",
         question="Does a quoted, disowned instruction stored in memory lead the agent to act on it?",
         csv="poisoned-memory-eval-v1-episodes.csv",
-        command="research.followups_analysis --study pz",
+        command="research.analysis.followups_analysis --study pz",
         analyse=_study(followups_analysis.analyse, "pz"),
         fields=followups_analysis.FIELDS,
         rows=172,
@@ -625,7 +628,7 @@ TABLES: tuple[Table, ...] = (
         study="13/15/16/17",
         question="Stale app summary and a tool prompt; one injected record; Graphiti and Hindsight; one shared scope.",
         csv="gaps-eval-v1-episodes.csv",
-        command="research.gaps_analysis --study gx",
+        command="research.analysis.gaps_analysis --study gx",
         analyse=_study(gaps_analysis.analyse, "gx"),
         fields=gaps_analysis.FIELDS,
         rows=498,
@@ -741,7 +744,7 @@ TABLES: tuple[Table, ...] = (
         study="14",
         question="With five conversations and two changes of mind, does memory follow the latest?",
         csv="long-history-eval-v1-episodes.csv",
-        command="research.gaps_analysis --study lh",
+        command="research.analysis.gaps_analysis --study lh",
         analyse=_study(gaps_analysis.analyse, "lh"),
         fields=gaps_analysis.FIELDS,
         rows=288,
@@ -788,7 +791,7 @@ TABLES: tuple[Table, ...] = (
         study="18",
         question="Does the change-of-mind result hold for another decision (a pending order's address)?",
         csv="address-change-eval-v1-episodes.csv",
-        command="research.gaps_analysis --study ac",
+        command="research.analysis.gaps_analysis --study ac",
         analyse=_study(gaps_analysis.analyse, "ac"),
         fields=gaps_analysis.FIELDS,
         rows=192,
@@ -835,7 +838,7 @@ TABLES: tuple[Table, ...] = (
         study="19",
         question="Do the stale-summary, check-memory and injected-record findings hold with gpt-6-luna?",
         csv="second-model-gaps-eval-v1-episodes.csv",
-        command="research.gaps_analysis --study gm",
+        command="research.analysis.gaps_analysis --study gm",
         analyse=_study(gaps_analysis.analyse, "gm"),
         fields=gaps_analysis.FIELDS,
         rows=416,
@@ -910,7 +913,7 @@ TABLES: tuple[Table, ...] = (
         study="20",
         question="Does the five-conversation result hold with gpt-6-luna?",
         csv="second-model-long-history-eval-v1-episodes.csv",
-        command="research.gaps_analysis --study lm",
+        command="research.analysis.gaps_analysis --study lm",
         analyse=_study(gaps_analysis.analyse, "lm"),
         fields=gaps_analysis.FIELDS,
         rows=288,
