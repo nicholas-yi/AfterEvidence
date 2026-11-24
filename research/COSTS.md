@@ -160,7 +160,7 @@ retained and counted. These figures are development accounting, not an
 efficacy estimate or a guaranteed price for another model or task cohort.
 See [the full result and remaining gates](RESULTS.md#bounded-baseline-follow-up-2026-11-13).
 
-## 2026-11-13 devbox cohort
+## 2026-11-13 second-machine cohort
 
 The owner approved 12 train tasks at 30 requests each (**360 total**, covering
 actor, simulator, and failures; no judges). Each task ran once; unused requests

@@ -7,8 +7,8 @@ before its test-split episodes; it is an exploratory single-model study, not a
 leaderboard submission. Every Study 1 and Study 2 table below is recomputed from
 the public per-episode table [memory-study-v1-episodes.csv](data/memory-study-v1-episodes.csv)
 by `python -m research.memory_analysis --csv research/data/memory-study-v1-episodes.csv`,
-and a CI test ([test_memory_csv.py](test_memory_csv.py)) asserts the published
-numbers. The CSV omits transcripts, prompts, tool payloads, customer names,
+and CI checks the published
+numbers against it ([published.py](published.py)). The CSV omits transcripts, prompts, tool payloads, customer names,
 account data, and provider state. Earlier feasibility work is under
 [Development history](#development-history). Environment: unmodified
 MIT-licensed tau2-bench retail at `c06b07dd7c4d4ec61ba6ff9bcdf0b15dd7ef36d4`.
@@ -103,8 +103,8 @@ recorded, 225.18 charged of 495; Study 20 2,124 of 2,886 (episodes 1,540, Mem0 1
 32), 132.93 recorded, 133.93 charged of 335; max call 0.37. Data:
 [Study 19 CSV](data/second-model-gaps-eval-v1-episodes.csv),
 [Study 20 CSV](data/second-model-long-history-eval-v1-episodes.csv);
-`python -m research.gaps_analysis --study gm|lm --csv <CSV>`; CI tests
-`research.test_second_model_gaps_csv` and `research.test_second_model_long_history_csv`.
+`python -m research.gaps_analysis --study gm|lm --csv <CSV>`; CI checks
+both tables ([published.py](published.py)).
 
 ## Studies 13 to 18
 
@@ -184,8 +184,8 @@ another family's item, not cross-customer leakage.
 Spend 5,111 of 6,824 requests (episodes 4,099, Mem0 186, Honcho 354, Graphiti 279, Hindsight 131,
 app 62), 581.14 credits recorded, 582.14 charged (one Graphiti shim abort at 1.0) of a 760 stop; max
 call 0.47. Data: [per-session CSV](data/gaps-eval-v1-episodes.csv);
-`python -m research.gaps_analysis --study gx --csv research/data/gaps-eval-v1-episodes.csv`; CI test
-`research.test_gaps_csv`.
+`python -m research.gaps_analysis --study gx --csv research/data/gaps-eval-v1-episodes.csv`; CI checks
+the table ([published.py](published.py)).
 
 ### Study 14: a longer history (long-history-eval-v1)
 
@@ -208,7 +208,7 @@ p = 1. Secondary (executing a superseded item): Mi 5 / 0, Holm 0.19; Hod and Fd 
 - Spend 2,445 of 2,958 requests (episodes 1,865, Mem0 160, Honcho 388, app 32), 248.26 of 300
   credits, no aborts; max call 0.26. Data: [per-session CSV](data/long-history-eval-v1-episodes.csv);
   `python -m research.gaps_analysis --study lh --csv research/data/long-history-eval-v1-episodes.csv`;
-  CI test `research.test_long_history_csv`.
+  CI checks the table ([published.py](published.py)).
 
 ### Study 18: another decision (address-change-eval-v1)
 
@@ -235,7 +235,7 @@ Primary (success; Holm, three): Mi vs Hn 1 / 11, Holm 0.013; Hod vs Hn 3 / 26, H
 - Spend 1,543 of 2,478 requests (episodes 1,265, Mem0 64, Honcho 182, app 32), 158.53 of 260 credits,
   no aborts; max call 0.21. Data: [per-session CSV](data/address-change-eval-v1-episodes.csv);
   `python -m research.gaps_analysis --study ac --csv research/data/address-change-eval-v1-episodes.csv`;
-  CI test `research.test_address_change_csv`.
+  CI checks the table ([published.py](published.py)).
 
 ### Sessions cut after a correct change (all multi-session studies; descriptive)
 
@@ -292,7 +292,7 @@ p = 1.0. Secondary (success): Mi 2 / 5, Holm 0.75; Hod 4 / 13, p = 0.049, Holm 0
   recorded, 160.82 charged with 14 session-1 timeouts at 1.0 (max call 0.22).
 - Data: [per-session CSV](data/poisoned-memory-eval-v1-episodes.csv);
   `python -m research.followups_analysis --study pz --csv research/data/poisoned-memory-eval-v1-episodes.csv`;
-  CI test `research.test_poisoned_memory_csv`.
+  CI checks the table ([published.py](published.py)).
 
 ## Write it down evaluation
 
@@ -325,7 +325,7 @@ vs Mi on executing X 1 / 8, Holm 0.078.
   234.63 charged with 33 aborts at 1.0 (max call 0.23).
 - Data: [per-session CSV](data/write-it-down-eval-v1-episodes.csv);
   `python -m research.followups_analysis --study wd --csv research/data/write-it-down-eval-v1-episodes.csv`;
-  CI test `research.test_write_it_down_csv`.
+  CI checks the table ([published.py](published.py)).
 
 ## Third-model replication
 
@@ -355,7 +355,7 @@ Primary (success; Holm across three), each vs Hn: Mi 0 / 20, Holm p < 0.001; Hod
   this model costs about 0.2 credits per request).
 - Data: [per-session CSV](data/third-model-eval-v1-episodes.csv);
   `python -m research.followups_analysis --study m3 --csv research/data/third-model-eval-v1-episodes.csv`;
-  CI test `research.test_third_model_csv`.
+  CI checks the table ([published.py](published.py)).
 
 ## Second-model replication
 
@@ -391,7 +391,7 @@ retrieval added 2.79 (Mem0) and 7.55 (Honcho) credits.
   level. These describe this setup, not product quality.
 - Data: [per-session CSV](data/second-model-eval-v1-episodes.csv) (no transcripts, names or memory
   text); `python -m research.second_model_analysis --csv research/data/second-model-eval-v1-episodes.csv`;
-  CI test `research.test_second_model_csv`.
+  CI checks the table ([published.py](published.py)).
 
 ## Honcho Stage 3 evaluation
 
@@ -433,7 +433,7 @@ equivalence).
   server default level, one synthetic retail task. These describe this setup, not product quality.
 - Data: [per-session CSV](data/honcho-stage3-eval-v1-episodes.csv) (no transcripts, names, facts or
   memory text); `python -m research.honcho_stage3_analysis --csv research/data/honcho-stage3-eval-v1-episodes.csv`;
-  CI test `research.test_honcho_stage3_csv`.
+  CI checks the table ([published.py](published.py)).
 
 ## Honcho features evaluation
 
@@ -474,7 +474,7 @@ differences are detectable, and non-significance is not equivalence. Ingestion a
   might object to a wrong proposal rather than consent. These describe this setup, not product quality.
 - Data: [per-session CSV](data/honcho-features-eval-v1-episodes.csv) (no transcripts, names or memory
   text); `python -m research.honcho_features_analysis --csv research/data/honcho-features-eval-v1-episodes.csv`;
-  CI test `research.test_honcho_features_csv`.
+  CI checks the table ([published.py](published.py)).
 
 ## Dated changed-mind evaluation
 
@@ -522,7 +522,7 @@ added 8.99 (Mem0) and 26.47 (Honcho) credits.
 - Data: [per-session CSV](data/changed-mind-dated-eval-v1-episodes.csv) (no transcripts, names or
   memory text);
   `python -m research.changed_mind_dated_analysis --csv research/data/changed-mind-dated-eval-v1-episodes.csv`;
-  CI test `research.test_changed_mind_dated_csv`.
+  CI checks the table ([published.py](published.py)).
 
 ## Changed-mind evaluation
 
@@ -565,7 +565,7 @@ actor episodes only; ingestion and retrieval added 4.26 (Mem0) and 15.60 (Honcho
   product quality.
 - Data: [per-session CSV](data/changed-mind-eval-v1-episodes.csv) (no transcripts, names or memory
   text); `python -m research.changed_mind_analysis --csv research/data/changed-mind-eval-v1-episodes.csv`;
-  CI test `research.test_changed_mind_csv`.
+  CI checks the table ([published.py](published.py)).
 
 ## Necessary-memory evaluation
 
@@ -603,7 +603,7 @@ Credits per session are actor episodes only; ingestion and retrieval added 2.53 
   target leakage.
 - Data: [per-session CSV](data/commitment-eval-v1-episodes.csv) (no transcripts, names or memory
   text); `python -m research.commitment_analysis --csv research/data/commitment-eval-v1-episodes.csv`;
-  CI test `research.test_commitment_csv`.
+  CI checks the table ([published.py](published.py)).
 
 ## Memory study v1
 
@@ -873,7 +873,7 @@ or raw journals into the public benchmark implementation:
 - `runs/copilot-native-feasibility-0.json` and its `.calls.jsonl`.
 - `runs/copilot-native-structured-feasibility-0.json` and its `.calls.jsonl`.
 
-On the devbox (not on the laptop): `runs/cohort-20261113b-plan.json`, the
+On the second development machine (not on the laptop): `runs/cohort-20261113b-plan.json`, the
 twelve `cohort-20261113b-task-<id>.json` reports with `.calls.jsonl` journals
 and `.stderr.txt` logs, `cohort-20261113b-summary.json`, and
 `cohort-20261113b-simulator-review.md`. Under `runs/memory-study/`: the bank,
@@ -1034,7 +1034,7 @@ exit, rather than a completed episode.
 - There is only **one completed new episode**, not a useful accuracy estimate.
 - Tasks 0 and 1 are sibling variants for the same customer and order, not
   independent samples or a valid train/evaluation separation. The later
-  [offline audit](#offline-task-audit-2026-11-13-devbox) found that tasks 0-4,
+  [offline audit](#offline-task-audit-2026-11-13-second-machine) found that tasks 0-4,
   including task 2, all belong to that one customer.
 - The task-1 simulator accepted a Google Assistant variant for a request
   phrased as Google Home; task-0 dialogue challenged that mapping. The
@@ -1056,7 +1056,7 @@ in [costs](COSTS.md#2026-11-13-baseline-follow-up). Private local evidence
 remains under `runs/` (`baseline-20261113-*` plan, amendments, journals,
 reports, and summary); do not publish raw journals or account data.
 
-### Offline task audit: 2026-11-13 (devbox)
+### Offline task audit: 2026-11-13 (second machine)
 
 Zero model calls. [task_audit.py](task_audit.py) reads the pinned retail
 `tasks.json`, `split_tasks.json`, `db.json`, and tool source as plain JSON/text.
@@ -1170,7 +1170,7 @@ disclosed selection bias, not neutral sampling; the excluded judge-needing
 tasks may differ systematically in difficulty. Preflight validates the scorer,
 not simulator fidelity or actor adequacy.
 
-### Development cohort run: 2026-11-13 (devbox)
+### Development cohort run: 2026-11-13 (second machine)
 
 Run against commit `3f980e0` after a private pre-run plan recorded source
 hashes, the task order, a 30-request cap per task (360 total, including actor,
@@ -1210,7 +1210,7 @@ account-enabled Claude Haiku 5.5, condition `none` (no memory).
   separate decision that needs approval.
 
 Usage: **162 of 360 requests**, **16.0597800 AI credits**, complete billing for
-every request; tokens in [costs](COSTS.md#2026-11-13-devbox-cohort).
+every request; tokens in [costs](COSTS.md#2026-11-13-second-machine-cohort).
 
 #### Simulator calibration review
 
