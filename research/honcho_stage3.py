@@ -1,4 +1,4 @@
-"""Honcho Stage 3 (owner, 2026-11-17): dreaming, application-written facts, a memory tool.
+"""Honcho Stage 3 (approved 2026-11-17): dreaming, application-written facts, a memory tool.
 
 The dated changed-mind task with the customer who never restates (Study 7's Hod setting). Arms, in
 priority order (reverse order is the pre-declared cut order if the budget does not fit):
@@ -42,9 +42,9 @@ PREFIXES = {"Hod": "cmp-h3d-", "Ht": "cmp-h3d-", "Hdr": "cmp-h3r-", "Hw": "cmp-h
 APP_SHIM = "app"
 APP_URL = os.environ.get("AFTEREVIDENCE_APP_SHIM", "http://127.0.0.1:8815/v1/chat/completions")
 TOKEN_FILE = Path(cp.__file__).resolve().parent / "providers" / "shim-token.txt"  # git-ignored
-# Filled from the owner's notes after the Plastic Labs call, before any tag (Lead, 2026-11-17).
+# Recorded from the Plastic Labs call notes before any tag (design review, 2026-11-17).
 CALL_NOTES: str | None = (
-    "Owner, 2026-11-17 ~13:00 ET: the Plastic Labs call did not cover models or configuration, so no "
+    "2026-11-17: the Plastic Labs call did not cover models or configuration, so no "
     "recommendation is recorded and none is adopted. Stage 3 keeps its pre-specified design: server "
     "default level, claude-haiku-5.5 substituted for every provider LLM. A Plastic Labs-recommended "
     "model remains untested (an unaddressed limitation)."

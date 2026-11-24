@@ -1,4 +1,4 @@
-"""Changed-mind pilot (owner-approved pilot only; evaluation not approved).
+"""Changed-mind task (Studies 5 to 7): pilot, then evaluation.
 
 Session 1a: a scripted customer agrees one exact exchange variant X and defers. Session 1b, a
 separate conversation with no memory given to the actor: the customer says they changed their

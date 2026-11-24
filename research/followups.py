@@ -1,5 +1,4 @@
-"""Studies 10 and 11 (owner, ask_user 2026-11-19 ~06:30 ET: "do all those"; the standing
-1,200-credit ceiling). Both use the dated changed-mind task with the customer who never restates,
+"""Studies 10 and 11 (approved 2026-11-19 under the standing 1,200-credit ceiling). Both use the dated changed-mind task with the customer who never restates,
 a dev check on the frozen cm-pilot-v1 D1-D4 dialogues, then 32 fresh families after an annotated
 protocol tag. One spec per study:
 
@@ -39,10 +38,10 @@ from research import commitment_pilot as cp
 from research import honcho_features as hf
 from research import honcho_stage3 as s3
 
-OWNER = (
-    'Owner (ask_user, 2026-11-19 ~06:30 ET): "do all those"; experiments A (write it down), B (agent-'
-    "driven retrieval), C (third model) and D (security) selected; ceiling left blank, so the "
-    "standing 1,200-credit ceiling applies (410.57 recorded before these studies)."
+APPROVAL = (
+    "Approved 2026-11-19: experiments A (write it down), B (agent-driven retrieval), C (third "
+    "model) and D (security) under the standing 1,200-credit ceiling (410.57 recorded before "
+    "these studies)."
 )
 MEMORY_TOOL_CAP = s3.MEMORY_TOOL_CAP
 SOURCES = (*s3.SOURCES, "followups.py", "followups_analysis.py")
@@ -112,7 +111,7 @@ M3 = Spec(
     key="m3",
     study="Study 11: a third model",
     # mai-code-2-flash (dev v1) narrated actions instead of calling tools under the text action
-    # contract (0/16; replay debug in DESIGN); mai-code-1.1-flash called tools 6/6 (owner choice).
+    # contract (0/16; replay debug in DESIGN); mai-code-1.1-flash called tools 6/6 and was chosen.
     model="mai-code-1.1-flash",
     dev_stage="m3-dev-v2",
     eval_stage="m3-eval-v1",
@@ -455,7 +454,7 @@ def plan(
     return {
         "stage": stage,
         "study": spec.study,
-        "owner": OWNER,
+        "approval": APPROVAL,
         "model": spec.model,
         "provider_llm": f"{spec.model} (every shim started with --model {spec.model})",
         "today_utc": today.isoformat(),

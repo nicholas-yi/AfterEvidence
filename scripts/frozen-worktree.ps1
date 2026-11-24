@@ -1,12 +1,19 @@
+<#
+.SYNOPSIS
+Check out a study tag as its own worktree (Windows only: uses directory junctions).
+
+.DESCRIPTION
+Run a tagged study from its own read-only worktree, so editing main never changes a running
+study's frozen sources. Ignored run data, venvs, vendor checkouts and provider stacks are linked
+(directory junctions) from this checkout, so journals and stores stay in one place.
+Remove the worktree afterwards with -Remove.
+#>
 param(
     [Parameter(Mandatory = $true)][string]$Tag,
     [string]$Path,
     [switch]$Remove
 )
 
-# Run a tagged study from its own read-only worktree, so editing main never changes a running
-# study's frozen sources. Ignored run data, venvs, vendor checkouts and provider stacks are linked
-# (directory junctions) from this checkout, so journals and stores stay in one place.
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 if ($env:OS -ne 'Windows_NT') { throw 'This helper uses directory junctions and requires Windows.' }

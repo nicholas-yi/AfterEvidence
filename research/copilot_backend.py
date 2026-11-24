@@ -71,7 +71,7 @@ async def quota_snapshot(client: CopilotClient):
     return await client.rpc.account.get_quota(AccountGetQuotaRequest())
 
 
-# Owner rule (2026-11-17): research usage must stay inside the included allowance, never overage.
+# Rule (2026-11-17): research usage must stay inside the included allowance, never overage.
 QUOTA_FLOOR_PERCENT = 50.0
 
 

@@ -1,4 +1,4 @@
-"""Honcho features (owner decision "staged_auto", 2026-11-16): Stage 1 dev check, Stage 2 evaluation.
+"""Honcho features (approved 2026-11-16 as two stages): Stage 1 dev check, Stage 2 evaluation.
 
 The dated changed-mind task: 1a at T-3 days, 1b at T-1 day, and every arm's session-2 prompt says
 "Today is <T>". Arms:
@@ -49,10 +49,10 @@ RETRIEVALS = {
     "Mir": ("mem0", "search"),
 }
 SHARED = {"Hodr": "Hod"}
-OWNER = (
-    'Owner decision "staged_auto" (ask_user, relayed by Lead, 2026-11-16 ~11:30 ET): Stage 1 '
-    "<= 350 requests / 40 credits; Stage 2 starts only if every Stage 1 gate passes, <= 3,000 "
-    "requests / 400 credits; Stage 3 (dream, conclusions, memory tool) deferred."
+APPROVAL = (
+    "Approved 2026-11-16 in stages: Stage 1 <= 350 requests / 40 credits; Stage 2 starts only if "
+    "every Stage 1 gate passes, <= 3,000 requests / 400 credits; Stage 3 (dream, conclusions, "
+    "memory tool) deferred."
 )
 SOURCES = (*cm.SOURCES, "honcho_features.py", "honcho_features_analysis.py")
 # Measured Study 6 rates (credits per request) for the caps; replaced by Stage 1 rates if higher.
@@ -61,7 +61,7 @@ ASK_ITEM = (
     "We already agreed on it last time. Please go ahead with that one "
     "and tell me the exact item ID you will use."
 )
-# Structural restating rule (Lead, 2026-11-16 12:42 ET): after the opening, an agent text naming
+# Structural restating rule (design review, 2026-11-16): after the opening, an agent text naming
 # exactly one alternative item ID gets the base target-blind consent; naming zero or several gets
 # Y's options and ID, whatever the wording, at most RESTATE_MAX times per session.
 RESTATE_MAX = 2
@@ -328,7 +328,7 @@ def _common(setup: dict[str, Any], today: dt.date, stage: str) -> dict[str, Any]
     }
     return {
         "stage": stage,
-        "owner": OWNER,
+        "approval": APPROVAL,
         "today_utc": today.isoformat(),
         "today_sentence": cm.today_sentence(today),
         "sessions": {

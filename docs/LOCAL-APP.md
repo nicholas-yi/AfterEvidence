@@ -208,8 +208,7 @@ and the harness tracks planned source state itself.
 #### Threat checks
 
 Each threat has two executable checks in [test_contracts.py](../tests/test_contracts.py)
-(software checks, not independent replications); the
-[referee agent](../.github/agents/referee.agent.md) blocks claims beyond them.
+(software checks, not independent replications); no claim goes beyond them.
 
 | Threat | Check A | Check B |
 |---|---|---|

@@ -1,3 +1,12 @@
+<#
+.SYNOPSIS
+Keep Windows awake for a bounded time during long runs (Windows only).
+
+.DESCRIPTION
+Starts a background guard that holds the system awake for -Minutes (at most 240), on AC power
+unless -ContinueOnBattery. -Status shows the guard; -Stop releases it. Sleep requested by another
+program can still happen; record any such interruption in the run record.
+#>
 param(
     [ValidateRange(1, 240)][int]$Minutes = 120,
     [switch]$ContinueOnBattery,

@@ -2028,7 +2028,7 @@ def _features_policy(
 
 
 class HonchoFeaturesTests(unittest.TestCase):
-    """Honcho features (staged_auto): restating customer, message search, schedule, dry passes."""
+    """Honcho features: restating customer, message search, schedule, dry passes."""
 
     @classmethod
     def setUpClass(cls) -> None:

@@ -1,3 +1,22 @@
+<#
+.SYNOPSIS
+Run a study phase by phase with its shims and gateway (Windows PowerShell only).
+
+.DESCRIPTION
+Detached driver for `research.followups` (-Study wd|m3|pz) and `research.gaps` (-Runner gaps;
+-Study gx|lh|ac) dev checks and evaluations. Run it from a frozen tag worktree
+(scripts/frozen-worktree.ps1); dev checks run from the working tree. It starts the study's Copilot shims (-Shims label = "port,cap") and
+the memory gateway, runs the phases in order under the keep-awake guard, then stops its services.
+
+A phase that exits non-zero stops the driver, with one exception: if its log shows a Copilot
+credential failure AND -RecoveryDecision records an owner decision, sessions cut mid-call are closed
+as infrastructure failures (research.run_recovery) and the phase is retried, at most -Tries times.
+Without a recorded decision nothing is recovered. Logs go to research/runs/commitment/<Stage>.
+
+Example:
+  scripts/run-eval.ps1 -Study wd -Worktree <tag worktree> -Stage wd-eval-v1 -Approved 2264 `
+    -Note "owner approval ..." -Workspace wd-eval-v1 -Shims @{ mem0 = '8811,96'; honcho = '8814,312' }
+#>
 param(
     [Parameter(Mandatory = $true)][string]$Study,
     [Parameter(Mandatory = $true)][string]$Worktree,
@@ -15,21 +34,6 @@ param(
     [ValidateSet('dev', 'eval')][string]$RunStage = 'eval',
     [hashtable]$WorkspaceByPrefix = @{}
 )
-<#
-Detached driver for `research.followups` (-Study wd|m3|pz) and `research.gaps` (-Runner gaps;
--Study gx|lh|ac) dev checks and evaluations. Run it from a frozen tag worktree
-(scripts/frozen-worktree.ps1); dev checks run from the working tree. It starts the study's Copilot shims (-Shims label = "port,cap") and
-the memory gateway, runs the phases in order under the keep-awake guard, then stops its services.
-
-A phase that exits non-zero stops the driver, with one exception: if its log shows a Copilot
-credential failure AND -RecoveryDecision records an owner decision, sessions cut mid-call are closed
-as infrastructure failures (research.run_recovery) and the phase is retried, at most -Tries times.
-Without a recorded decision nothing is recovered. Logs go to research/runs/commitment/<Stage>.
-
-Example:
-  scripts/run-eval.ps1 -Study wd -Worktree <tag worktree> -Stage wd-eval-v1 -Approved 2264 `
-    -Note "owner approval ..." -Workspace wd-eval-v1 -Shims @{ mem0 = '8811,96'; honcho = '8814,312' }
-#>
 $ErrorActionPreference = 'Stop'
 Set-Location $Worktree
 $py = Join-Path $Worktree 'research\.venv\Scripts\python.exe'

@@ -1,4 +1,4 @@
-"""Second-model replication (owner, 2026-11-17: "just use cheap stuff"): the dated changed-mind task
+"""Second-model replication (approved 2026-11-17, low-cost model): the dated changed-mind task
 with gpt-6-luna, an OpenAI model at Claude Haiku 5.5's per-token price, as the actor and as every
 provider's substituted LLM (the shims serve --model whatever model name a provider requests).
 

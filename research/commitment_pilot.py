@@ -1,4 +1,4 @@
-"""Necessary-memory pilot (owner-approved pilot only; evaluation not approved).
+"""Necessary-memory task: the harness shared by every study (pilot, then Study 4 evaluation).
 
 Session 1: a scripted customer agrees one exact exchange variant with the actor and defers
 execution. Session 2: the customer asks to "go ahead with the exchange we agreed last time"
@@ -110,7 +110,7 @@ AMEND_TAG = "commitment-eval-v1-amend1"
 AMEND_HASHES = Path(__file__).resolve().parent / "commitment-eval-v1-amend1-hashes.json"
 # Fresh provider scopes per stage; the memory-study and pilot-v5 stores are never touched.
 PROVIDER_STAGES: dict[str, dict[str, Any]] = {
-    # Studies 13-18 (owner "solve all those, close all gaps", 2026-11-20). Dev checks: 4 families x
+    # Studies 13-18 (approved 2026-11-20). Dev checks: 4 families x
     # arms x 12 requests (plus live session 1 for lh and ac); shims from measured per-episode rates.
     "gx-dev-v1": {
         "prefix": "cmp-gx-d1-",
@@ -127,7 +127,7 @@ PROVIDER_STAGES: dict[str, dict[str, Any]] = {
         "episode_cap": 672,
         "stop_on_ingest_error": True,
     },
-    # Studies 19-20 (owner, 2026-11-21: second model gpt-6-luna; ceiling 3,075).
+    # Studies 19-20 (approved 2026-11-21: second model gpt-6-luna; ceiling 3,075).
     "gm-dev-v1": {
         "prefix": "cmp-gm-d1-",
         "workspace": "second-model-gaps-dev-v1",
@@ -214,7 +214,7 @@ PROVIDER_STAGES: dict[str, dict[str, Any]] = {
         "episode_cap": 1610,
         "stop_on_ingest_error": False,
     },
-    # Studies 10 and 11 (owner "do all those", 2026-11-19): dev checks.
+    # Studies 10 and 11 (approved 2026-11-19): dev checks.
     "wd-dev-v1": {
         "prefix": "cmp-wd-d1-",
         "workspace": "write-it-down-dev-v1",
@@ -243,7 +243,7 @@ PROVIDER_STAGES: dict[str, dict[str, Any]] = {
         "episode_cap": 192,
         "stop_on_ingest_error": False,
     },
-    # Honcho features (owner "staged_auto"): dev check, then the evaluation (caps fixed at the tag).
+    # Honcho features (staged approval): dev check, then the evaluation (caps fixed at the tag).
     "hf-dev-v1": {
         "prefix": "cmp-hf-d1-",
         "workspace": "honcho-features-dev-v1",
@@ -971,13 +971,13 @@ BUDGETS = {
     "cm-dated": {"stages": ("cm-dated-v1",), "cap": 200, "credit_stop": 25.0},
     # Dated evaluation: episodes <= 2,688 (224 x 12), Mem0 shim <= 192, Honcho shim <= 528.
     "cm-dated-eval": {"stages": ("cm-dated-eval-v1",), "cap": 3408, "credit_stop": 400.0},
-    # Honcho features dev check (owner "staged_auto"): everything <= 350 requests, 40 credits.
+    # Honcho features dev check: everything <= 350 requests, 40 credits.
     "hf-dev": {"stages": ("hf-dev-v1",), "cap": 350, "credit_stop": 40.0},
-    # Stage 1b (owner "rerun_then_auto"): restating arms rerun, retrievals reused, no shims.
+    # Stage 1b (approved rerun): restating arms rerun, retrievals reused, no shims.
     "hf-dev2": {"stages": ("hf-dev-v2",), "cap": 200, "credit_stop": 25.0},
     # Honcho features evaluation: everything <= 3,000 requests, 400 credits.
     "hf-eval": {"stages": ("hf-eval-v1",), "cap": 3000, "credit_stop": 400.0},
-    # Honcho Stage 3 dev check (owner, 2026-11-17; Lead cap): everything <= 400 requests, 50 credits.
+    # Honcho Stage 3 dev check (approved 2026-11-17): everything <= 400 requests, 50 credits.
     "hf3-dev": {"stages": ("hf3-dev-v1",), "cap": 400, "credit_stop": 50.0},
     # Second-model (gpt-6-luna) dev check: episodes 192, Mem0 12, Honcho 45; <= 260 requests, 35 credits.
     "m2-dev": {"stages": ("m2-dev-v1",), "cap": 260, "credit_stop": 35.0},
@@ -993,7 +993,7 @@ BUDGETS = {
     "m3-dev2": {"stages": ("m3-dev-v2",), "cap": 260, "credit_stop": 50.0},
     # Study 12 dev check: live session 1 (8 x 12) and 16 sessions (16 x 12); Mem0 12, Honcho 45, app 10.
     "pz-dev": {"stages": ("pz-dev-v1",), "cap": 355, "credit_stop": 45.0},
-    # Studies 10-12 evaluations (owner raised the ceiling to 1,350): the credit stops bind and sum to
+    # Studies 10-12 evaluations (ceiling raised to 1,350): the credit stops bind and sum to
     # 840 of the 857.92 left after the dev checks; conservative at caps is higher (see DESIGN).
     "wd-eval": {"stages": ("wd-eval-v1",), "cap": 2264, "credit_stop": 255.0},
     "m3-eval": {"stages": ("m3-eval-v1",), "cap": 1782, "credit_stop": 360.0},
@@ -1003,12 +1003,12 @@ BUDGETS = {
     "gx-dev2": {"stages": ("gx-dev-v2",), "cap": 907, "credit_stop": 95.0},
     "lh-dev": {"stages": ("lh-dev-v1",), "cap": 594, "credit_stop": 60.0},
     "ac-dev": {"stages": ("ac-dev-v1",), "cap": 358, "credit_stop": 40.0},
-    # Evaluations (owner "raise_225": ceiling 2,875): conservative at caps 919.6 + 343.2 + 297.6 =
+    # Evaluations (ceiling raised to 2,875): conservative at caps 919.6 + 343.2 + 297.6 =
     # 1,560.4 of the 1,561.71 left after the dev checks; credit stops sum to 1,320.
     "gx-eval": {"stages": ("gx-eval-v1",), "cap": 6824, "credit_stop": 760.0},
     "lh-eval": {"stages": ("lh-eval-v1",), "cap": 2958, "credit_stop": 300.0},
     "ac-eval": {"stages": ("ac-eval-v1",), "cap": 2478, "credit_stop": 260.0},
-    # Studies 19-20 (gpt-6-luna; owner "raise_200" then "raise_100": ceiling 3,175). Evaluation caps
+    # Studies 19-20 (gpt-6-luna; ceiling raised to 3,075, then 3,175). Evaluation caps
     # from the dev checks; conservative at caps 487.0 + 334.7 = 821.7 of the 830.89 left.
     "gm-dev": {"stages": ("gm-dev-v1",), "cap": 662, "credit_stop": 55.0},
     "lm-dev": {"stages": ("lm-dev-v1",), "cap": 594, "credit_stop": 45.0},

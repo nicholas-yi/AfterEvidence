@@ -1,5 +1,5 @@
-"""Studies 13 to 18 (owner, ask_user 2026-11-20: "solve all those, close all gaps"; all seven experiments
-selected; ceiling raised by 1,300 to 2,650 credits). Three evaluations, each with a dev check, an
+"""Studies 13 to 18 (approved 2026-11-20: all seven experiments; ceiling raised by 1,300 to 2,650
+credits). Three evaluations, each with a dev check, an
 annotated protocol tag before its 32 families are generated, and pre-specified analyses
 (research/gaps_analysis.py). Claude Haiku 5.5 throughout; the dated changed-mind task; the customer
 never restates the item; one fresh scope per arm; arms run in blocks in the priority order below.
@@ -48,11 +48,11 @@ from research import followups as fu
 from research import honcho_features as hf
 from research import honcho_stage3 as s3
 
-OWNER = (
-    'Owner (ask_user, 2026-11-20): "solve all those, close all gaps"; experiments A (stale summary), '
-    "B (tool prompt), C (long history), D (injected memory), E (Graphiti and Hindsight), F (shared "
-    "scope) and G (another decision) selected; ceiling raised by 1,300 to 2,650 credits, then "
-    '(ask_user "raise_225", after the dev checks) by 225 to 2,875 so every arm fits at caps.'
+APPROVAL = (
+    "Approved 2026-11-20: experiments A (stale summary), B (tool prompt), C (long history), D "
+    "(injected memory), E (Graphiti and Hindsight), F (shared scope) and G (another decision); "
+    "ceiling raised by 1,300 to 2,650 credits, then after the dev checks by 225 to 2,875 so every "
+    "arm fits at caps."
 )
 SOURCES = (*fu.SOURCES, "gaps.py", "gaps_analysis.py", "memory_gateway.py")
 MEMORY_TOOL_CAP = s3.MEMORY_TOOL_CAP
@@ -180,7 +180,7 @@ class Design:
     history_max: int = cp.HISTORY_MAX
     model: str = "claude-haiku-5.5"
     task: str = ""  # the task a replication repeats (gx, lh or ac); "" means the design's own key
-    owner: str = ""  # the approval recorded in every plan; "" means OWNER
+    approval: str = ""  # the approval recorded in every plan; "" means APPROVAL
     reported_done: bool = False  # Studies 19-20: the customer ends on COMPLETED reports
 
     @property
@@ -293,11 +293,10 @@ AC = Design(
     phases=TWO,
     kind="address",
 )
-OWNER_19 = (
-    'Owner (ask_user, 2026-11-21): "do the second model reinforcement"; gpt-6-luna; the three '
-    "strongest Study 13 and 15 findings plus Study 14's five-conversation task; ceiling raised by "
-    "200 to 3,075 credits (raise_200), then after the dev checks by 100 to 3,175 (raise_100) so "
-    "every arm fits at caps."
+APPROVAL_19 = (
+    "Approved 2026-11-21: a second model (gpt-6-luna) for the three strongest Study 13 and 15 "
+    "findings plus Study 14's five-conversation task; ceiling raised by 200 to 3,075 credits, then "
+    "after the dev checks by 100 to 3,175 so every arm fits at caps."
 )
 GM = dataclasses.replace(
     GX,
@@ -322,7 +321,7 @@ GM = dataclasses.replace(
     descriptions={a: GX.descriptions[a] for a in GX.descriptions if a not in ("Ms", "Gr", "Hi")},
     model="gpt-6-luna",
     task="gx",
-    owner=OWNER_19,
+    approval=APPROVAL_19,
     reported_done=True,
 )
 LM = dataclasses.replace(
@@ -347,7 +346,7 @@ LM = dataclasses.replace(
     ),
     model="gpt-6-luna",
     task="lh",
-    owner=OWNER_19,
+    approval=APPROVAL_19,
     reported_done=True,
 )
 DESIGNS = {d.key: d for d in (GX, LH, AC, GM, LM)}
@@ -1141,7 +1140,7 @@ def plan(
     return {
         "stage": stage,
         "studies": design.studies,
-        "owner": design.owner or OWNER,
+        "approval": design.approval or APPROVAL,
         "completion": "COMPLETED (Studies 19-20)" if design.reported_done else "cp.DONE",
         "model": design.model,
         "provider_llm": f"{design.model} (every shim started with --model {design.model})",
