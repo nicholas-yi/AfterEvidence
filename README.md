@@ -56,8 +56,8 @@ the store's database ends up exactly right, with the analysis fixed before any t
 ```mermaid
 flowchart TD
     H[("Past episodes")] --> M["Memory system<br/>none · transcripts · lessons<br/>Mem0 · Graphiti · Hindsight · Honcho"]
-    M -->|"retrieved once,<br/>≤ 2,400 characters"| A["Agent<br/>Claude Haiku 5.5"]
-    C["Simulated customer<br/>Claude Haiku 5.5"] <--> A
+    M -->|"retrieved memory"| A["Agent<br/>Claude Haiku 5.5 in most studies"]
+    C["Simulated customer<br/>same model"] <--> A
     A <--> T["16 retail tools"]
     T <--> DB[("Store database")]
     DB --> S{"Scorer:<br/>is the final database<br/>exactly right?"}
@@ -75,14 +75,17 @@ reference outcome.
 
 The same model, Claude Haiku 5.5 (via GitHub Copilot), plays the agent, the simulated customer, and
 the internal LLM inside every memory system. Embeddings come from one local model. Differences
-between conditions therefore come from the memory, not from a different model. Studies 9 and 11
-repeat the change-of-mind task with `gpt-6-luna` and `mai-code-1.1-flash` in every role.
+between conditions therefore come from the memory, not from a different model. Studies 9, 11, 19
+and 20 repeat the main findings with `gpt-6-luna` or `mai-code-1.1-flash` in every role.
 
 ### Nine memory designs on one budget
 
-Memory is built from 30 earlier episodes whose customers never appear in the test tasks. It is
-retrieved once from the customer's first message, capped at 2,400 characters for every condition,
-and labelled as possibly outdated: current tool results and the store policy take precedence.
+In Studies 1 and 2, memory is built from 30 earlier episodes whose customers never appear in the
+test tasks. It is retrieved once from the customer's first message, capped at 2,400 characters for
+every condition, and labelled as possibly outdated: current tool results and the store policy take
+precedence. Studies 4 to 20 build memory from each customer's own earlier conversations: transcripts, Mem0
+and Honcho throughout, the app's own written summary from Study 8, and Graphiti and Hindsight in
+Study 16, under the same label.
 
 | Condition | What the agent receives |
 |---|---|
@@ -116,6 +119,9 @@ design is in [DESIGN](research/DESIGN.md).
   permutation test, with the smallest effect the design could reliably detect.
 - A hard budget of 16,000 model requests was checked before every episode. Episodes were never
   retried or replaced, and every failure, including harness failures, counts as a failure.
+- Studies 4 to 20 were each tagged with their design and analysis before their customers were
+  generated. A model call that times out or drops gets one fresh re-attempt under a rule fixed in
+  advance; an agent's own failure never does. Every study had a request cap and a credit stop.
 
 ## Results
 
@@ -224,8 +230,8 @@ python -m afterevidence serve
   results and memory-tool use changed with the model. Other models, retrieval styles or domains may
   differ.
 - **Low power.** 26 tasks × 2 runs can detect only large effects (about 15-20 points).
-- **Mostly one retrieval per episode.** Memory was fetched once from the first message; Studies 8, 10
-  and 13 tried an on-demand memory tool, with one model and one tool description.
+- **Mostly one retrieval per episode.** Memory was fetched once from the first message; Studies 8, 10,
+  13 and 19 tried an on-demand memory tool, with two models and one tool description.
 - **Default pipelines.** Each memory system ran its default configuration on a substituted model;
   their published results use other models. Builders can propose tuned configurations as separate
   arms ([fairness rules](research/README.md#fairness-to-memory-system-builders)).
@@ -289,7 +295,7 @@ forgetting). A newer line scores memory by what an agent does:
 | **Forget-Me-Not** | Across conversations with the same or other customers, including an agreement later superseded | Final store database vs a reference, with the analysis tagged before the data | Mem0, Graphiti, Hindsight and Honcho default pipelines, transcripts, lessons; deletion through each system's API |
 
 What this repository adds is harm and deletion: whether remembered agreements lead to the *wrong*
-action once superseded (Studies 5-9), and whether deleting a conversation removes what was derived
+action once superseded (Studies 5-20), and whether deleting a conversation removes what was derived
 from it (Study 3), scored without an LLM judge. Vendor-reported results on the QA benchmarks use
 each vendor's own model and settings and often disagree with each other; these studies hold the
 model and task fixed and run each system's open-source default. [ExpeL](https://arxiv.org/abs/2308.10144)

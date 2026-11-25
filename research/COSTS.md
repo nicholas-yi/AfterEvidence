@@ -6,8 +6,8 @@
 is a chat subscription; ordinary API use is separately billed. Buying a
 $20/month chat plan does not buy a fixed number of API requests.
 
-The user selected **existing GitHub Copilot allowance**, not a separately paid
-OpenAI/Anthropic API. The supported [Copilot SDK](https://github.com/github/copilot-sdk)
+Every model call in this project uses an **existing GitHub Copilot allowance**, not a separately
+paid OpenAI/Anthropic API. The supported [Copilot SDK](https://github.com/github/copilot-sdk)
 can use that account. API keys are unnecessary for this route.
 
 ## Actual measured three-request pilot
@@ -282,13 +282,13 @@ credits.
   124, Honcho shim 338), **243.38 AI credits**, no aborts (max single call 0.23). A
   providers-phase launch error was rejected before any billed call. Cumulative:
   **19,235 requests**, about **2,178.16 credits** recorded.
-- Honcho features (owner decision "staged_auto"; tag `honcho-features-eval-v1`): Stage 1
+- Honcho features (approved in stages; tag `honcho-features-eval-v1`): Stage 1
   dev check **205 requests** (episodes 176, Mem0 shim 8, Honcho shim 21), **23.86 credits**;
   Stage 1b rerun **122 requests**, **13.98 credits**; Stage 2 evaluation **2,286 requests**
   (episodes 2,031, Mem0 shim 64, Honcho shim 191) of 3,000, **259.08 AI credits** recorded,
   260.08 charged with one abort at 1.0 (max single call 0.22). Cumulative: **21,848
   requests**, about **2,475.08 credits** recorded.
-- Honcho Stage 3 and second-model replication (owner "do them all", 2026-11-17; 1,200-credit
+- Honcho Stage 3 and second-model replication (approved 2026-11-17; 1,200-credit
   ceiling, quota guard on): Stage 3 dev check **309 requests**, **32.75 credits**; second-model
   dev check (`gpt-6-luna`) **140 requests**, **10.31 credits**; second-model evaluation (tag
   `second-model-eval-v1`) **1,451 of 1,880 requests** (episodes 1,227, Mem0 shim 64, Honcho shim
@@ -297,26 +297,26 @@ credits.
   60), **266.90 credits** recorded, 273.90 charged with 7 aborts at 1.0 (max single call 0.22).
   Together 410.57 recorded of the 1,200 ceiling. Cumulative: **26,404 requests**, about
   **2,885.65 credits** recorded.
-- Studies 10-12 (owner "do all those", 2026-11-19; ceiling raised to 1,350): dev checks 679
+- Studies 10-12 (approved 2026-11-19; ceiling raised to 1,350): dev checks 679
   requests, 78.51 credits recorded (81.51 charged): Study 10 179 / 20.16; Study 11 v1
   (`mai-code-2-flash`, not used) 144 / 5.94 (7.94 charged); replay debug 27 / 2.27; Study 11 v2
   (`mai-code-1.1-flash`) 130 / 28.91 (29.91 charged); Study 12 199 / 21.23. Evaluations 4,583
   requests: Study 10 1,839 of 2,264, **201.63** recorded (234.63 charged, 33 aborts); Study 11 1,367
   of 1,782, **257.69** (287.69 charged, 30 aborts; about 0.2 credits per request); Study 12 1,377 of
-  2,066, **146.82** (160.82 charged, 14 aborts). Since "do them all" 1,095.22 recorded and 1,182.22
+  2,066, **146.82** (160.82 charged, 14 aborts). Since the 2026-11-17 approval 1,095.22 recorded and 1,182.22
   charged of the 1,350 ceiling; no overage. Cumulative: **31,666 requests**, about **3,570.30
   credits** recorded.
-- Studies 13-18 (owner "solve all those, close all gaps", 2026-11-20; ceiling raised by 1,300 to
+- Studies 13-18 (approved 2026-11-20; ceiling raised by 1,300 to
   2,650, then by 225 to 2,875): dev checks 1,176 requests, 130.07 credits recorded (131.07 charged):
   gx v1 (stopped by host events, not used) 38 / 3.76; gx v2 614 / 71.05; lh 283 / 28.00 (29.00
   charged, one abort after a process kill); ac 241 / 27.26. Evaluations 9,099 requests: gx (tag
   `gaps-eval-v1`) 5,111 of 6,824 (episodes 4,099, Mem0 186, Honcho 354, Graphiti 279, Hindsight 131,
   app 62), **581.14** recorded (582.14 charged, one Graphiti shim abort); lh (`long-history-eval-v1`)
   2,445 of 2,958, **248.26**; ac (`address-change-eval-v1`) 1,543 of 2,478, **158.53**; max single
-  call 0.47. Together 1,118.00 recorded, 1,120.00 charged; since "do them all" 2,302.22 charged of
+  call 0.47. Together 1,118.00 recorded, 1,120.00 charged; since the 2026-11-17 approval 2,302.22 charged of
   the 2,875 ceiling; no overage. Cumulative: **41,941 requests**, about **4,688.30 credits**
   recorded.
-- Studies 19-20 (owner 2026-11-21: second model `gpt-6-luna`; ceiling raised to 3,075, then 3,175):
+- Studies 19-20 (approved 2026-11-21: second model `gpt-6-luna`; ceiling raised to 3,075, then 3,175):
   dev checks gm 353 / 25.36 and lm 268 / 16.53; evaluations gm (tag `second-model-gaps-eval-v1`)
   3,257 of 4,078 requests, **224.18** recorded (225.18 charged, one abort after a host sleep), lm
   (`second-model-long-history-eval-v1`) 2,124 of 2,886, **132.93** (133.93 charged, one abort); about
